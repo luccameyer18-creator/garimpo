@@ -159,8 +159,15 @@ async function check1() {
     info(`métodos: ${uniq([...proto, ...ownFns(stretch)]).filter(k => k !== 'constructor').join(', ')}`);
     if (own.length) info(`props: ${own.join(', ')}`);
     if (typeof stretch.latency === 'function') {
-      const L = stretch.latency();
-      ok(`latency() = ${(L * 1e3).toFixed(1)} ms  → lookahead de handoff = ${(Math.max(0.15, 2*L)*1e3).toFixed(0)} ms`);
+      // TODO metodo do signalsmith e um proxy sobre postMessage => TODOS sao async.
+      // Sem await, latency() devolve uma Promise e o calculo do handoff da NaN.
+      const L = await stretch.latency();
+      ok(`latency() = ${(L * 1e3).toFixed(2)} ms  → lookahead de handoff = ${(Math.max(0.15, 2*L)*1e3).toFixed(0)} ms`);
+      for (const bms of [40, 60, 120]) {
+        await stretch.configure({ blockMs: bms });
+        info(`  blockMs ${String(bms).padEnd(3)} → latency ${((await stretch.latency())*1e3).toFixed(2)} ms`);
+      }
+      await stretch.configure({ blockMs: 60 });
     } else warn('latency() não existe — a troca keylock precisa de outro jeito de medir');
     if (typeof stretch.configure === 'function') info('configure() disponível (blockMs ajustável)');
     if (typeof stretch.schedule === 'function') ok('schedule() disponível — é a base da troca sem glitch');
@@ -202,7 +209,15 @@ async function check2() {
     ok(`faixa: "${track.title}" — ${track.user?.name} | ${track.duration}s bpm=${track.bpm} tom=${track.musical_key}`);
   } catch (e) { bad('buscar no Audius: ' + e.message); return; }
 
-  const url = `${AUDIUS}/tracks/${track.id}/stream?app_name=${APP}`;
+  // NAO usar /stream direto: o navegador segue o 302->307 e termina em
+  // armazenamento bruto sem CORS (~31% das faixas falham, permanentemente).
+  // no_redirect=true devolve a URL assinada do validator, que serve com CORS.
+  let url;
+  try {
+    const j = await (await fetch(`${AUDIUS}/tracks/${track.id}/stream?app_name=${APP}&no_redirect=true`)).json();
+    url = j.data;
+    ok(`stream resolvido via no_redirect → ${new URL(url).host}`);
+  } catch (e) { bad('resolver o stream: ' + e.message); return; }
   const PREFIX = 2 << 20;
 
   let prefixBuf, total = null;
