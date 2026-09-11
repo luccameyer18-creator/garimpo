@@ -51,8 +51,18 @@
 <script type="module">
 const logEl = document.getElementById('log');
 const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+// Envia o log pro dev server a cada atualizacao (debounce de 700 ms). Assim o
+// resultado chega mesmo se a pagina travar no meio, e sem copy-paste.
+let enviarTimer = null;
+const enviarLog = () => {
+  clearTimeout(enviarTimer);
+  enviarTimer = setTimeout(() => {
+    fetch('/_log?name=checks', { method: 'POST', body: logEl.innerText }).catch(() => {});
+  }, 700);
+};
 const log  = (m, cls='') => { logEl.insertAdjacentHTML('beforeend',
-                `<span class="${cls}">${esc(m)}</span>\n`); logEl.scrollTop = logEl.scrollHeight; };
+                `<span class="${cls}">${esc(m)}</span>\n`); logEl.scrollTop = logEl.scrollHeight;
+                enviarLog(); };
 const head = m => log('\n── ' + m + ' ' + '─'.repeat(Math.max(0, 58 - m.length)), 'h');
 const ok   = m => log('  PASSOU  ' + m, 'ok');
 const bad  = m => log('  FALHOU  ' + m, 'bad');

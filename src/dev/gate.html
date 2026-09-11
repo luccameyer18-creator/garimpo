@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Garimpo — gate objetivo do motor</title>
+<style>
+  :root { color-scheme: dark; --bg:#0e1013; --fg:#e7e9ee; --mut:#8b94a5; --ok:#3ddc84;
+          --bad:#ff5d5d; --warn:#ffc83d; --line:#22262e; --acc:#6aa8ff; }
+  body { margin:0; background:var(--bg); color:var(--fg); padding:24px;
+         font:13px/1.6 ui-monospace,"Cascadia Code",Consolas,monospace; }
+  h1 { font-size:16px; margin:0 0 4px; } p.sub { color:var(--mut); margin:0 0 18px; }
+  #log { white-space:pre-wrap; border:1px solid var(--line); border-radius:8px;
+         padding:14px; background:#0a0c0f; }
+  .ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+  .mut{color:var(--mut)} .h{color:#fff;font-weight:700}
+</style>
+</head>
+<body>
+<h1>Garimpo — gate objetivo do motor</h1>
+<p class="sub">
+  Roda em OfflineAudioContext: <b>sem placa de som, sem gesto do usuário, sem ouvido</b>.
+  Mede a fundamental por Goertzel. Auto-executa ao carregar.
+</p>
+<div id="log">rodando...</div>
+
+<script type="module">
+const el = document.getElementById('log');
+let linhas = [];
+const put = (m, cls='') => { linhas.push(`<span class="${cls}">${m}</span>`); el.innerHTML = linhas.join('\n'); };
+const head = m => put('\n── ' + m + ' ' + '─'.repeat(Math.max(0, 56 - m.length)), 'h');
+let pass = 0, fail = 0;
+const ok  = m => { pass++; put('  ok    ' + m, 'ok'); };
+const bad = m => { fail++; put('  FALHA ' + m, 'bad'); };
+const inf = m => put('        ' + m, 'mut');
+
+const SR = 48000;
+const WORKLET = '/src/audio/worklets/turntable-reader.js';
+
+/** Fundamental por Goertzel, varrendo uma faixa. Mede só o miolo estável. */
+function fundamental(buf, { lo = 280, hi = 700, ch = 0 } = {}) {
+  const d = buf.getChannelData(ch), sr = buf.sampleRate;
+  const ini = Math.floor(d.length * 0.35), fim = Math.floor(d.length * 0.75);
+  let melhor = 0, melhorF = 0;
+  for (let f = lo; f <= hi; f += 0.25) {
+    const w = 2 * Math.PI * f / sr, c = 2 * Math.cos(w);
+    let s1 = 0, s2 = 0, s0;
+    for (let i = ini; i < fim; i++) { s0 = d[i] + c * s1 - s2; s2 = s1; s1 = s0; }
+    const p = s1 * s1 + s2 * s2 - c * s1 * s2;
+    if (p > melhor) { melhor = p; melhorF = f; }
+  }
+  let rms = 0; for (let i = ini; i < fim; i++) rms += d[i] * d[i];
+  return { hz: melhorF, rms: Math.sqrt(rms / (fim - ini)) };
+}
+
+/** Maior salto entre samples vizinhos: delata clique/descontinuidade. */
+function maiorSalto(buf, ch = 0) {
+  const d = buf.getChannelData(ch);
+  let max = 0, at = 0;
+  for (let i = 1; i < d.length; i++) {
+    const s = Math.abs(d[i] - d[i - 1]);
+    if (s > max) { max = s; at = i; }
+  }
+  return { salto: max, emSegundos: at / SR };
+}
+
+const seno = (hz = 440, seg = 3, amp = 0.5) => {
+  const a = new Float32Array(Math.ceil(SR * seg));
+  for (let i = 0; i < a.length; i++) a[i] = amp * Math.sin(2 * Math.PI * hz * i / SR);
+  return a;
+};
+const cents = (medido, alvo) => 1200 * Math.log2(medido / alvo);
+
+/** Renderiza o nosso leitor com as opções dadas. */
+async function renderLeitor(opts, segundos = 2, msgs = []) {
+  const oc = new OfflineAudioContext(2, Math.ceil(SR * segundos), SR);
+  await oc.audioWorklet.addModule(WORKLET);
+  const n = new AudioWorkletNode(oc, 'turntable-reader', {
+    numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
+    processorOptions: { pcm: [seno(), seno()], pos: 0, active: true, ...opts },
+  });
+  for (const m of msgs) n.port.postMessage(m);
+  n.connect(oc.destination);
+  return oc.startRendering();
+}
+
+/** Renderiza o signalsmith em keylock. addBuffers recebe ARRAY de Float32Array. */
+async function renderKeylock(rate, segundos = 2, blockMs = 40) {
+  const oc = new OfflineAudioContext(2, Math.ceil(SR * segundos), SR);
+  const mod = await import('https://cdn.jsdelivr.net/npm/signalsmith-stretch@1.3.2/SignalsmithStretch.mjs');
+  const st = await mod.default(oc);
+  await st.configure({ blockMs });
+  st.connect(oc.destination);
+  await st.addBuffers([seno(), seno()]);          // NAO aceita AudioBuffer: DataCloneError
+  await st.schedule({ output: 0, active: true, input: 0, rate, semitones: 0 });
+  return oc.startRendering();
+}
+
+el.innerHTML = '';
+put('Garimpo — gate objetivo do motor', 'h');
+put(navigator.userAgent, 'mut');
+
+try {
+  // ─────────────── 1 · modo vinil: o tom SOBE com o tempo ───────────────
+  head('1 · leitor em modo vinil — o tom acompanha a taxa');
+  for (const rate of [1.00, 1.08, 0.92, 1.16, 0.50]) {
+    const r = fundamental(await renderLeitor({ rate, nominal: rate }), { lo: 180, hi: 700 });
+    const alvo = 440 * rate;
+    const erro = Math.abs(cents(r.hz, alvo));
+    if (r.rms < 0.05) bad(`rate ${rate}: saiu MUDO (rms ${r.rms.toFixed(4)})`);
+    else if (erro < 12) ok(`rate ${rate.toFixed(2)} → ${r.hz.toFixed(1)} Hz (alvo ${alvo.toFixed(1)}, erro ${erro.toFixed(1)} cents)`);
+    else bad(`rate ${rate.toFixed(2)} → ${r.hz.toFixed(1)} Hz, esperado ${alvo.toFixed(1)} (erro ${erro.toFixed(0)} cents)`);
+  }
+
+  // ─────────────── 2 · keylock: o tom NAO se mexe ───────────────
+  head('2 · keylock — o tom fica parado enquanto a taxa muda');
+  for (const rate of [1.08, 0.92, 1.16, 1.45, 0.70]) {
+    const r = fundamental(await renderKeylock(rate), { lo: 280, hi: 700 });
+    const erro = Math.abs(cents(r.hz, 440));
+    const semKeylock = Math.abs(cents(440 * rate, 440));
+    if (r.rms < 0.05) bad(`rate ${rate}: saiu MUDO`);
+    else if (erro < 25) ok(`rate ${rate.toFixed(2)} → ${r.hz.toFixed(1)} Hz — segurou (desvio ${erro.toFixed(1)} cents; sem keylock desviaria ${semKeylock.toFixed(0)})`);
+    else bad(`rate ${rate.toFixed(2)} → ${r.hz.toFixed(1)} Hz — desviou ${erro.toFixed(0)} cents, keylock NAO segurou`);
+  }
+
+  // ─────────────── 3 · reverso ───────────────
+  head('3 · leitor em taxa negativa (scratch reverso)');
+  {
+    const b = await renderLeitor({ rate: -1, nominal: 1, pos: 2.5 });
+    const r = fundamental(b, { lo: 280, hi: 700 });
+    if (r.rms < 0.05) bad(`taxa -1 saiu MUDA — AudioBufferSourceNode nao faria isso, e por isso temos worklet proprio`);
+    else if (Math.abs(cents(r.hz, 440)) < 20) ok(`taxa -1.0 → ${r.hz.toFixed(1)} Hz com rms ${r.rms.toFixed(3)} — toca ao contrario`);
+    else bad(`taxa -1.0 → ${r.hz.toFixed(1)} Hz, esperado ~440`);
+  }
+
+  // ─────────────── 4 · loop sem clique ───────────────
+  head('4 · loop: o crossfade de 128 samples mata o clique?');
+  {
+    // O loop vai por processorOptions, NAO por postMessage: mensagem de porta
+    // corre contra o inicio da renderizacao offline e o loop nunca engata —
+    // o teste passa vazio, com os dois lados identicos. Ja me enganou uma vez.
+    const inicio = 0.1013, fim = 0.2137;                  // fora do cruzamento por zero
+    const comLoop = await renderLeitor({ rate: 1, nominal: 1, loop: { start: inicio, end: fim } }, 2);
+    const semLoop = await renderLeitor({ rate: 1, nominal: 1 }, 2);
+
+    // prova que o loop engatou: com loop, o audio depois de `fim` tem que repetir
+    const d = comLoop.getChannelData(0), s = semLoop.getChannelData(0);
+    let iguais = 0;
+    const de = Math.floor(fim * SR) + 400, ate = de + 20000;
+    for (let i = de; i < ate; i++) if (Math.abs(d[i] - s[i]) < 1e-6) iguais++;
+    const fracaoIgual = iguais / (ate - de);
+    if (fracaoIgual > 0.9) { bad(`o loop NAO engatou: ${(fracaoIgual*100).toFixed(0)}% identico ao sem-loop depois do fim do loop`); }
+    else {
+      ok(`loop engatou (so ${(fracaoIgual*100).toFixed(1)}% igual ao sem-loop depois de ${fim}s)`);
+      const a = maiorSalto(comLoop), b = maiorSalto(semLoop);
+      inf(`maior salto entre samples: com loop ${a.salto.toFixed(5)} | sem loop ${b.salto.toFixed(5)}`);
+      if (a.salto <= b.salto * 3) ok(`volta do loop sem descontinuidade (${(a.salto / b.salto).toFixed(2)}x o basal)`);
+      else bad(`salto de ${a.salto.toFixed(4)} em ${a.emSegundos.toFixed(3)}s — ${(a.salto / b.salto).toFixed(1)}x o basal, isso e clique`);
+    }
+  }
+
+  // ─────────────── 5 · Hermite nao suja o sinal ───────────────
+  head('5 · interpolacao Hermite — fidelidade em rate 1.0');
+  {
+    const b = await renderLeitor({ rate: 1, nominal: 1 });
+    const d = b.getChannelData(0);
+    const ref = seno();
+    let err = 0, sig = 0;
+    for (let i = 1000; i < 40000; i++) { const e = d[i] - ref[i]; err += e * e; sig += ref[i] * ref[i]; }
+    const snr = 10 * Math.log10(sig / Math.max(err, 1e-20));
+    if (snr > 80) ok(`rate 1.0 e bit-a-bit fiel (SNR ${snr.toFixed(0)} dB)`);
+    else if (snr > 40) ok(`SNR ${snr.toFixed(1)} dB em rate 1.0`);
+    else bad(`SNR ${snr.toFixed(1)} dB — a leitura esta sujando o sinal`);
+  }
+
+  // ─────────────── 6 · sem quantum perdido no offline ───────────────
+  head('6 · integridade: quanta perdidos');
+  {
+    const oc = new OfflineAudioContext(2, SR * 2, SR);
+    await oc.audioWorklet.addModule(WORKLET);
+    const n = new AudioWorkletNode(oc, 'turntable-reader', {
+      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
+      processorOptions: { pcm: [seno(), seno()], pos: 0, rate: 1, nominal: 1, active: true },
+    });
+    let ultimo = null;
+    n.port.onmessage = e => { if (e.data.t === 'anchor') ultimo = e.data; };
+    n.connect(oc.destination);
+    await oc.startRendering();
+    await new Promise(r => setTimeout(r, 150));
+    if (!ultimo) bad('nenhum anchor — telemetria morta');
+    else {
+      inf(`anchor final: pos=${ultimo.pos.toFixed(4)}s seq=${ultimo.seq} underruns=${ultimo.underruns}`);
+      if (ultimo.glitchCount === 0) ok('zero quanta perdidos');
+      else bad(`${ultimo.glitchCount} quanta perdidos (${ultimo.glitchMs.toFixed(1)} ms)`);
+      const erro = Math.abs(ultimo.pos - 2.0);
+      if (erro < 0.01) ok(`posicao final ${ultimo.pos.toFixed(4)}s para 2s renderizados (erro ${(erro * 1e3).toFixed(2)} ms)`);
+      else bad(`posicao final ${ultimo.pos.toFixed(4)}s, esperado ~2.0s`);
+    }
+  }
+} catch (e) {
+  bad('excecao: ' + e.message);
+  put(String(e.stack).slice(0, 400), 'mut');
+}
+
+head(`${pass} passaram, ${fail} falharam`);
+put(fail === 0 ? '\nGATE DO MOTOR: PASSOU' : '\nGATE DO MOTOR: FALHOU', fail === 0 ? 'ok' : 'bad');
+try { await fetch('/_log?name=gate', { method: 'POST', body: el.innerText }); } catch {}
+</script>
+</body>
+</html>

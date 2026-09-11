@@ -76,6 +76,31 @@ class TurntableReader extends AudioWorkletProcessor {
     this.glitchFrames = 0;
     this.glitchCount = 0;
 
+    // Semeadura por processorOptions. Em OfflineAudioContext as mensagens de
+    // porta correm contra o início da renderização e o nó sai MUDO; semear na
+    // construção é determinístico. Também evita um round-trip no caminho online.
+    // o.pcm = [Float32Array esquerda, Float32Array direita]
+    if (o.pcm && o.pcm.length) {
+      for (let c = 0; c < 2; c++) {
+        const src = o.pcm[Math.min(c, o.pcm.length - 1)];
+        if (!src) continue;
+        for (let off = 0; off < src.length; off += SLAB) {
+          this.ch[c][off >>> SLAB_BITS] = src.subarray(off, Math.min(off + SLAB, src.length));
+        }
+        if (src.length > this.len) this.len = src.length;
+      }
+    }
+    if (o.pos !== undefined) { this.pos = o.pos * sampleRate; this.shadow = this.pos; }
+    if (o.nominal !== undefined) this.nominal = o.nominal;
+    if (o.rate !== undefined) { this.target = this.clampRate(o.rate); this.rate = this.target; }
+    if (o.active) this.active = true;
+    if (o.loop) {
+      this.loopOn = true;
+      this.loopStart = (o.loop.start || 0) * sampleRate;
+      this.loopEnd = (o.loop.end || 0) * sampleRate;
+    }
+    if (o.slip) this.slip = true;
+
     this.port.onmessage = (e) => this.onMessage(e.data);
   }
 
