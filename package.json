@@ -1,0 +1,11 @@
+{
+  "name": "garimpo",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "CDJ web com professor de mixagem. Audio do Audius e de arquivos locais; Spotify como crate.",
+  "scripts": {
+    "dev": "node dev-server.mjs 8080",
+    "test": "node src/dev/test-audius.mjs"
+  }
+}

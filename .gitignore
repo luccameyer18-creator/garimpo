@@ -1,0 +1,12 @@
+node_modules/
+vendor/
+.DS_Store
+*.log
+
+# --- segredos: nunca neste repo, porque ele vai pro GitHub Pages ---
+.env
+.env.*
+*.key
+*-key.txt
+secrets*
+anthropic*

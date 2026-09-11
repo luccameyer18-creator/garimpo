@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Garimpo — checagens do dia 1</title>
+<style>
+  :root { color-scheme: dark; --bg:#0e1013; --fg:#e7e9ee; --mut:#8b94a5; --ok:#3ddc84;
+          --bad:#ff5d5d; --warn:#ffc83d; --line:#22262e; --acc:#6aa8ff; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:14px/1.55 ui-monospace,"Cascadia Code",Consolas,monospace; padding:24px; }
+  h1 { font-size:16px; margin:0 0 4px; letter-spacing:.02em; }
+  p.sub { color:var(--mut); margin:0 0 20px; }
+  button { background:#1a1f27; color:var(--fg); border:1px solid var(--line);
+           padding:9px 14px; border-radius:7px; cursor:pointer; font:inherit; margin:0 6px 8px 0; }
+  button:hover:not(:disabled) { border-color:var(--acc); color:var(--acc); }
+  button:disabled { opacity:.4; cursor:default; }
+  #log { white-space:pre-wrap; border:1px solid var(--line); border-radius:8px;
+         padding:14px; margin-top:14px; background:#0a0c0f; max-height:62vh; overflow:auto; }
+  .ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+  .mut{color:var(--mut)} .acc{color:var(--acc)} .h{color:#fff;font-weight:700}
+</style>
+</head>
+<body>
+<h1>Garimpo — checagens do dia 1</h1>
+<p class="sub">Cada checagem pode invalidar uma suposição do plano. Rode antes de escrever o motor.</p>
+
+<div>
+  <button id="b1">1 · AudioWorklet + signalsmith</button>
+  <button id="b2">2 · MP3 truncado decodifica?</button>
+  <button id="b3">3 · Latência da máquina</button>
+  <button id="b4">4 · Bench de CPU (30 s)</button>
+  <button id="ball">Rodar todas</button>
+</div>
+<div id="log"></div>
+
+<script type="module">
+const logEl = document.getElementById('log');
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const log  = (m, cls='') => { logEl.insertAdjacentHTML('beforeend',
+                `<span class="${cls}">${esc(m)}</span>\n`); logEl.scrollTop = logEl.scrollHeight; };
+const head = m => log('\n── ' + m + ' ' + '─'.repeat(Math.max(0, 58 - m.length)), 'h');
+const ok   = m => log('  PASSOU  ' + m, 'ok');
+const bad  = m => log('  FALHOU  ' + m, 'bad');
+const warn = m => log('  ATENCAO ' + m, 'warn');
+const info = m => log('          ' + m, 'mut');
+
+const APP = 'garimpo';
+const AUDIUS = 'https://discoveryprovider.audius.co/v1';
+const WORKLET_URL = new URL('../audio/worklets/turntable-reader.js', import.meta.url);
+
+let ctx;
+async function audio() {
+  if (!ctx) {
+    ctx = new AudioContext({ latencyHint: 'interactive' });
+    await ctx.audioWorklet.addModule(WORKLET_URL);
+  }
+  if (ctx.state !== 'running') await ctx.resume();
+  return ctx;
+}
+
+/** Sobe um AudioBuffer pro worklet em lajes transferidas (zero-copy). */
+const SLAB = 1 << 19;
+function uploadSlabs(node, buf) {
+  const len = buf.length;
+  for (let c = 0; c < 2; c++) {
+    const src = buf.getChannelData(Math.min(c, buf.numberOfChannels - 1));
+    for (let off = 0; off < len; off += SLAB) {
+      const slab = src.slice(off, Math.min(off + SLAB, len));
+      node.port.postMessage(
+        { t: 'slab', c, index: off / SLAB, data: slab.buffer, len },
+        [slab.buffer]
+      );
+    }
+  }
+}
+
+/** Buffer de teste: senoide 440 Hz com envelope, pra ouvir pitch e glitch. */
+function tone(ctx, seconds = 3, freq = 440) {
+  const b = ctx.createBuffer(2, Math.ceil(seconds * ctx.sampleRate), ctx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = b.getChannelData(c);
+    for (let i = 0; i < d.length; i++) {
+      const t = i / ctx.sampleRate;
+      const env = Math.min(1, t * 20, (seconds - t) * 20);
+      d[i] = 0.22 * env * Math.sin(2 * Math.PI * freq * t);
+    }
+  }
+  return b;
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ════════════════════════════ 1 ════════════════════════════
+document.getElementById('b1').onclick = check1;
+async function check1() {
+  head('1 · AudioWorklet próprio + signalsmith-stretch');
+  let c;
+  try {
+    c = await audio();
+    ok(`addModule do turntable-reader: sampleRate=${c.sampleRate} baseLatency=${(c.baseLatency*1e3).toFixed(2)}ms`);
+  } catch (e) { bad('addModule do nosso worklet: ' + e.name + ' — ' + e.message); return; }
+
+  // --- nosso leitor ---
+  let node, lastAnchor = null;
+  try {
+    node = new AudioWorkletNode(c, 'turntable-reader', {
+      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
+      processorOptions: { rateTau: 0.004 },
+    });
+    node.port.onmessage = e => { if (e.data.t === 'anchor') lastAnchor = e.data; };
+    const g = c.createGain(); g.gain.value = 0.9;
+    node.connect(g).connect(c.destination);
+    ok('AudioWorkletNode criado e conectado');
+  } catch (e) { bad('criar o node: ' + e.name + ' — ' + e.message); return; }
+
+  const buf = tone(c, 3);
+  uploadSlabs(node, buf);
+  info(`PCM enviado: ${buf.duration.toFixed(2)}s em ${Math.ceil(buf.length / SLAB)} laje(s) por canal`);
+
+  info('tocando 1.2 s em rate 1.00 (440 Hz) ...');
+  node.port.postMessage({ t: 'jump', pos: 0 });
+  node.port.postMessage({ t: 'rate', rate: 1, nominal: 1 });
+  node.port.postMessage({ t: 'active', on: true });
+  await sleep(1200);
+
+  const a1 = lastAnchor;
+  if (!a1) { bad('nenhuma mensagem de anchor recebida — telemetria do worklet morta'); }
+  else {
+    const erro = Math.abs(a1.pos - 1.2);
+    log(`          anchor: pos=${a1.pos.toFixed(4)}s rate=${a1.rate.toFixed(4)} seq=${a1.seq} underruns=${a1.underruns}`, 'mut');
+    if (erro < 0.08) ok(`rastreio de posição confere (erro ${(erro*1e3).toFixed(1)} ms)`);
+    else warn(`posição divergiu ${(erro*1e3).toFixed(0)} ms do esperado`);
+    if (a1.underruns > 0) warn(`${a1.underruns} underruns — leu fora do PCM`);
+  }
+
+  info('tocando 1.2 s em rate 1.08 SEM keylock — o tom DEVE subir ...');
+  node.port.postMessage({ t: 'jump', pos: 0 });
+  node.port.postMessage({ t: 'rate', rate: 1.08, nominal: 1.08 });
+  await sleep(1200);
+  node.port.postMessage({ t: 'active', on: false });
+  await sleep(120);
+
+  // --- signalsmith: descobrir a API de verdade, não adivinhar ---
+  let mod;
+  try {
+    mod = await import('https://cdn.jsdelivr.net/npm/signalsmith-stretch@1.3.2/SignalsmithStretch.mjs');
+    ok('signalsmith-stretch importado do CDN como ESM');
+    info(`exports: ${Object.keys(mod).join(', ') || '(só default)'} | default é ${typeof mod.default}`);
+  } catch (e) { bad('import do signalsmith: ' + e.name + ' — ' + e.message); return; }
+
+  let stretch;
+  try {
+    const factory = mod.default ?? mod.SignalsmithStretch ?? mod;
+    stretch = await factory(c);
+    ok('nó do signalsmith criado (WASM embutido em base64, worklet via Blob URL — sem shim)');
+    const proto = Object.getOwnPropertyNames(Object.getPrototypeOf(stretch) || {});
+    const own = Object.keys(stripFns(stretch));
+    info(`métodos: ${uniq([...proto, ...ownFns(stretch)]).filter(k => k !== 'constructor').join(', ')}`);
+    if (own.length) info(`props: ${own.join(', ')}`);
+    if (typeof stretch.latency === 'function') {
+      const L = stretch.latency();
+      ok(`latency() = ${(L * 1e3).toFixed(1)} ms  → lookahead de handoff = ${(Math.max(0.15, 2*L)*1e3).toFixed(0)} ms`);
+    } else warn('latency() não existe — a troca keylock precisa de outro jeito de medir');
+    if (typeof stretch.configure === 'function') info('configure() disponível (blockMs ajustável)');
+    if (typeof stretch.schedule === 'function') ok('schedule() disponível — é a base da troca sem glitch');
+    else bad('schedule() NÃO existe — o handoff agendado do plano precisa ser redesenhado');
+    if (typeof stretch.addBuffers === 'function') ok('addBuffers() disponível — caminho de streaming progressivo da v2');
+  } catch (e) { bad('criar o nó do signalsmith: ' + e.name + ' — ' + e.message); return; }
+
+  try {
+    stretch.connect(c.destination);
+    if (typeof stretch.addBuffers === 'function') stretch.addBuffers(buf);
+    info('tocando 1.5 s em rate 1.08 COM keylock — o tom deve ficar em 440 Hz ...');
+    if (typeof stretch.schedule === 'function') {
+      stretch.schedule({ output: c.currentTime + 0.08, active: true, input: 0, rate: 1.08, semitones: 0 });
+    }
+    await sleep(1500);
+    if (typeof stretch.schedule === 'function') stretch.schedule({ output: c.currentTime, active: false });
+    ok('keylock tocou sem erro — JULGUE DE OUVIDO: o segundo e o terceiro trecho tinham o mesmo tom?');
+    info('  trecho 2 (sem keylock) deve soar mais agudo; trecho 3 (com keylock) igual ao trecho 1.');
+  } catch (e) { bad('tocar com keylock: ' + e.name + ' — ' + e.message); }
+
+  try { stretch.disconnect(); } catch {}
+  node.port.postMessage({ t: 'clear' });
+}
+const ownFns = o => { const r = []; for (const k in o) if (typeof o[k] === 'function') r.push(k); return r; };
+const stripFns = o => { const r = {}; for (const k in o) if (typeof o[k] !== 'function') r[k] = o[k]; return r; };
+const uniq = a => [...new Set(a)];
+
+// ════════════════════════════ 2 ════════════════════════════
+document.getElementById('b2').onclick = check2;
+async function check2() {
+  head('2 · decodeAudioData aceita MP3 truncado? (sustenta a Fase 4 inteira)');
+  const c = await audio();
+  let track;
+  try {
+    const r = await fetch(`${AUDIUS}/tracks/trending?genre=House&limit=20&app_name=${APP}`);
+    const all = (await r.json()).data || [];
+    track = all.find(t => t.is_streamable && !t.is_stream_gated && t.duration >= 60 && t.duration <= 600);
+    if (!track) { bad('nenhuma faixa usável no trending'); return; }
+    ok(`faixa: "${track.title}" — ${track.user?.name} | ${track.duration}s bpm=${track.bpm} tom=${track.musical_key}`);
+  } catch (e) { bad('buscar no Audius: ' + e.message); return; }
+
+  const url = `${AUDIUS}/tracks/${track.id}/stream?app_name=${APP}`;
+  const PREFIX = 2 << 20;
+
+  let prefixBuf, total = null;
+  try {
+    const t0 = performance.now();
+    const res = await fetch(url, { headers: { Range: `bytes=0-${PREFIX - 1}` } });
+    prefixBuf = await res.arrayBuffer();
+    const cr = res.headers.get('content-range');
+    if (cr) total = Number(cr.split('/')[1]);
+    if (res.status === 206) ok(`206 Partial Content: ${(prefixBuf.byteLength/1048576).toFixed(2)} MB de ${total ? (total/1048576).toFixed(2)+' MB' : '?'} em ${(performance.now()-t0|0)} ms`);
+    else warn(`servidor ignorou Range (status ${res.status}) — cai no GET inteiro`);
+  } catch (e) { bad('Range request: ' + e.message); return; }
+
+  let prefixDecoded = null;
+  try {
+    const t0 = performance.now();
+    prefixDecoded = await c.decodeAudioData(prefixBuf.slice(0));
+    ok(`MP3 TRUNCADO decodificou: ${prefixDecoded.duration.toFixed(1)}s de áudio em ${(performance.now()-t0|0)} ms`);
+    info(`→ o deck fica tocável com ~${prefixDecoded.duration.toFixed(0)}s de margem. A Fase 4 está de pé.`);
+  } catch (e) {
+    bad(`decodeAudioData do truncado lançou ${e.name}: ${e.message}`);
+    warn('→ o prefixo híbrido NÃO funciona. A Fase 4 tem que usar GET inteiro (v1) ou WebCodecs (v2).');
+  }
+
+  try {
+    const t0 = performance.now();
+    const fullBuf = await (await fetch(url)).arrayBuffer();
+    const tFetch = performance.now() - t0;
+    const t1 = performance.now();
+    const full = await c.decodeAudioData(fullBuf);
+    ok(`arquivo inteiro: ${(fullBuf.byteLength/1048576).toFixed(2)} MB baixou em ${tFetch|0} ms, decodificou em ${(performance.now()-t1|0)} ms`);
+    info(`duração decodificada ${full.duration.toFixed(1)}s vs metadata ${track.duration}s | taxa ${full.sampleRate} Hz (ctx: ${c.sampleRate})`);
+    const mem = full.length * full.numberOfChannels * 4 / 1048576;
+    info(`memória deste buffer: ${mem.toFixed(0)} MB — com 2 decks conta ~${(mem*2).toFixed(0)} MB`);
+    if (prefixDecoded) info(`tempo até tocável: ${prefixDecoded ? 'prefixo' : '—'} vs inteiro — compare os números acima`);
+  } catch (e) { bad('GET inteiro: ' + e.message); }
+}
+
+// ════════════════════════════ 3 ════════════════════════════
+document.getElementById('b3').onclick = check3;
+async function check3() {
+  head('3 · Latência desta máquina');
+  const c = await audio();
+  info(`sampleRate      ${c.sampleRate} Hz`);
+  info(`baseLatency     ${(c.baseLatency*1e3).toFixed(2)} ms  (grafo → buffer do SO)`);
+  const ol = c.outputLatency;
+  if (ol === undefined) warn('outputLatency indisponível neste navegador');
+  else {
+    const ms = ol * 1e3;
+    const cls = ms <= 20 ? ok : ms <= 40 ? warn : bad;
+    cls(`outputLatency   ${ms.toFixed(1)} ms  (até o alto-falante)`);
+    if (ms > 40) info('→ acima de 40 ms o scratch fica borrachudo. Vale avisar "scratch pede interface USB".');
+    info(`→ o playhead do display tem que ser desenhado com ${ms.toFixed(0)} ms de atraso, senão aparece adiantado`);
+  }
+  info(`lookahead mínimo recomendado: ${(Math.max(3*128/c.sampleRate, 0.02)*1e3).toFixed(1)} ms`);
+  if ('renderCapacity' in c) ok('AudioContext.renderCapacity existe — o bench da checagem 4 vai ter números reais');
+  else warn('renderCapacity ausente — o bench vai medir por seq de anchor perdido');
+
+  try {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const outs = devs.filter(d => d.kind === 'audiooutput');
+    const named = outs.filter(d => d.label).length;
+    info(`saídas de áudio: ${outs.length} encontradas, ${named} com rótulo`);
+    if (outs.length && !named) warn('rótulos vazios: enumerateDevices esconde nome/id até a permissão de MICROFONE ser dada');
+    if (typeof c.setSinkId === 'function') ok('setSinkId disponível (escolher placa de saída)');
+    const mcc = c.destination.maxChannelCount;
+    info(`maxChannelCount do destination: ${mcc}`);
+    if (mcc >= 4) ok('4+ canais: pré-escuta em fone de verdade é possível nesta saída');
+    else info('< 4 canais: pré-escuta fica no modo split-cue (master na L, cue na R)');
+  } catch (e) { warn('enumerateDevices: ' + e.message); }
+}
+
+// ════════════════════════════ 4 ════════════════════════════
+document.getElementById('b4').onclick = check4;
+async function check4() {
+  head('4 · Bench de CPU — 2 decks a 1.08x por 30 s');
+  const c = await audio();
+  const buf = tone(c, 8, 330);
+  const nodes = [];
+  for (let i = 0; i < 2; i++) {
+    const n = new AudioWorkletNode(c, 'turntable-reader', {
+      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
+    });
+    uploadSlabs(n, buf);
+    // cadeia realista: trim → isolator LR4 (8 biquads) → 2 filtros → fader
+    const trim = c.createGain(); trim.gain.value = 0.5;
+    let tail = n.connect(trim);
+    const mk = (type, f, q=0.70710678) => { const b = c.createBiquadFilter();
+      b.type = type; b.frequency.value = f; b.Q.value = q; return b; };
+    const chain = [mk('lowpass',300), mk('lowpass',300), mk('highpass',300), mk('highpass',300),
+                   mk('lowpass',2500), mk('lowpass',2500), mk('highpass',16), mk('highpass',16),
+                   mk('lowpass',22049), mk('lowpass',22049)];
+    for (const b of chain) tail = tail.connect(b);
+    const g = c.createGain(); g.gain.value = 0.25;
+    tail.connect(g).connect(c.destination);
+    n.port.postMessage({ t: 'loop', on: true, start: 0, end: 7.5 });
+    n.port.postMessage({ t: 'rate', rate: 1.08, nominal: 1.08 });
+    n.port.postMessage({ t: 'active', on: true });
+    nodes.push(n);
+  }
+  info('rodando... (vai ouvir dois tons em loop; isso é esperado)');
+
+  let peak = 0, sum = 0, cnt = 0, under = 0;
+  const rc = c.renderCapacity;
+  if (rc) {
+    rc.onupdate = e => { peak = Math.max(peak, e.peakLoad); sum += e.averageLoad; cnt++;
+                         under = Math.max(under, e.underrunRatio); };
+    rc.start({ updateInterval: 1 });
+  }
+  for (let s = 30; s > 0; s -= 5) { await sleep(5000); info(`  ${s-5}s restando...`); }
+  if (rc) { rc.stop(); rc.onupdate = null; }
+  for (const n of nodes) { n.port.postMessage({ t: 'active', on: false }); n.port.postMessage({ t: 'clear' }); n.disconnect(); }
+
+  if (cnt) {
+    const avg = sum / cnt;
+    log(`          averageLoad ${(avg*100).toFixed(1)}%  peakLoad ${(peak*100).toFixed(1)}%  underrunRatio ${(under*100).toFixed(2)}%`, 'mut');
+    if (peak > 0.7) { bad('peakLoad acima de 70% — keylock vai ter que ser um deck por vez'); }
+    else if (peak > 0.5) warn('peakLoad entre 50 e 70% — cabe, mas sem folga pro signalsmith nos dois decks');
+    else ok('folga confortável de CPU para os dois decks');
+    if (under > 0) bad(`houve underrun (${(under*100).toFixed(2)}%) — áudio falhou de verdade`);
+    else ok('zero underrun');
+  } else warn('sem renderCapacity: julgue de ouvido se houve falha no áudio');
+}
+
+// ════════════════════════════ todas ════════════════════════════
+document.getElementById('ball').onclick = async () => {
+  const bs = [...document.querySelectorAll('button')];
+  bs.forEach(b => b.disabled = true);
+  logEl.innerHTML = '';
+  log('Garimpo — checagens do dia 1', 'h');
+  log(navigator.userAgent, 'mut');
+  try { await check1(); await check2(); await check3(); await check4(); }
+  catch (e) { bad('exceção não tratada: ' + e.stack); }
+  head('fim');
+  bs.forEach(b => b.disabled = false);
+};
+</script>
+</body>
+</html>
