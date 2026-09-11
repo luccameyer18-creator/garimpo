@@ -68,6 +68,14 @@ class TurntableReader extends AudioWorkletProcessor {
     this.seq = 0;
     this.underruns = 0; // leituras fora do PCM disponível com active=true
 
+    // Detector de falha de áudio que NÃO depende de AudioContext.renderCapacity
+    // (ausente no Chrome 152 — medido). Se a thread de render perder o prazo, o
+    // quantum seguinte chega com currentFrame adiantado: o buraco é exatamente
+    // o áudio que não foi produzido. É medição direta, não estimativa.
+    this.lastEnd = 0;
+    this.glitchFrames = 0;
+    this.glitchCount = 0;
+
     this.port.onmessage = (e) => this.onMessage(e.data);
   }
 
@@ -225,6 +233,13 @@ class TurntableReader extends AudioWorkletProcessor {
     const n = L.length;
     const base = currentFrame;
 
+    // buraco entre o fim do quantum anterior e o início deste = áudio perdido
+    if (this.lastEnd && base > this.lastEnd) {
+      this.glitchFrames += base - this.lastEnd;
+      this.glitchCount++;
+    }
+    this.lastEnd = base + n;
+
     for (let i = 0; i < n; i++) {
       if (this.segFrame.length && this.segFrame[0] <= base + i) this.applySegsAt(base + i);
 
@@ -282,6 +297,8 @@ class TurntableReader extends AudioWorkletProcessor {
       active: this.active,
       len: this.len / sampleRate,
       underruns: this.underruns,
+      glitchCount: this.glitchCount,
+      glitchMs: (this.glitchFrames / sampleRate) * 1000,
       seq: ++this.seq,
     });
   }

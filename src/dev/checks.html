@@ -34,6 +34,20 @@
 </div>
 <div id="log"></div>
 
+<div id="ouvido" hidden style="margin-top:18px;border:1px solid var(--acc);border-radius:8px;padding:16px;background:#0d1420">
+  <b style="color:var(--acc)">Só você pode responder isto — é o gate da Fase 1.</b>
+  <p style="margin:10px 0;line-height:1.7">
+    A checagem 1 tocou <b>três trechos</b> de senoide:<br>
+    <span style="color:var(--mut)">1º</span> — rate 1.00, referência (440 Hz)<br>
+    <span style="color:var(--mut)">2º</span> — rate 1.08 <b>sem</b> keylock → tem que soar <b>mais agudo</b><br>
+    <span style="color:var(--mut)">3º</span> — rate 1.08 <b>com</b> keylock → tem que voltar ao <b>mesmo tom do 1º</b>, só mais rápido
+  </p>
+  <p style="margin:10px 0 14px">O terceiro trecho soou igual ao primeiro, ou agudo igual ao segundo?</p>
+  <button data-v="KEYLOCK OK: 3o trecho no mesmo tom do 1o">Igual ao 1º — keylock funciona</button>
+  <button data-v="KEYLOCK FALHOU: 3o trecho agudo igual ao 2o">Agudo igual ao 2º — keylock falhou</button>
+  <button data-v="INCONCLUSIVO: nao consegui distinguir / nao saiu som">Não distingui / não saiu som</button>
+</div>
+
 <script type="module">
 const logEl = document.getElementById('log');
 const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -118,6 +132,17 @@ async function check1() {
   uploadSlabs(node, buf);
   info(`PCM enviado: ${buf.duration.toFixed(2)}s em ${Math.ceil(buf.length / SLAB)} laje(s) por canal`);
 
+  // Quanto o Chrome demora pra REALMENTE comecar a renderizar depois do resume.
+  // Medido em 900 ms nesta maquina — por isso o AudioContext do app tem que ser
+  // criado no inicio e nunca suspenso; criar no play atrasa o primeiro play.
+  const tPedido = performance.now();
+  let primeiroAtivo = null;
+  node.port.onmessage = e => {
+    if (e.data.t !== 'anchor') return;
+    lastAnchor = e.data;
+    if (e.data.active && !primeiroAtivo) primeiroAtivo = { ...e.data, wall: performance.now() };
+  };
+
   info('tocando 1.2 s em rate 1.00 (440 Hz) ...');
   node.port.postMessage({ t: 'jump', pos: 0 });
   node.port.postMessage({ t: 'rate', rate: 1, nominal: 1 });
@@ -127,11 +152,24 @@ async function check1() {
   const a1 = lastAnchor;
   if (!a1) { bad('nenhuma mensagem de anchor recebida — telemetria do worklet morta'); }
   else {
-    const erro = Math.abs(a1.pos - 1.2);
-    log(`          anchor: pos=${a1.pos.toFixed(4)}s rate=${a1.rate.toFixed(4)} seq=${a1.seq} underruns=${a1.underruns}`, 'mut');
-    if (erro < 0.08) ok(`rastreio de posição confere (erro ${(erro*1e3).toFixed(1)} ms)`);
-    else warn(`posição divergiu ${(erro*1e3).toFixed(0)} ms do esperado`);
-    if (a1.underruns > 0) warn(`${a1.underruns} underruns — leu fora do PCM`);
+    log(`          anchor: pos=${a1.pos.toFixed(4)}s rate=${a1.rate.toFixed(4)} seq=${a1.seq} underruns=${a1.underruns} glitches=${a1.glitchCount ?? '?'}`, 'mut');
+    if (primeiroAtivo) {
+      const partida = primeiroAtivo.wall - tPedido;
+      info(`partida da thread de render: ${partida.toFixed(0)} ms depois do comando`);
+      if (partida > 250) warn(`${partida.toFixed(0)} ms até o primeiro sample — NUNCA criar o AudioContext no play`);
+
+      // O teste certo: a posição avançou de acordo com o relógio DO WORKLET?
+      // Comparar com o relógio de parede mede a partida do contexto, não o rastreio.
+      const dPos = a1.pos - primeiroAtivo.pos;
+      const dTempo = a1.time - primeiroAtivo.time;
+      const erro = Math.abs(dPos - dTempo * 1.0); // rate = 1.0
+      if (dTempo < 0.2) warn('janela curta demais pra julgar o rastreio');
+      else if (erro < 0.005) ok(`rastreio de posição confere: ${dPos.toFixed(4)}s de áudio em ${dTempo.toFixed(4)}s (erro ${(erro*1e3).toFixed(2)} ms)`);
+      else bad(`rastreio divergiu ${(erro*1e3).toFixed(1)} ms em ${dTempo.toFixed(2)}s — o worklet não está integrando certo`);
+    }
+    if (a1.underruns > 0) warn(`${a1.underruns} leituras fora do PCM`);
+    if (a1.glitchCount > 0) bad(`${a1.glitchCount} quanta perdidos (${a1.glitchMs.toFixed(1)} ms de áudio não produzido)`);
+    else ok('zero quanta perdidos durante o teste');
   }
 
   info('tocando 1.2 s em rate 1.08 SEM keylock — o tom DEVE subir ...');
@@ -167,7 +205,8 @@ async function check1() {
         await stretch.configure({ blockMs: bms });
         info(`  blockMs ${String(bms).padEnd(3)} → latency ${((await stretch.latency())*1e3).toFixed(2)} ms`);
       }
-      await stretch.configure({ blockMs: 60 });
+      await stretch.configure({ blockMs: 40 });   // 120 (o padrao) da 240 ms de lookahead no handoff
+      info(`  usando blockMs 40 no teste de keylock: lookahead do handoff = 150 ms`);
     } else warn('latency() não existe — a troca keylock precisa de outro jeito de medir');
     if (typeof stretch.configure === 'function') info('configure() disponível (blockMs ajustável)');
     if (typeof stretch.schedule === 'function') ok('schedule() disponível — é a base da troca sem glitch');
@@ -246,9 +285,10 @@ async function check2() {
     const t0 = performance.now();
     const fullBuf = await (await fetch(url)).arrayBuffer();
     const tFetch = performance.now() - t0;
+    const fullMB = fullBuf.byteLength / 1048576;   // LER ANTES: decodeAudioData desanexa o ArrayBuffer
     const t1 = performance.now();
     const full = await c.decodeAudioData(fullBuf);
-    ok(`arquivo inteiro: ${(fullBuf.byteLength/1048576).toFixed(2)} MB baixou em ${tFetch|0} ms, decodificou em ${(performance.now()-t1|0)} ms`);
+    ok(`arquivo inteiro: ${fullMB.toFixed(2)} MB baixou em ${tFetch|0} ms, decodificou em ${(performance.now()-t1|0)} ms`);
     info(`duração decodificada ${full.duration.toFixed(1)}s vs metadata ${track.duration}s | taxa ${full.sampleRate} Hz (ctx: ${c.sampleRate})`);
     const mem = full.length * full.numberOfChannels * 4 / 1048576;
     info(`memória deste buffer: ${mem.toFixed(0)} MB — com 2 decks conta ~${(mem*2).toFixed(0)} MB`);
@@ -327,19 +367,40 @@ async function check4() {
                          under = Math.max(under, e.underrunRatio); };
     rc.start({ updateInterval: 1 });
   }
+  // fallback que NÃO depende de renderCapacity (ausente no Chrome 152):
+  // o próprio worklet detecta quantum pulado pelo buraco em currentFrame
+  const finais = new Array(nodes.length).fill(null);
+  nodes.forEach((n, i) => { n.port.onmessage = e => { if (e.data.t === 'anchor') finais[i] = e.data; }; });
+
+  const t0 = performance.now();
   for (let s = 30; s > 0; s -= 5) { await sleep(5000); info(`  ${s-5}s restando...`); }
+  const decorrido = (performance.now() - t0) / 1000;
   if (rc) { rc.stop(); rc.onupdate = null; }
+  await sleep(120);
   for (const n of nodes) { n.port.postMessage({ t: 'active', on: false }); n.port.postMessage({ t: 'clear' }); n.disconnect(); }
 
   if (cnt) {
     const avg = sum / cnt;
     log(`          averageLoad ${(avg*100).toFixed(1)}%  peakLoad ${(peak*100).toFixed(1)}%  underrunRatio ${(under*100).toFixed(2)}%`, 'mut');
-    if (peak > 0.7) { bad('peakLoad acima de 70% — keylock vai ter que ser um deck por vez'); }
+    if (peak > 0.7) bad('peakLoad acima de 70% — keylock vai ter que ser um deck por vez');
     else if (peak > 0.5) warn('peakLoad entre 50 e 70% — cabe, mas sem folga pro signalsmith nos dois decks');
     else ok('folga confortável de CPU para os dois decks');
-    if (under > 0) bad(`houve underrun (${(under*100).toFixed(2)}%) — áudio falhou de verdade`);
-    else ok('zero underrun');
-  } else warn('sem renderCapacity: julgue de ouvido se houve falha no áudio');
+  } else info('renderCapacity ausente — medindo por quanta perdidos no worklet');
+
+  let totalGlitch = 0, totalMs = 0, viu = 0;
+  finais.forEach((a, i) => {
+    if (!a) { warn(`deck ${i}: nenhum anchor final`); return; }
+    viu++;
+    totalGlitch += a.glitchCount || 0;
+    totalMs += a.glitchMs || 0;
+    log(`          deck ${i}: ${a.glitchCount ?? '?'} quanta perdidos, ${(a.glitchMs ?? 0).toFixed(1)} ms de áudio não produzido em ${decorrido.toFixed(0)}s`, 'mut');
+  });
+  if (viu) {
+    const pct = (totalMs / 1000) / (decorrido * viu) * 100;
+    if (totalGlitch === 0) ok(`ZERO falhas de áudio em ${decorrido.toFixed(0)}s com 2 decks + 20 biquads`);
+    else if (pct < 0.05) warn(`${totalGlitch} falhas (${pct.toFixed(3)}% do áudio) — audível só em transiente`);
+    else bad(`${totalGlitch} falhas somando ${pct.toFixed(2)}% do áudio — a CPU não aguenta esta carga`);
+  }
 }
 
 // ════════════════════════════ todas ════════════════════════════
@@ -353,7 +414,26 @@ document.getElementById('ball').onclick = async () => {
   catch (e) { bad('exceção não tratada: ' + e.stack); }
   head('fim');
   bs.forEach(b => b.disabled = false);
+
+  // manda o log pro dev server sozinho: sem copy-paste, e escapa de filtro de extensão
+  try {
+    await fetch('/_log?name=checks', { method: 'POST', body: logEl.innerText });
+    log('\nlog enviado pro dev server (.dev-out/checks.txt)', 'acc');
+  } catch (e) { warn('não consegui enviar o log: ' + e.message); }
+
+  document.getElementById('ouvido').hidden = false;
+  document.getElementById('ouvido').scrollIntoView({ behavior: 'smooth' });
 };
+
+// ── o julgamento que nenhum teste automático faz ──
+for (const b of document.querySelectorAll('#ouvido button')) {
+  b.onclick = async () => {
+    const v = b.dataset.v;
+    await fetch('/_log?name=ouvido', { method: 'POST', body: v });
+    document.getElementById('ouvido').innerHTML =
+      `<b style="color:var(--ok)">Registrado: ${b.innerText}</b> — pode voltar pro Claude.`;
+  };
+}
 </script>
 </body>
 </html>

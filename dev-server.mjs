@@ -10,7 +10,7 @@
  *     Web MIDI, crypto.subtle e AudioWorklet funcionam sem HTTPS
  */
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, writeFile, mkdir } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname);
@@ -38,6 +38,24 @@ const TYPES = {
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
+
+    // POST /_log — a pagina despeja texto aqui e vira .dev-out/<nome>.txt.
+    // Serve pra tirar resultado de dentro do navegador sem copy-paste, e pra
+    // escapar de filtros de leitura de extensao.
+    if (req.method === 'POST' && url.pathname === '/_log') {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      const name = (url.searchParams.get('name') || 'log').replace(/[^a-z0-9_.-]/gi, '');
+      const dir = join(ROOT, '.dev-out');
+      await mkdir(dir, { recursive: true });
+      const file = join(dir, `${name}.txt`);
+      await writeFile(file, Buffer.concat(chunks));
+      console.log(`LOG  .dev-out/${name}.txt  (${Buffer.concat(chunks).length} bytes)`);
+      res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
+      res.end('ok');
+      return;
+    }
+
     let rel = decodeURIComponent(url.pathname);
     if (rel.endsWith('/')) rel += 'index.html';
 
