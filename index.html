@@ -9,157 +9,158 @@
     color-scheme: dark;
     --bg:#0b0d10; --painel:#13161c; --painel2:#1a1e26; --linha:#262b35;
     --fg:#e9ecf2; --mut:#8a93a5; --acc:#6aa8ff; --ok:#3ddc84; --quente:#ff8a3d;
-    --bad:#ff5d5d; --lock:#c07cff;
+    --bad:#ff5d5d; --lock:#c07cff; --a:#6aa8ff; --b:#ffb03d;
   }
-  * { box-sizing: border-box; }
+  * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--fg);
          font:13px/1.5 ui-sans-serif,system-ui,"Segoe UI",sans-serif; }
-  .topo { display:flex; align-items:center; gap:14px; padding:12px 18px;
-          border-bottom:1px solid var(--linha); background:var(--painel); }
+
+  .topo { display:flex; align-items:center; gap:12px; padding:10px 16px;
+          border-bottom:1px solid var(--linha); background:var(--painel); flex-wrap:wrap; }
   .marca { font-weight:800; letter-spacing:.08em; font-size:15px; }
   .marca span { color:var(--acc); }
-  .estado { margin-left:auto; color:var(--mut); font:11px ui-monospace,Consolas,monospace; display:flex; gap:14px; }
+  .estado { margin-left:auto; color:var(--mut); font:10px ui-monospace,Consolas,monospace;
+            display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
   .estado b { color:var(--fg); font-weight:600; }
 
-  .palco { display:grid; grid-template-columns: 1fr 300px; gap:16px; padding:16px; align-items:start; }
-  @media (max-width: 900px) { .palco { grid-template-columns:1fr; } }
+  .palco { display:grid; grid-template-columns:1fr 290px; gap:14px; padding:14px; align-items:start; }
+  .cabine { display:flex; flex-direction:column; gap:10px; min-width:0; }
 
-  .deck { background:var(--painel); border:1px solid var(--linha); border-radius:12px; overflow:hidden; }
-  .faixa { display:flex; gap:12px; align-items:center; padding:12px 14px; border-bottom:1px solid var(--linha); }
-  .capa { width:52px; height:52px; border-radius:6px; background:var(--painel2); flex:none;
-          object-fit:cover; display:block; }
-  .titulo { font-weight:650; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .artista { color:var(--mut); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .tags { margin-left:auto; display:flex; gap:6px; align-items:center; flex:none; }
-  .tag { font:11px ui-monospace,Consolas,monospace; background:var(--painel2);
-         border:1px solid var(--linha); border-radius:5px; padding:3px 7px; color:var(--mut); }
+  .deck { background:var(--painel); border:1px solid var(--linha); border-radius:11px;
+          overflow:hidden; border-left:3px solid var(--linha); }
+  .deck[data-d="A"] { border-left-color:var(--a); }
+  .deck[data-d="B"] { border-left-color:var(--b); }
+
+  .faixa { display:flex; gap:10px; align-items:center; padding:9px 11px; }
+  .letra { font:800 15px ui-monospace,Consolas,monospace; width:18px; flex:none; }
+  .deck[data-d="A"] .letra { color:var(--a); }
+  .deck[data-d="B"] .letra { color:var(--b); }
+  .capa { width:40px; height:40px; border-radius:5px; background:var(--painel2); flex:none; object-fit:cover; }
+  .titulo { font-weight:650; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .artista { color:var(--mut); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tags { margin-left:auto; display:flex; gap:5px; align-items:center; flex:none; }
+  .tag { font:10px ui-monospace,Consolas,monospace; background:var(--painel2);
+         border:1px solid var(--linha); border-radius:5px; padding:3px 6px; color:var(--mut); }
   .tag b { color:var(--fg); }
-  .tag.bpm { display:inline-flex; align-items:center; gap:5px; padding:2px 4px 2px 7px; }
-  .tag.bpm b { cursor:text; padding:2px 4px; border-radius:4px; min-width:34px; display:inline-block; text-align:center; }
-  .tag.bpm b:hover { background:#20262f; outline:1px solid var(--linha); }
-  .tag.bpm input { width:58px; background:#20262f; border:1px solid var(--acc); color:var(--fg);
-                   border-radius:4px; padding:1px 4px; font:inherit; text-align:center; }
-  .mini-b { padding:2px 5px !important; font-size:10px !important; border-radius:4px !important;
-            background:transparent !important; color:var(--mut) !important; }
-  .mini-b:hover { color:var(--acc) !important; border-color:var(--acc) !important; }
+  .tag.bpm { display:inline-flex; align-items:center; gap:4px; padding:2px 3px 2px 6px; }
+  .tag.bpm b { cursor:text; padding:2px 4px; border-radius:4px; min-width:38px; display:inline-block; text-align:center; }
+  .tag.bpm input { width:56px; background:#20262f; border:1px solid var(--acc); color:var(--fg);
+                   border-radius:4px; padding:1px 3px; font:inherit; text-align:center; }
+  .mini-b { padding:2px 5px !important; font-size:9px !important; border-radius:4px !important;
+            min-height:0 !important; background:transparent !important; color:var(--mut) !important; }
 
-  canvas.onda { display:block; width:100%; height:112px; background:#070909; cursor:crosshair; }
-  canvas.mini { display:block; width:100%; height:34px; background:#070909;
+  canvas.onda { display:block; width:100%; height:84px; background:#070909; }
+  canvas.mini { display:block; width:100%; height:24px; background:#070909;
                 border-top:1px solid var(--linha); cursor:pointer; }
 
-  .controles { display:grid; grid-template-columns:auto 1fr auto; gap:18px; padding:16px 14px; align-items:center; }
-
-  .jog { width:150px; height:150px; border-radius:50%; position:relative; flex:none;
-         background:radial-gradient(circle at 50% 42%, #2b313d 0%, #171b22 62%, #10131a 100%);
-         border:1px solid var(--linha); cursor:grab; touch-action:none; user-select:none;
-         box-shadow: inset 0 2px 14px rgba(0,0,0,.6); }
-  .jog:active { cursor:grabbing; }
-  .jog .miolo { position:absolute; inset:26%; border-radius:50%; background:var(--painel2);
-                border:1px solid var(--linha); display:grid; place-items:center;
-                font:11px ui-monospace,Consolas,monospace; color:var(--mut); }
-  .jog .marca-jog { position:absolute; left:50%; top:5px; width:3px; height:20px; margin-left:-1.5px;
-                    background:var(--acc); border-radius:2px; transform-origin:50% 70px; }
+  .ctrl { display:flex; gap:10px; align-items:center; padding:10px 11px; flex-wrap:wrap; }
+  .jog { width:88px; height:88px; border-radius:50%; position:relative; flex:none;
+         background:radial-gradient(circle at 50% 42%,#2b313d,#171b22 62%,#10131a);
+         border:1px solid var(--linha); cursor:grab; touch-action:none; user-select:none; }
   .jog.ativo { border-color:var(--acc); }
+  .jog .marca-jog { position:absolute; left:50%; top:4px; width:3px; height:14px; margin-left:-1.5px;
+                    background:var(--acc); border-radius:2px; transform-origin:50% 40px; }
+  .jog .miolo { position:absolute; inset:27%; border-radius:50%; background:var(--painel2);
+                border:1px solid var(--linha); display:grid; place-items:center;
+                font:9px ui-monospace,monospace; color:var(--mut); }
 
-  .centro { display:flex; flex-direction:column; gap:12px; min-width:0; }
-  .botoes { display:flex; gap:8px; flex-wrap:wrap; }
+  .transp { display:flex; flex-direction:column; gap:7px; flex:1; min-width:170px; }
+  .botoes { display:flex; gap:6px; flex-wrap:wrap; }
   button { background:var(--painel2); color:var(--fg); border:1px solid var(--linha);
-           border-radius:8px; padding:9px 14px; font:600 12px/1 inherit; cursor:pointer;
-           letter-spacing:.02em; }
+           border-radius:7px; padding:8px 12px; font:600 11px/1 inherit; cursor:pointer; }
   button:hover:not(:disabled) { border-color:var(--acc); color:var(--acc); }
   button:disabled { opacity:.35; cursor:default; }
   button.lig { background:var(--acc); border-color:var(--acc); color:#06101f; }
   button.lig.lock { background:var(--lock); border-color:var(--lock); color:#14061f; }
-  button.cue { min-width:64px; }
   button.play.lig { background:var(--ok); border-color:var(--ok); color:#03210f; }
-  @keyframes pulso { 0%,100% { box-shadow:0 0 0 0 rgba(61,220,132,.6); }
-                     50% { box-shadow:0 0 0 10px rgba(61,220,132,0); } }
+  @keyframes pulso { 0%,100%{box-shadow:0 0 0 0 rgba(61,220,132,.6)} 50%{box-shadow:0 0 0 9px rgba(61,220,132,0)} }
   button.pulsa { animation:pulso 1.1s ease-out infinite; border-color:var(--ok); color:var(--ok); }
+  .tempo { font:11px ui-monospace,Consolas,monospace; color:var(--mut); display:flex; gap:10px; flex-wrap:wrap; }
+  .tempo b { color:var(--fg); }
+  .efeito { font:10px ui-monospace,Consolas,monospace; }
 
-  .tempo { font:12px ui-monospace,Consolas,monospace; color:var(--mut); display:flex; gap:12px; }
-  .tempo b { color:var(--fg); font-weight:600; }
+  .pitch { display:flex; flex-direction:column; align-items:center; gap:5px; flex:none; }
+  .pitch input[type=range] { writing-mode:vertical-lr; direction:rtl; width:28px; height:92px; accent-color:var(--acc); }
+  .pitch .val { font:600 11px ui-monospace,monospace; color:var(--acc); min-width:54px; text-align:center; }
+  .faixa-sel { display:flex; gap:2px; }
+  .faixa-sel button { padding:3px 5px; font-size:9px; border-radius:4px; }
 
-  .pitch { display:flex; flex-direction:column; align-items:center; gap:8px; flex:none; }
-  .pitch input[type=range] { writing-mode: vertical-lr; direction: rtl; width:34px; height:150px; accent-color:var(--acc); }
-  .pitch .val { font:600 12px ui-monospace,Consolas,monospace; color:var(--acc); min-width:56px; text-align:center; }
-  .pitch .faixa-sel { display:flex; gap:3px; }
-  .pitch .faixa-sel button { padding:4px 6px; font-size:10px; border-radius:5px; }
+  .mixer { background:var(--painel); border:1px solid var(--linha); border-radius:11px;
+           display:grid; grid-template-columns:1fr auto 1fr; gap:14px; padding:12px; }
+  .tira { display:flex; flex-direction:column; gap:7px; }
+  .tira h3 { margin:0; font:700 10px ui-monospace,monospace; letter-spacing:.1em; color:var(--mut); }
+  .tira[data-d="A"] h3 { color:var(--a); } .tira[data-d="B"] h3 { color:var(--b); }
+  .knobs { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .knob { display:flex; flex-direction:column; gap:3px; align-items:center; }
+  .knob label { font:9px ui-monospace,monospace; color:var(--mut); }
+  .knob input[type=range] { width:100%; accent-color:var(--acc); height:22px; }
+  .knob button { padding:3px 0; font-size:9px; width:100%; border-radius:4px; }
+  .knob button.lig { background:var(--bad); border-color:var(--bad); color:#fff; }
+  .linha-f { display:flex; gap:7px; align-items:center; }
+  .linha-f label { font:9px ui-monospace,monospace; color:var(--mut); width:36px; }
+  .linha-f input[type=range] { flex:1; accent-color:var(--acc); }
+  .vu { height:5px; background:#0a0c0f; border-radius:3px; overflow:hidden; border:1px solid var(--linha); }
+  .vu i { display:block; height:100%; width:0; background:linear-gradient(90deg,var(--ok),var(--quente),var(--bad)); }
 
-  .lateral { display:flex; flex-direction:column; gap:12px; }
-  .caixa { background:var(--painel); border:1px solid var(--linha); border-radius:12px; padding:12px; }
-  .caixa h2 { margin:0 0 10px; font-size:12px; letter-spacing:.06em; color:var(--mut);
+  .centro-mix { display:flex; flex-direction:column; align-items:center; gap:8px; min-width:132px; }
+  .fase { width:126px; height:56px; background:#070909; border:1px solid var(--linha); border-radius:7px; }
+  .xf { width:126px; accent-color:var(--acc); }
+  .rot { font:9px ui-monospace,monospace; color:var(--mut); text-align:center; }
+
+  .lateral { display:flex; flex-direction:column; gap:10px; }
+  .caixa { background:var(--painel); border:1px solid var(--linha); border-radius:11px; padding:11px; }
+  .caixa h2 { margin:0 0 8px; font-size:11px; letter-spacing:.06em; color:var(--mut);
               text-transform:uppercase; font-weight:700; }
-  .solta { border:1px dashed var(--linha); border-radius:9px; padding:18px 12px; text-align:center;
-           color:var(--mut); font-size:12px; cursor:pointer; }
+  .solta { border:1px dashed var(--linha); border-radius:8px; padding:13px 10px; text-align:center;
+           color:var(--mut); font-size:11px; cursor:pointer; }
   .solta.sobre { border-color:var(--acc); color:var(--acc); background:#101a28; }
   select, input[type=text] { width:100%; background:var(--painel2); color:var(--fg);
-           border:1px solid var(--linha); border-radius:7px; padding:8px; font:inherit; }
-  .lista { max-height:330px; overflow:auto; margin-top:8px; display:flex; flex-direction:column; gap:4px; }
-  .item { display:flex; gap:8px; align-items:center; padding:7px 8px; border-radius:7px; cursor:pointer;
-          border:1px solid transparent; }
+           border:1px solid var(--linha); border-radius:7px; padding:7px; font:inherit; }
+  .lista { max-height:340px; overflow:auto; margin-top:7px; display:flex; flex-direction:column; gap:3px; }
+  .item { display:flex; gap:7px; align-items:center; padding:7px; border-radius:7px;
+          border:1px solid transparent; position:relative; }
   .item:hover { background:var(--painel2); border-color:var(--linha); }
-  /* combina com o que esta no deck: da pra ver de longe, sem ler numero */
+  .item .n { min-width:0; flex:1; }
+  .item .t { font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item .a { font-size:10px; color:var(--mut); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item .m { font:9px ui-monospace,monospace; color:var(--mut); text-align:right; flex:none; }
+  .item .carregar { display:flex; gap:3px; flex:none; }
+  .item .carregar button { padding:6px 8px; font-size:10px; border-radius:5px; min-height:0; }
+  .item .carregar .pa { color:var(--a); border-color:rgba(106,168,255,.4); }
+  .item .carregar .pb { color:var(--b); border-color:rgba(255,176,61,.4); }
   .item.otima { border-color:var(--ok); background:linear-gradient(90deg,rgba(61,220,132,.13),transparent 62%); }
-  .item.otima::before { content:''; position:absolute; left:0; top:8px; bottom:8px; width:3px;
+  .item.otima::before { content:""; position:absolute; left:0; top:7px; bottom:7px; width:3px;
                         background:var(--ok); border-radius:2px; }
   .item.boa { border-color:rgba(255,138,61,.5); background:linear-gradient(90deg,rgba(255,138,61,.09),transparent 62%); }
   .item.longe { opacity:.42; }
-  .item { position:relative; }
-  .marca { font:10px ui-monospace,Consolas,monospace; }
-  .item .n { min-width:0; flex:1; }
-  .item .t { font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .item .a { font-size:11px; color:var(--mut); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .item .m { font:10px ui-monospace,Consolas,monospace; color:var(--mut); text-align:right; flex:none; }
-  .aviso { color:var(--bad); font-size:12px; margin-top:8px; }
-  .passos { font:11px ui-monospace,Consolas,monospace; color:var(--mut); margin-top:6px;
-            background:#0a0c0f; border:1px solid var(--linha); border-radius:7px; padding:8px 10px; }
-  .passos div { display:flex; gap:8px; }
-  .passos .ms { color:#5a6475; min-width:46px; text-align:right; }
-  .passos .nm { color:var(--fg); min-width:128px; }
+  .marca { font:9px ui-monospace,monospace; }
+
+  .aviso { color:var(--bad); font-size:11px; margin-top:6px; }
+  .passos { font:10px ui-monospace,monospace; color:var(--mut); margin-top:5px;
+            background:#0a0c0f; border:1px solid var(--linha); border-radius:6px; padding:7px 9px; }
+  .passos div { display:flex; gap:7px; }
+  .passos .ms { color:#5a6475; min-width:44px; text-align:right; }
+  .passos .nm { color:var(--fg); min-width:112px; }
   .passos .ruim .nm { color:var(--bad); }
-  .creditos { font-size:10px; color:var(--mut); line-height:1.5; }
+  .creditos { font-size:9.5px; color:var(--mut); line-height:1.5; }
   .creditos a { color:var(--mut); }
 
-  /* ─────────────── celular ───────────────
-     Fader vertical e botao de 9px nao funcionam com o dedo. Aqui o pitch vira
-     horizontal, os alvos de toque vao pra 46px (minimo confortavel), e a ordem
-     muda: primeiro o que se toca, depois o que se le. */
-  @media (max-width: 760px) {
+  @media (max-width:900px) { .palco { grid-template-columns:1fr; } }
+  @media (max-width:760px) {
     body { font-size:14px; }
-    .topo { padding:10px 12px; gap:10px; flex-wrap:wrap; }
-    .estado { width:100%; margin-left:0; justify-content:space-between; font-size:10px; }
-    .palco { padding:10px; gap:12px; }
-
-    .faixa { padding:10px; gap:10px; flex-wrap:wrap; }
-    .capa { width:44px; height:44px; }
-    .tags { margin-left:0; width:100%; }
-
-    canvas.onda { height:96px; }
-
-    /* uma coluna: transporte -> jog -> pitch */
-    .controles { grid-template-columns:1fr; gap:14px; padding:14px 12px; justify-items:stretch; }
-    .centro { order:1; }
-    .jog { order:2; justify-self:center; width:180px; height:180px; }
-    .jog .marca-jog { transform-origin:50% 85px; }
-    .pitch { order:3; flex-direction:row; align-items:center; gap:12px; width:100%; }
-
-    /* fader horizontal: vertical-lr nao responde bem ao dedo */
-    .pitch input[type=range] { writing-mode:horizontal-tb; direction:ltr;
-                               width:auto; flex:1; height:34px; }
-    .pitch .val { min-width:64px; font-size:13px; }
-    .pitch .faixa-sel button { padding:9px 10px; font-size:12px; }
-
-    .botoes { gap:8px; }
-    .botoes button { flex:1; min-width:84px; min-height:46px; font-size:13px; }
-    button { min-height:44px; }
-    .mini-b { min-height:30px; }
-
-    .tempo { flex-wrap:wrap; gap:8px 14px; font-size:13px; }
+    .estado { width:100%; margin-left:0; justify-content:space-between; }
+    .palco { padding:9px; gap:10px; }
+    .jog { width:76px; height:76px; }
+    .jog .marca-jog { transform-origin:50% 34px; }
+    .pitch { flex-direction:row; width:100%; order:3; gap:9px; }
+    .pitch input[type=range] { writing-mode:horizontal-tb; direction:ltr; width:auto; flex:1; height:30px; }
+    .botoes button { flex:1; min-height:44px; font-size:12px; }
+    button { min-height:40px; }
+    .mini-b, .knob button, .faixa-sel button { min-height:28px !important; }
+    .mixer { grid-template-columns:1fr; gap:12px; }
+    .centro-mix { min-width:0; width:100%; }
+    .fase, .xf { width:100%; }
     .lista { max-height:none; }
-    .item { padding:11px 10px; }
-    .item .t { font-size:13px; white-space:normal; }
-    .passos { font-size:10px; }
-    .passos .nm { min-width:96px; }
   }
 </style>
 </head>
@@ -167,91 +168,127 @@
 
 <div class="topo">
   <div class="marca">GARIM<span>PO</span></div>
-  <div id="dica" style="color:var(--mut);font-size:12px">clique em qualquer lugar para ligar o áudio</div>
+  <div id="dica" style="color:var(--mut);font-size:12px">toque em qualquer lugar para ligar o áudio</div>
   <div class="estado">
     <span>v<b id="e-ver">—</b></span>
     <span>áudio <b id="e-estado">—</b></span>
     <span>saída <b id="e-lat">—</b></span>
     <span>nível <b id="e-nivel">—</b></span>
-    <span>grid <b id="e-grid">—</b></span>
     <span>falhas <b id="e-glitch">0</b></span>
     <span id="e-keylock">keylock <b>—</b></span>
-    <button id="b-diag" style="padding:5px 10px;font-size:10px;min-height:0">diagnóstico</button>
+    <button id="b-diag" style="padding:4px 9px;font-size:10px;min-height:0">diagnóstico</button>
   </div>
 </div>
 
 <div class="palco">
-  <div class="deck">
-    <div class="faixa">
-      <img class="capa" id="capa" alt="">
-      <div style="min-width:0">
-        <div class="titulo" id="titulo">nenhuma faixa</div>
-        <div class="artista" id="artista">carregue um arquivo ou escolha no Audius</div>
+  <div class="cabine">
+    <div id="deckA"></div>
+
+    <div class="mixer">
+      <div class="tira" data-d="A">
+        <h3>CANAL A</h3>
+        <div class="knobs">
+          <div class="knob"><label>GRAVE</label><input type="range" data-d="A" data-eq="grave" min="0" max="1" step="0.01" value="0.5"><button data-d="A" data-kill="grave">KILL</button></div>
+          <div class="knob"><label>MÉDIO</label><input type="range" data-d="A" data-eq="medio" min="0" max="1" step="0.01" value="0.5"><button data-d="A" data-kill="medio">KILL</button></div>
+          <div class="knob"><label>AGUDO</label><input type="range" data-d="A" data-eq="agudo" min="0" max="1" step="0.01" value="0.5"><button data-d="A" data-kill="agudo">KILL</button></div>
+        </div>
+        <div class="linha-f"><label>FILTRO</label><input type="range" data-d="A" data-filtro min="-1" max="1" step="0.01" value="0"></div>
+        <div class="linha-f"><label>VOL</label><input type="range" data-d="A" data-fader min="0" max="1" step="0.01" value="1"></div>
+        <div class="vu"><i id="vu-A"></i></div>
       </div>
-      <div class="tags">
-        <span class="tag bpm" id="tag-bpm" title="clique no número para digitar o BPM certo">
-          BPM <b id="bpm-val">—</b>
-          <button class="mini-b" id="b-d2" title="metade">÷2</button><button class="mini-b" id="b-x2" title="dobro">×2</button>
-        </span>
-        <span class="tag" id="tag-tom">— </span>
+
+      <div class="centro-mix">
+        <canvas class="fase" id="fase"></canvas>
+        <div class="rot" id="rot-fase">carregue os dois decks</div>
+        <input type="range" class="xf" id="xf" min="0" max="1" step="0.005" value="0.5">
+        <div class="rot">A ◄ crossfader ► B</div>
+        <div class="rot" id="rot-master">master</div>
+        <input type="range" class="xf" id="master" min="0" max="1" step="0.01" value="0.85">
+      </div>
+
+      <div class="tira" data-d="B">
+        <h3>CANAL B</h3>
+        <div class="knobs">
+          <div class="knob"><label>GRAVE</label><input type="range" data-d="B" data-eq="grave" min="0" max="1" step="0.01" value="0.5"><button data-d="B" data-kill="grave">KILL</button></div>
+          <div class="knob"><label>MÉDIO</label><input type="range" data-d="B" data-eq="medio" min="0" max="1" step="0.01" value="0.5"><button data-d="B" data-kill="medio">KILL</button></div>
+          <div class="knob"><label>AGUDO</label><input type="range" data-d="B" data-eq="agudo" min="0" max="1" step="0.01" value="0.5"><button data-d="B" data-kill="agudo">KILL</button></div>
+        </div>
+        <div class="linha-f"><label>FILTRO</label><input type="range" data-d="B" data-filtro min="-1" max="1" step="0.01" value="0"></div>
+        <div class="linha-f"><label>VOL</label><input type="range" data-d="B" data-fader min="0" max="1" step="0.01" value="1"></div>
+        <div class="vu"><i id="vu-B"></i></div>
       </div>
     </div>
 
-    <canvas class="onda" id="onda"></canvas>
-    <canvas class="mini" id="mini"></canvas>
-
-    <div class="controles">
-      <div class="jog" id="jog">
-        <div class="marca-jog" id="jog-marca"></div>
-        <div class="miolo" id="jog-miolo">JOG</div>
-      </div>
-
-      <div class="centro">
-        <div class="botoes">
-          <button class="cue" id="b-cue">CUE</button>
-          <button class="play" id="b-play">PLAY</button>
-          <button id="b-keylock" title="Trava o tom da música enquanto você muda o andamento. Sem ele, acelerar a faixa deixa a voz fina, como um vinil acelerado.">KEY LOCK</button>
-        </div>
-        <div class="tempo">
-          <span><b id="t-pos">0:00.00</b> / <span id="t-dur">0:00</span></span>
-          <span>rest <b id="t-rest">0:00</b></span>
-          <span>BPM efetivo <b id="t-bpm">—</b></span>
-        </div>
-        <div id="efeito-tom" style="font:12px ui-monospace,Consolas,monospace"></div>
-        <div id="erro" class="aviso" hidden></div>
-        <div id="passos" class="passos" hidden></div>
-      </div>
-
-      <div class="pitch">
-        <div class="val" id="p-val">0.00%</div>
-        <input type="range" id="p-fader" min="-1" max="1" step="0.0005" value="0">
-        <div class="faixa-sel">
-          <button data-r="0.08" class="lig">8</button>
-          <button data-r="0.16">16</button>
-          <button data-r="0.50">50</button>
-        </div>
-      </div>
-    </div>
+    <div id="deckB"></div>
   </div>
 
   <div class="lateral">
     <div class="caixa">
       <h2>arquivo local</h2>
-      <div class="solta" id="solta">arraste um MP3/WAV/FLAC aqui<br>ou clique para escolher</div>
+      <div class="solta" id="solta">arraste um MP3/WAV/FLAC<br>ou toque para escolher</div>
       <input type="file" id="arquivo" accept="audio/*" hidden>
+      <div class="rot" style="margin-top:6px">vai pro deck que estiver parado</div>
     </div>
 
     <div class="caixa">
-      <h2>Audius — streaming, sem baixar</h2>
-      <button id="b-compat" disabled style="width:100%;margin-bottom:7px">carregue uma faixa</button>
+      <h2>Audius — sem baixar</h2>
+      <button id="b-compat" disabled style="width:100%;margin-bottom:6px">carregue uma faixa</button>
       <select id="genero"></select>
-      <input type="text" id="busca" placeholder="ou busque por nome…" style="margin-top:7px">
+      <input type="text" id="busca" placeholder="ou busque por nome…" style="margin-top:6px">
       <div class="lista" id="lista"></div>
       <div class="creditos" id="creditos"></div>
     </div>
   </div>
 </div>
 
-<script type="module" src="./src/ui/app.js?v=20260912c"></script>
+<template id="tpl-deck">
+  <div class="deck" data-d="">
+    <div class="faixa">
+      <div class="letra"></div>
+      <img class="capa" alt="">
+      <div style="min-width:0">
+        <div class="titulo">vazio</div>
+        <div class="artista">escolha uma faixa ao lado</div>
+      </div>
+      <div class="tags">
+        <span class="tag bpm" title="toque no número para digitar o BPM certo">
+          BPM <b class="bpm-val">—</b>
+          <button class="mini-b d2" title="metade">÷2</button><button class="mini-b x2" title="dobro">×2</button>
+        </span>
+        <span class="tag tom">—</span>
+      </div>
+    </div>
+    <canvas class="onda"></canvas>
+    <canvas class="mini"></canvas>
+    <div class="ctrl">
+      <div class="jog"><div class="marca-jog"></div><div class="miolo">JOG</div></div>
+      <div class="transp">
+        <div class="botoes">
+          <button class="cue">CUE</button>
+          <button class="play">PLAY</button>
+          <button class="keylock">KEY LOCK</button>
+          <button class="sync">SYNC</button>
+        </div>
+        <div class="tempo">
+          <span><b class="pos">0:00.00</b> / <span class="dur">0:00</span></span>
+          <span>rest <b class="rest">0:00</b></span>
+          <span>BPM <b class="bpmef">—</b></span>
+        </div>
+        <div class="efeito"></div>
+        <div class="aviso erro" hidden></div>
+        <div class="passos" hidden></div>
+      </div>
+      <div class="pitch">
+        <div class="val">0.00%</div>
+        <input type="range" class="fader" min="-1" max="1" step="0.0005" value="0">
+        <div class="faixa-sel">
+          <button data-r="0.08" class="lig">8</button><button data-r="0.16">16</button><button data-r="0.50">50</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script type="module" src="./src/ui/app.js?v=20260912d"></script>
 </body>
 </html>

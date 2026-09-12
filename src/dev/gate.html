@@ -338,6 +338,70 @@ try {
     if (Math.abs(rc.bpm - 128) < 0.6) ok(`com BPM conhecido não desvia: ${rc.bpm}`);
     else bad(`com BPM conhecido desviou pra ${rc.bpm}`);
   }
+  // ─────────────── 9 · EQ isolador: plano no neutro, kill de verdade ───────────────
+  head('9 · EQ de 3 bandas — resposta medida, não presumida');
+  {
+    const { EQ3, FiltroCor, curvaCrossfader } = await import('/src/audio/eq3.js');
+
+    /** Nível de saída de um seno em `hz` atravessando o que `montar` construir. */
+    async function nivel(hz, montar) {
+      const oc = new OfflineAudioContext(1, SR, SR);
+      const src = oc.createBufferSource();
+      const b = oc.createBuffer(1, SR, SR);
+      const d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = 0.5 * Math.sin(2 * Math.PI * hz * i / SR);
+      src.buffer = b;
+      const no = montar(oc);
+      src.connect(no.entrada);
+      no.connect(oc.destination);
+      src.start();
+      const r = await oc.startRendering();
+      const s = r.getChannelData(0);
+      // mede só o miolo: o começo tem o transitório dos filtros
+      let soma = 0; const i0 = Math.floor(SR * 0.5), i1 = Math.floor(SR * 0.95);
+      for (let i = i0; i < i1; i++) soma += s[i] * s[i];
+      const rms = Math.sqrt(soma / (i1 - i0));
+      return 20 * Math.log10(rms / (0.5 / Math.SQRT2));   // dB relativo à entrada
+    }
+
+    inf('resposta com os três knobs no centro (tem que ser plana):');
+    let piorDesvio = 0;
+    for (const hz of [60, 200, 800, 3000, 10000]) {
+      const db = await nivel(hz, (oc) => new EQ3(oc));
+      piorDesvio = Math.max(piorDesvio, Math.abs(db));
+      inf(`  ${String(hz).padStart(5)} Hz → ${db >= 0 ? '+' : ''}${db.toFixed(2)} dB`);
+    }
+    if (piorDesvio < 1.5) ok(`neutro é transparente (pior desvio ${piorDesvio.toFixed(2)} dB)`);
+    else bad(`neutro colore o som: desvio de ${piorDesvio.toFixed(2)} dB — os ramos não somam plano`);
+
+    inf('kill do grave:');
+    const g60 = await nivel(60, (oc) => { const e = new EQ3(oc); e.setKill('grave', true); return e; });
+    const g5k = await nivel(5000, (oc) => { const e = new EQ3(oc); e.setKill('grave', true); return e; });
+    inf(`  60 Hz com grave morto → ${g60.toFixed(1)} dB | 5 kHz no mesmo estado → ${g5k.toFixed(2)} dB`);
+    if (g60 < -50) ok(`grave realmente morre (${g60.toFixed(0)} dB) — não vaza na troca de graves`);
+    else bad(`grave só caiu ${Math.abs(g60).toFixed(0)} dB: vazaria numa troca de graves`);
+    if (Math.abs(g5k) < 1.5) ok('e o agudo continua passando intacto');
+    else bad(`o agudo foi afetado em ${g5k.toFixed(1)} dB`);
+
+    inf('knob de grave no mínimo (sem usar o botão de kill):');
+    const gmin = await nivel(60, (oc) => { const e = new EQ3(oc); e.set('grave', 0); return e; });
+    if (gmin < -50) ok(`fim do curso é silêncio de verdade (${gmin.toFixed(0)} dB)`);
+    else bad(`fim do curso deixa passar ${gmin.toFixed(0)} dB — não é isolador`);
+
+    inf('filtro de um knob só:');
+    for (const [k, hz, oQue] of [[-0.8, 8000, 'agudo cortado'], [0.8, 80, 'grave cortado'], [0, 1000, 'centro livre']]) {
+      const db = await nivel(hz, (oc) => { const f = new FiltroCor(oc); f.set(k); return f; });
+      const esperado = k === 0 ? Math.abs(db) < 1.5 : db < -18;
+      (esperado ? ok : bad)(`  k=${k} em ${hz} Hz → ${db.toFixed(1)} dB (${oQue})`);
+    }
+
+    // crossfader de potência constante não pode afundar no meio
+    const meio = curvaCrossfader(0.5, 'suave');
+    const pot = meio.a * meio.a + meio.b * meio.b;
+    inf(`crossfader no centro: A=${meio.a.toFixed(3)} B=${meio.b.toFixed(3)} soma dos quadrados ${pot.toFixed(3)}`);
+    if (Math.abs(pot - 1) < 0.02) ok('potência constante: o volume não afunda no meio do curso');
+    else bad(`potência ${pot.toFixed(3)} no centro em vez de 1`);
+  }
 } catch (e) {
   bad('excecao: ' + e.message);
   put(String(e.stack).slice(0, 400), 'mut');

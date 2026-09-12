@@ -228,8 +228,29 @@ export class Deck extends EventTarget {
       const r = await analisar(buf, { genero: faixa.genre, bpmConhecido: faixa.bpm || null });
       if (ac.signal.aborted) return;
       this.analise = r;
-      // so sobrescreve o BPM se nao havia um; o do metadata tem prioridade
-      if (!faixa.bpm && r.bpm) faixa.bpm = r.bpm;
+      // RECONCILIACAO DE OITAVA.
+      // O BPM do Audius e detectado por maquina (is_custom_bpm = 0 em 100/100
+      // da amostra) e erra oitava com frequencia — vi techno marcado como 64.9
+      // e house como 234. Antes eu dava prioridade cega ao metadata, e o "BPM
+      // efetivo" saia dobrado em faixa nenhuma.
+      //
+      // Regra: se a analise local discorda por um FATOR DE 2 (ou 1/2), a
+      // analise ganha — ela varreu 70-190 e arredondou com a janela do genero,
+      // enquanto o metadata nao passou por nenhum dos dois. Discordancia
+      // pequena (afinacao) mantem o metadata, que costuma ser mais preciso.
+      if (r.bpm) {
+        if (!faixa.bpm) {
+          faixa.bpm = r.bpm;
+        } else {
+          const razao = faixa.bpm / r.bpm;
+          const ehOitava = Math.abs(razao - 2) < 0.12 || Math.abs(razao - 0.5) < 0.06;
+          if (ehOitava) {
+            this.#passo('bpm corrigido', `metadata dizia ${faixa.bpm}, analise diz ${r.bpm}`);
+            faixa.bpmMetadata = faixa.bpm;
+            faixa.bpm = r.bpm;
+          }
+        }
+      }
       if (!faixa.camelot && r.camelot) { faixa.camelot = r.camelot; faixa.key = r.tom; }
       this.grid = r.bpm ? { bpm: r.bpm, ancora: r.ancora } : null;
       this.#passo('analisado', `${r.bpm} BPM, ${r.camelot}, ancora ${r.ancora}s`);
