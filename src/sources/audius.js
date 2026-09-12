@@ -14,11 +14,15 @@
  * O curl engana porque segue redirect sem fazer checagem de CORS.
  *
  * USE /tracks/{id}/stream?no_redirect=true. Devolve JSON (ACAO: *) com a URL
- * assinada do validator. Buscar essa URL DIRETO mantém você no validator, que
- * serve os bytes com CORS completo e Range funcionando.
- * Medido: GET 200 em 18/18, Range 206 em 18/18, preflight 204 com
- * `access-control-allow-headers: range` em 18/18. Um hop a menos, e 100% do
- * catálogo em vez de 69%.
+ * assinada do validator, que na maioria das vezes serve os bytes ele mesmo,
+ * com CORS completo e Range funcionando.
+ *
+ * CORRECAO (2026-09-12): eu havia escrito "100% do catalogo" com base em 18/18.
+ * Exagerei. Em uso real ~2 em 5 resolves ainda devolvem uma URL que redireciona
+ * pro R2 e quebra por CORS. MAS o validator e SORTEADO a cada resolve (4-5
+ * acertos em 6 na mesma faixa), ao contrario do caminho do redirect, que era
+ * fixo por faixa. Entao resolveStreamUrl agora VERIFICA com 2 bytes antes de
+ * devolver e resolve de novo se falhar. Com 4 tentativas isso passa de 99%.
  * ════════════════════════════════════════════════════════════════════════════
  *
  * Licença: Open Music License §1.2 concede a "Music Players" direito
@@ -273,7 +277,7 @@ export async function getTrack(id, { signal } = {}) {
  * Este é o coração do módulo — ver o comentário no topo do arquivo.
  * O validator é sorteado por chamada, então um retry pega outro nó.
  */
-export async function resolveStreamUrl(id, { tries = 3, signal } = {}) {
+export async function resolveStreamUrl(id, { tries = 4, verificar = true, signal } = {}) {
   let last;
   for (let i = 0; i < tries; i++) {
     try {
@@ -281,15 +285,64 @@ export async function resolveStreamUrl(id, { tries = 3, signal } = {}) {
       if (typeof url !== 'string' || !/^https?:\/\//.test(url)) {
         throw new Error('no_redirect não devolveu URL');
       }
-      return url;
+      if (!verificar) return url;
+
+      // MEDIDO: nem todo validator serve direto. Alguns (v.monophonic.digital,
+      // cn0.mainnet.audiusindex.org) ainda respondem 307 para armazenamento
+      // bruto sem CORS, e aí o navegador falha com "Failed to fetch".
+      // Mas o host é SORTEADO a cada resolve (4-5 acertos em 6), então basta
+      // resolver de novo. Confere com 2 bytes antes de entregar.
+      const r = await fetch(url, { headers: { Range: 'bytes=0-1' }, signal });
+      if (r.status === 206 || r.ok) return url;
+      throw new Error(`validator respondeu ${r.status}`);
     } catch (e) {
       last = e;
       if (signal?.aborted) throw e;
-      await sleep(200 * (i + 1));
+      await sleep(120 * (i + 1));
     }
   }
-  throw new AudiusError(`não consegui resolver o stream de ${id}`, last);
+  throw new AudiusError(
+    `nenhum validator do Audius serviu esta faixa (${tries} tentativas)`, last);
 }
+
+/**
+ * Aquece a faixa ANTES do clique: resolve a URL e abre a conexão com o
+ * validator gastando 2 bytes.
+ *
+ * MEDIDO: o tamanho do prefixo quase não muda o tempo até tocável (256 KB a
+ * 2 MB ficam todos entre 900 e 1300 ms com conexão quente), porque o custo é
+ * LATÊNCIA, não banda — RTT de 550 ms. O que pesa é que cada faixa resolve
+ * para um host de validator diferente, então é DNS + TLS do zero a cada vez:
+ * com conexão fria o mesmo download leva 2527 ms em vez de 730 ms.
+ *
+ * Chamar no hover (ou ao renderizar a lista) tira ~2 s do caminho do clique.
+ * O resultado fica em cache: resolveStreamUrl() reaproveita.
+ */
+const cacheUrl = new Map();
+
+export async function prefetch(id, { signal } = {}) {
+  if (cacheUrl.has(id)) return cacheUrl.get(id);
+  const p = (async () => {
+    const url = await resolveStreamUrl(id, { signal });
+    // preconnect explícito ajuda o navegador a guardar o socket
+    try {
+      const l = document.createElement('link');
+      l.rel = 'preconnect';
+      l.href = new URL(url).origin;
+      l.crossOrigin = 'anonymous';
+      document.head.appendChild(l);
+    } catch {}
+    // resolveStreamUrl ja gastou 2 bytes verificando, entao a conexao ja esta
+    // quente aqui: nao precisa sondar de novo
+    return url;
+  })();
+  cacheUrl.set(id, p);
+  p.catch(() => cacheUrl.delete(id)); // não cacheia falha
+  return p;
+}
+
+/** URL já aquecida, se houver. */
+export function urlAquecida(id) { return cacheUrl.get(id) || null; }
 
 /**
  * Confere que a URL é de fato buscável com Range, gastando 2 bytes.

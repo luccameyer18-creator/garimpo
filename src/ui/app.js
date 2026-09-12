@@ -4,7 +4,7 @@
  * professor entrar depois como mais um cliente da mesma API.
  */
 import { Deck } from '../mix/deck.js';
-import { trending, search, GENRES, attribution } from '../sources/audius.js';
+import { trending, search, GENRES, attribution, prefetch } from '../sources/audius.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (s, casas = 0) => {
@@ -65,7 +65,7 @@ function ligarEventos() {
     $('t-dur').textContent = fmt(duration);
     $('capa').src = faixa.artwork || '';
     $('capa').style.visibility = faixa.artwork ? 'visible' : 'hidden';
-    $('tag-bpm').innerHTML = `BPM <b>${faixa.bpm ?? '—'}</b>`;
+    $('bpm-val').textContent = faixa.bpm ?? '—';
     $('tag-tom').innerHTML = faixa.camelot ? `<b>${faixa.camelot}</b> ${faixa.key}` : '—';
     $('erro').hidden = true;
     desenharMini();
@@ -102,6 +102,14 @@ function ligarEventos() {
   });
 
   deck.addEventListener('glitch', (e) => { $('e-glitch').textContent = e.detail.count; });
+
+  // o keylock voltou pro vinil sozinho porque nao saiu som: avisar, nunca calar
+  deck.addEventListener('keylockFalhou', (e) => {
+    $('erro').hidden = false;
+    $('erro').textContent = `keylock desligado sozinho: ${e.detail.motivo}`;
+    $('e-keylock').innerHTML = 'keylock <b style="color:var(--bad)">falhou</b>';
+    setTimeout(() => { $('erro').hidden = true; }, 6000);
+  });
 }
 
 function mostrarCreditos(faixa) {
@@ -218,16 +226,38 @@ document.querySelectorAll('.faixa-sel button').forEach((b) => {
   };
 });
 
-// O BPM do Audius é detectado por máquina e erra meio-tempo (vi techno como
-// 64.9). Sem estes botões o usuário fica preso ao erro.
-const ajustarBpm = (f) => {
-  if (!deck?.faixa?.bpm) return;
-  deck.faixa.bpm = Math.round(deck.faixa.bpm * f * 100) / 100;
-  $('tag-bpm').innerHTML = `BPM <b>${deck.faixa.bpm}</b>`;
+// O BPM do Audius é detectado por máquina e erra meio-tempo (vi techno marcado
+// como 64.9). Três formas de corrigir, da mais simples pra menos: digitar o
+// número certo, ou dobrar, ou dividir.
+function definirBpm(v) {
+  if (!deck?.faixa || !isFinite(v) || v <= 0) return;
+  deck.faixa.bpm = Math.round(v * 100) / 100;
+  $('bpm-val').textContent = deck.faixa.bpm;
   $('t-bpm').textContent = deck.bpmEfetivo ? deck.bpmEfetivo.toFixed(2) : '—';
+}
+$('b-x2').onclick = (e) => { e.stopPropagation(); definirBpm((deck?.faixa?.bpm || 0) * 2); };
+$('b-d2').onclick = (e) => { e.stopPropagation(); definirBpm((deck?.faixa?.bpm || 0) / 2); };
+
+// clique no número => vira campo de digitação
+$('bpm-val').onclick = () => {
+  if (!deck?.faixa) return;
+  const alvo = $('bpm-val');
+  const inp = document.createElement('input');
+  inp.value = deck.faixa.bpm ?? '';
+  inp.inputMode = 'decimal';
+  alvo.replaceWith(inp);
+  inp.focus(); inp.select();
+  const fechar = (aplicar) => {
+    const v = parseFloat(inp.value.replace(',', '.'));
+    inp.replaceWith(alvo);
+    if (aplicar) definirBpm(v);
+  };
+  inp.onblur = () => fechar(true);
+  inp.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+    if (e.key === 'Escape') { inp.onblur = null; fechar(false); }
+  };
 };
-$('b-x2').onclick = () => ajustarBpm(2);
-$('b-d2').onclick = () => ajustarBpm(0.5);
 
 addEventListener('keydown', (e) => {
   if (e.target.matches('input,select')) return;
@@ -325,9 +355,15 @@ async function carregarLista(fn) {
                       <div class="m">${t.bpm ?? '—'}<br>${t.camelot ?? ''}</div>`;
       el.querySelector('.t').textContent = t.title;
       el.querySelector('.a').textContent = t.artist;
+      // aquece no hover: resolve a URL e abre a conexao com o validator.
+      // Sem isso o clique paga resolve + DNS + TLS de um host novo (~2 s).
+      let aquecida = false;
+      el.onpointerenter = () => { if (!aquecida) { aquecida = true; prefetch(t.id).catch(() => {}); } };
       el.onclick = async () => { await ligar(); deck.carregarAudius(t); };
       lista.appendChild(el);
     }
+    // as tres primeiras ja aquecem sozinhas: sao as mais provaveis de clicar
+    faixas.slice(0, 3).forEach((t) => prefetch(t.id).catch(() => {}));
   } catch (e) {
     lista.innerHTML = `<div class="aviso">Audius indisponível: ${e.message}</div>`;
   }

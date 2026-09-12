@@ -174,3 +174,29 @@ chegou. Diz de uma vez se o evento chegou, onde chegou, e se é confiável.
 **Consequência:** o harness automático é o `gate.html` rodando no painel interno
 com `OfflineAudioContext` — sem placa de som, sem clique, sem permissão. O Chrome
 do usuário fica só para escuta real.
+
+---
+
+## 10. Correção do item 1: `no_redirect` não é 100% — 2026-09-12
+
+Eu escrevi "100% do catálogo" com base numa amostra de 18/18. **Exagerei.** Em
+uso real o console mostrou `Failed to fetch` por CORS: a URL que o
+`no_redirect=true` devolve **às vezes ainda redireciona** para
+`*.r2.cloudflarestorage.com`, que não manda `access-control-allow-origin`.
+
+| Medição | Resultado |
+|---|---|
+| Resolves que entregam URL utilizável | **3 de 5** numa amostra, **4–5 de 6** noutra |
+| O tamanho do `Range` importa? | **Não.** 2 B, 64 KB e 2 MB falham igual |
+| O host varia entre resolves da MESMA faixa? | **Sim** — e é isso que salva |
+
+Essa é a diferença crucial em relação ao item 1: no caminho do **redirect** o
+validator era **fixo por faixa** (8/8 idênticos), então retry não adiantava. No
+caminho do **`no_redirect`** ele é **sorteado a cada chamada**.
+
+**A correção:** `resolveStreamUrl()` gasta 2 bytes verificando antes de
+devolver, e resolve de novo se falhar. Com 4 tentativas passa de 99%. Depois
+disso: **6/6** no teste ao vivo, incluindo hosts que falhavam isolados.
+
+**A lição:** amostra de 18 sem variação temporal não prova "100%". O que
+detectou isto foi o console do navegador em uso real, não o meu teste.

@@ -11,7 +11,7 @@
  */
 
 import { Transport } from '../audio/transport.js';
-import { resolveStreamUrl } from '../sources/audius.js';
+import { resolveStreamUrl, urlAquecida } from '../sources/audius.js';
 
 /** Picos min/max por bin, pra desenhar forma de onda sem guardar o PCM. */
 export function calcularPicos(buffer, binsPorSegundo = 100) {
@@ -57,7 +57,7 @@ export class Deck extends EventTarget {
 
   async init() {
     this.transport = await Transport.create(this.ctx, { destination: this.destination });
-    for (const ev of ['playing', 'rate', 'keylock', 'glitch']) {
+    for (const ev of ['playing', 'rate', 'keylock', 'glitch', 'keylockFalhou']) {
       this.transport.addEventListener(ev, (e) =>
         this.dispatchEvent(new CustomEvent(ev, { detail: e.detail })));
     }
@@ -97,7 +97,9 @@ export class Deck extends EventTarget {
    */
   async carregarAudius(faixa) {
     return this.#carregar(faixa, async (sinal, aoProgredir) => {
-      const url = await resolveStreamUrl(faixa.id, { signal: sinal });
+      // usa a URL ja aquecida no hover, se houver: economiza o resolve (723 ms)
+      // e o DNS+TLS do validator (~1.8 s com conexao fria)
+      const url = await (urlAquecida(faixa.id) || resolveStreamUrl(faixa.id, { signal: sinal }));
       const PREFIXO = 2 << 20;
 
       const r = await fetch(url, { headers: { Range: `bytes=0-${PREFIXO - 1}` }, signal: sinal });

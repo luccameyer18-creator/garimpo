@@ -64,9 +64,15 @@ export class Transport extends EventTarget {
 
     this.reader.connect(this.vinylGain).connect(destination);
     if (stretch) {
-      stretch.connect(this.lockGain);
+      // analisador ENTRE o stretch e o ganho: mede o que o stretch produz, sem
+      // ser enganado pelo próprio crossfade. É o sensor do cão de guarda abaixo.
+      this.lockAnalyser = ctx.createAnalyser();
+      this.lockAnalyser.fftSize = 256;
+      this._buf = new Float32Array(this.lockAnalyser.fftSize);
+      stretch.connect(this.lockAnalyser).connect(this.lockGain);
       this.lockGain.connect(destination);
     }
+    this._cao = null;
 
     // estado
     this.duration = 0;
@@ -100,6 +106,9 @@ export class Transport extends EventTarget {
         stretch = await mod.default(ctx);
         await stretch.configure({ blockMs: AUDIO.keylockBlockMs });
         latency = await stretch.latency();   // async: medir uma vez, cachear
+        // num contexto ao vivo o nó precisa ser iniciado; offline a renderização
+        // puxa sozinha, e foi por isso que o gate não pegou isto.
+        try { await stretch.start(); } catch (e) { console.warn('[transport] stretch.start():', e.message); }
       } catch (e) {
         console.warn('[transport] keylock indisponível:', e.message);
         stretch = null;
@@ -132,6 +141,9 @@ export class Transport extends EventTarget {
     }
 
     if (this.stretch) {
+      // descarta o material da faixa anterior: sem isto o stretch acumula
+      // buffers a cada carga e a posicao de entrada deixa de bater
+      try { await this.stretch.dropBuffers(1e9); } catch {}
       // addBuffers recebe ARRAY de Float32Array. AudioBuffer dá DataCloneError.
       const canais = [];
       for (let c = 0; c < 2; c++) {
@@ -291,6 +303,7 @@ export class Transport extends EventTarget {
       this.#agendarStretch(T, pos, this.playing ? this.nominalRate : 0);
       ramp(this.lockGain.gain, 1, T, XFADE);
       ramp(this.vinylGain.gain, 0, T, XFADE);
+      if (this.playing) this.#soltarCao(T);
     } else {
       // sair é imediato: o leitor já está na posição certa o tempo todo
       const T = agora + this.lookahead;
@@ -306,12 +319,43 @@ export class Transport extends EventTarget {
     }));
   }
 
+  /**
+   * Cão de guarda do keylock.
+   *
+   * O gate offline aprovou o handoff, mas offline a renderização puxa o grafo
+   * sozinha e esconde problemas que só existem com relógio ao vivo. Se o stretch
+   * não produzir som depois da troca, o deck fica MUDO — e mudo é pior do que
+   * tocar com o tom deslocado. Então: mede o que o stretch está produzindo e,
+   * se for silêncio, volta pro vinil e avisa.
+   */
+  #soltarCao(T) {
+    clearTimeout(this._cao);
+    if (!this.lockAnalyser) return;
+    const espera = Math.max(0, (T - this.ctx.currentTime) * 1000) + 400;
+    this._cao = setTimeout(() => {
+      if (this.tocando !== 'lock' || !this.playing) return;
+      this.lockAnalyser.getFloatTimeDomainData(this._buf);
+      let soma = 0;
+      for (let i = 0; i < this._buf.length; i++) soma += this._buf[i] * this._buf[i];
+      const rms = Math.sqrt(soma / this._buf.length);
+      if (rms < 1e-4) {
+        this.#trocarMotor('vinyl');
+        this.keylockPedido = false;
+        this.dispatchEvent(new CustomEvent('keylockFalhou', {
+          detail: { rms, motivo: 'o stretch não produziu áudio; voltei pro vinil' },
+        }));
+      }
+    }, espera);
+  }
+
   #agendarStretch(quando, pos, taxa) {
     if (!this.stretch) return;
     const p = pos ?? this.map.positionAt(quando);
     // não await: estamos no caminho crítico. A latência já foi medida no init.
     this.stretch.schedule({ output: quando, active: true, input: p, rate: taxa, semitones: 0 })
-      .catch(() => {});
+      .catch((e) => this.dispatchEvent(new CustomEvent('keylockFalhou', {
+        detail: { rms: null, motivo: 'schedule() rejeitou: ' + e.message },
+      })));
   }
 
   #pararStretch(quando) {
