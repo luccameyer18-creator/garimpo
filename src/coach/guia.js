@@ -24,6 +24,8 @@
  * perguntas — mas quem ordena a lista continua sendo isto.
  */
 
+import { t } from '../ui/i18n.js';
+
 const TOL_FASE = 0.02;    // erro de fase considerado "encaixado" (em tempos)
 
 /**
@@ -45,28 +47,23 @@ const COR = { 3: 'urgente', 2: 'agora', 1: 'depois' };
 const REGRAS = [
   // ── o básico: sem isto nada existe ──
   { id: 'audio', grav: 3, facil: 0, quando: (e) => !e.audioOk && {
-      fala: 'Toque em qualquer lugar da tela para <b>ligar o áudio</b>.',
-      porque: 'O navegador só libera som depois que você interage com a página.',
-      apontar: [] } },
+      fala: t('p.audio'), porque: t('p.audio.por'), apontar: [] } },
 
   { id: 'carregar', grav: 3, facil: 0, quando: (e) => e.audioOk && !e.A?.temFaixa && !e.B?.temFaixa && {
-      fala: 'Escolha uma música na lista à direita e mande pro deck <b>A</b>.',
-      porque: 'O deck A é o tocador principal. O B recebe a próxima.',
-      apontar: [{ id: 'lista', rotulo: 'escolha aqui' }] } },
+      fala: t('p.carregar'), porque: t('p.carregar.por'),
+      apontar: [{ id: 'lista', rotulo: t('p.carregar.rot') }] } },
 
   { id: 'play', grav: 3, facil: 0, quando: (e) => {
       if (!e.audioOk || e.A?.tocando || e.B?.tocando) return null;
       const d = e.A?.temFaixa ? 'A' : e.B?.temFaixa ? 'B' : null;
-      return d && { fala: `Toque em <b>PLAY</b> no deck ${d}.`,
-        porque: 'Nada acontece até você dar play.',
-        apontar: [{ id: `play-${d}`, rotulo: 'PLAY — começa a tocar' }] };
+      return d && { fala: t('p.play', { d }), porque: t('p.play.por'),
+        apontar: [{ id: `play-${d}`, rotulo: t('p.play.rot') }] };
     } },
 
   // ── o som está estourando: antes de qualquer coisa musical ──
   { id: 'limitador', grav: 3, facil: 0, quando: (e) => e.reducao > 5 && {
-      fala: 'O som está <b>estourando</b>. Baixe o volume geral.',
-      porque: `O limitador está segurando ${e.reducao.toFixed(0)} dB pra não distorcer.`,
-      apontar: [{ id: 'master', rotulo: 'baixe o volume geral' }] } },
+      fala: t('p.limitador'), porque: t('p.limitador.por', { db: e.reducao.toFixed(0) }),
+      apontar: [{ id: 'master', rotulo: t('p.limitador.rot') }] } },
 
   // ── fim de faixa chegando ──
   { id: 'fim', grav: 3, facil: 1, quando: (e) => {
@@ -74,10 +71,9 @@ const REGRAS = [
         const k = e[d];
         if (!k?.tocando || !k.restante || k.restante > 25) continue;
         const outro = d === 'A' ? 'B' : 'A';
-        return { fala: `O deck ${d} acaba em <b>${Math.round(k.restante)}s</b> — comece a transição agora.`,
-          porque: 'Se a faixa acabar sem a outra entrar, o set cai no silêncio.',
-          apontar: e[outro]?.temFaixa ? [{ id: `play-${outro}`, rotulo: 'traga o ' + outro }]
-                                     : [{ id: 'lista', rotulo: 'escolha a próxima' }] };
+        return { fala: t('p.fim', { d, s: Math.round(k.restante) }), porque: t('p.fim.por'),
+          apontar: e[outro]?.temFaixa ? [{ id: `play-${outro}`, rotulo: t('p.fim.rot', { d: outro }) }]
+                                     : [{ id: 'lista', rotulo: t('p.fim.rot2') }] };
       }
       return null;
     } },
@@ -88,9 +84,8 @@ const REGRAS = [
       if (!toca) return null;
       const outro = toca === 'A' ? 'B' : 'A';
       return !e[outro]?.temFaixa && {
-        fala: `Mande a próxima música pro deck <b>${outro}</b>. As <b>verdes</b> combinam.`,
-        porque: 'Verde = tom compatível e andamento parecido. Encaixam sem esforço.',
-        apontar: [{ id: 'lista', rotulo: 'as verdes combinam' }] };
+        fala: t('p.proxima', { d: outro }), porque: t('p.proxima.por'),
+        apontar: [{ id: 'lista', rotulo: t('p.proxima.rot') }] };
     } },
 
   // ── casar o andamento ──
@@ -101,9 +96,9 @@ const REGRAS = [
       const outro = toca === 'A' ? 'B' : 'A';
       const a = e[toca]?.bpmEfetivo, b = e[outro]?.bpmEfetivo;
       return a && b && Math.abs(a - b) > TOL_BPM && {
-        fala: `Toque em <b>SYNC</b> no deck ${outro} — ele casa o andamento sozinho.`,
-        porque: `Uma está em ${a.toFixed(1)} e a outra em ${b.toFixed(1)} BPM. Assim as batidas brigam.`,
-        apontar: [{ id: `sync-${outro}`, rotulo: 'SYNC — casa o andamento' }] };
+        fala: t('p.sync', { d: outro }),
+        porque: t('p.sync.por', { a: a.toFixed(1), b: b.toFixed(1) }),
+        apontar: [{ id: `sync-${outro}`, rotulo: t('p.sync.rot') }] };
     } },
 
   // ── dar play no que vai entrar ──
@@ -112,9 +107,8 @@ const REGRAS = [
       if (!toca) return null;
       const outro = toca === 'A' ? 'B' : 'A';
       return e[outro]?.temFaixa && !e[outro]?.tocando && {
-        fala: `Dê <b>PLAY</b> no deck ${outro}. Ninguém ouve ele ainda.`,
-        porque: 'Com o crossfader do outro lado você pode errar à vontade — é assim que se ensaia a entrada.',
-        apontar: [{ id: `play-${outro}`, rotulo: 'PLAY do deck ' + outro }] };
+        fala: t('p.playOutro', { d: outro }), porque: t('p.playOutro.por'),
+        apontar: [{ id: `play-${outro}`, rotulo: t('p.playOutro.rot', { d: outro }) }] };
     } },
 
   // ── cortar o grave de quem entra, ANTES de abrir o fader ──
@@ -123,9 +117,8 @@ const REGRAS = [
       const toca = e.crossfader < 0.5 ? 'A' : 'B';
       const entra = toca === 'A' ? 'B' : 'A';
       return (e.eq?.[entra]?.grave ?? 0.5) > 0.08 && {
-        fala: `<b>Corte o grave</b> do deck ${entra}: o botão <b>×</b> da linha GRAVE.`,
-        porque: 'Dois graves juntos viram lama. Corta um e devolve só quando o outro sair.',
-        apontar: [{ id: `kill-${entra}-grave`, rotulo: `corta o GRAVE do ${entra}` }] };
+        fala: t('p.cortaGrave', { d: entra }), porque: t('p.cortaGrave.por'),
+        apontar: [{ id: `kill-${entra}-grave`, rotulo: t('p.cortaGrave.rot', { d: entra }) }] };
     } },
 
   // ── encaixar a fase: agora com botão exato, não só jog ──
@@ -135,12 +128,10 @@ const REGRAS = [
       if (!e.A?.tocando || !e.B?.tocando || !e.fase) return null;
       if (Math.abs(e.fase.emTempos) <= TOL_FASE) return null;
       const ms = Math.abs(e.fase.emMs);
-      const lado = e.fase.emMs > 0 ? 'adiantado' : 'atrasado';
-      return { fala: `As batidas estão <b>${ms.toFixed(0)} ms</b> fora. Toque em <b>ENCAIXAR</b>.`,
-        porque: `O deck B está ${lado}. O botão desliza a música até cair em cima. ` +
-                'No jog, o anel de fora é ajuste fino; o centro é scratch, e aí é fácil errar.',
-        apontar: [{ id: 'b-encaixar', rotulo: 'ENCAIXAR — alinha sozinho' },
-                  { id: 'fase', rotulo: 'fica verde quando encaixa' }] };
+      const lado = t(e.fase.emMs > 0 ? 'p.fase.adiantado' : 'p.fase.atrasado');
+      return { fala: t('p.fase', { ms: ms.toFixed(0) }), porque: t('p.fase.por', { lado }),
+        apontar: [{ id: 'b-encaixar', rotulo: t('p.fase.rot') },
+                  { id: 'fase', rotulo: t('p.fase.rot2') }] };
     } },
 
   /**
@@ -168,10 +159,8 @@ const REGRAS = [
         if (!passa) continue;
         if ((e.eq?.[d]?.grave ?? 0.5) > 0.08) continue;
         return {
-          fala: `O <b>grave do deck ${d}</b> está cortado e ele é o único tocando — devolva.`,
-          porque: 'Você cortou pra fazer a troca e não devolveu. A música fica sem fundo, ' +
-                  'fina, como se tocasse num rádio pequeno.',
-          apontar: [{ id: `kill-${d}-grave`, rotulo: `devolve o GRAVE do ${d}` }],
+          fala: t('p.graveEsquecido', { d }), porque: t('p.graveEsquecido.por'),
+          apontar: [{ id: `kill-${d}-grave`, rotulo: t('p.graveEsquecido.rot', { d }) }],
         };
       }
       return null;
@@ -180,9 +169,8 @@ const REGRAS = [
   // ── dois graves abertos ao mesmo tempo ──
   { id: 'graves-juntos', grav: 3, facil: 0, quando: (e) =>
       e.ambosAudiveis && (e.eq?.A?.grave ?? 0.5) > 0.3 && (e.eq?.B?.grave ?? 0.5) > 0.3 && {
-        fala: 'Os <b>dois graves</b> estão abertos juntos — é isso que embola o som.',
-        porque: 'As duas linhas de baixo somam e o resultado fica sujo e alto demais.',
-        apontar: [{ id: 'kill-B-grave', rotulo: 'corte um dos dois' }] } },
+        fala: t('p.gravesJuntos'), porque: t('p.gravesJuntos.por'),
+        apontar: [{ id: 'kill-B-grave', rotulo: t('p.gravesJuntos.rot') }] } },
 
   // ── volume desigual entre os decks ──
   { id: 'volume', grav: 2, facil: 0, quando: (e) => {
@@ -190,9 +178,9 @@ const REGRAS = [
       const dif = 20 * Math.log10(e.nivelA / e.nivelB);
       if (Math.abs(dif) <= 6) return null;
       const baixo = dif > 0 ? 'B' : 'A', alto = dif > 0 ? 'A' : 'B';
-      return { fala: `O deck ${alto} está <b>${Math.abs(dif).toFixed(0)} dB</b> mais alto. Suba o ${baixo}.`,
-        porque: 'Se os volumes não batem, a troca dá um degrau que todo mundo escuta.',
-        apontar: [{ id: `vol-${baixo}`, rotulo: `suba o volume do ${baixo}` }] };
+      return { fala: t('p.volume', { alto, baixo, db: Math.abs(dif).toFixed(0) }),
+        porque: t('p.volume.por'),
+        apontar: [{ id: `vol-${baixo}`, rotulo: t('p.volume.rot', { d: baixo }) }] };
     } },
 
   // ── trazer com o crossfader: mexe no som, então é risco ──
@@ -203,9 +191,9 @@ const REGRAS = [
       if ((e.eq?.[entra]?.grave ?? 0.5) > 0.08) return null;            // grave cortado antes
       const noMeio = Math.abs(e.crossfader - 0.5) < 0.12;
       return !noMeio && {
-        fala: `Traga o <b>crossfader</b> ${entra === 'B' ? 'pra direita' : 'pra esquerda'}, devagar.`,
-        porque: 'Os dois vão soar juntos. Com o grave de um cortado, não vira lama.',
-        apontar: [{ id: 'xf', rotulo: 'CROSSFADER — devagar' }] };
+        fala: t('p.crossfader', { lado: t(entra === 'B' ? 'p.crossfader.direita' : 'p.crossfader.esquerda') }),
+        porque: t('p.crossfader.por'),
+        apontar: [{ id: 'xf', rotulo: t('p.crossfader.rot') }] };
     } },
 
   // ── a troca de graves: o momento da transição ──
@@ -215,10 +203,9 @@ const REGRAS = [
       const sai = e.crossfader <= 0.5 ? 'A' : 'B';
       const entra = sai === 'A' ? 'B' : 'A';
       return (e.eq?.[entra]?.grave ?? 0.5) < 0.08 && {
-        fala: `Agora a troca: <b>corte o grave do ${sai}</b> e <b>devolva o do ${entra}</b>.`,
-        porque: 'Este é o instante da transição. Depois leve o crossfader até o fim e pare o deck que saiu.',
-        apontar: [{ id: `kill-${sai}-grave`, rotulo: `corta o grave do ${sai}` },
-                  { id: `kill-${entra}-grave`, rotulo: `devolve o grave do ${entra}` }] };
+        fala: t('p.troca', { sai, entra }), porque: t('p.troca.por'),
+        apontar: [{ id: `kill-${sai}-grave`, rotulo: t('p.troca.rot', { d: sai }) },
+                  { id: `kill-${entra}-grave`, rotulo: t('p.troca.rot2', { d: entra }) }] };
     } },
 
   /**
@@ -237,14 +224,10 @@ const REGRAS = [
         const outro = d === 'A' ? 'B' : 'A';
         const entra = m.tipo === 'drop';
         return {
-          fala: entra
-            ? `Em <b>${m.tempos} tempos</b> o deck ${d} <b>abre</b> — é ali que a próxima entra.`
-            : `Em <b>${m.tempos} tempos</b> o deck ${d} <b>quebra</b> — é ali que ele sai limpo.`,
-          porque: entra
-            ? 'A música é feita em blocos de 16 tempos. Entrar quando o bloco abre soa como se as duas fossem uma só.'
-            : 'Sair na quebra é sair sem deixar buraco — o ouvido nem percebe que faltou alguém.',
+          fala: t(entra ? 'p.momento.abre' : 'p.momento.quebra', { n: m.tempos, d }),
+          porque: t(entra ? 'p.momento.abre.por' : 'p.momento.quebra.por'),
           apontar: [{ id: entra ? `play-${outro}` : 'xf',
-                      rotulo: entra ? `prepare o ${outro}` : 'leve o crossfader aqui' }],
+                      rotulo: t(entra ? 'p.momento.abre.rot' : 'p.momento.quebra.rot', { d: outro }) }],
         };
       }
       return null;
@@ -266,8 +249,7 @@ const REGRAS = [
    * ou um buraco unico grande. Abaixo disso, silencio.
    */
   { id: 'glitch', grav: 2, facil: 0, quando: (e) => (e.glitchMsPorMin || 0) > 40 && {
-      fala: `O áudio está <b>falhando</b>: ${Math.round(e.glitchMsPorMin)} ms perdidos no último minuto.`,
-      porque: 'O navegador está sem folga de CPU. Feche abas pesadas, ou deixe o keylock desligado.',
+      fala: t('p.glitch', { ms: Math.round(e.glitchMsPorMin) }), porque: t('p.glitch.por'),
       apontar: [] } },
 ];
 
@@ -301,8 +283,7 @@ export function plano(e, { max = 3 } = {}) {
 export function proximoPasso(e) {
   return plano(e, { max: 1 })[0] || {
     id: 'ok', grav: 1, cor: 'depois', apontar: [],
-    fala: 'Está tudo no lugar. Ouça e sinta a música.',
-    porque: 'Quando não há nada pra corrigir, o trabalho é escutar.' };
+    fala: t('p.ok'), porque: t('p.ok.por') };
 }
 
 /**

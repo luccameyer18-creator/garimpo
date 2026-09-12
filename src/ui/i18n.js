@@ -1,0 +1,412 @@
+/**
+ * Três idiomas: português do Brasil, inglês e espanhol.
+ *
+ * O português é o original e a referência — foi nele que as frases do professor
+ * foram escritas e testadas com alguém que estava aprendendo de verdade. As
+ * outras duas traduzem o SENTIDO, não as palavras: "os dois graves viram lama"
+ * não vira "the two basses become mud", vira "two basslines fighting turn to
+ * mush", que é como se diz isso em inglês de DJ.
+ *
+ * Sem biblioteca. Um objeto por idioma, uma função `t(chave, vars)`, e
+ * `{coisa}` como marcador. É o suficiente pra este tamanho, e evita 40 KB de
+ * dependência num app cujo orçamento de CPU é o áudio.
+ *
+ * O texto fixo do HTML leva `data-i18n="chave"`; `traduzirDOM()` percorre e
+ * troca. Atributos vão como `data-i18n-attr="title:chave"`.
+ */
+
+const PT = {
+  'app.pronto': 'pronto',
+  'app.volume': 'VOLUME',
+  'app.ajuda': 'ajuda',
+  'app.musicas': 'músicas',
+  'app.combina': 'combina agora',
+  'app.montar': 'montar sequência',
+  'app.proximas': 'próximas',
+  'app.buscar': 'buscar por nome…',
+  'app.arquivo': 'usar um arquivo meu',
+  'app.fechar': 'fechar',
+  'app.piloto': '▶ o professor toca',
+  'app.piloto.parar': '■ parar',
+  'app.piloto.dica': 'o professor monta e toca um set inteiro',
+  'app.min': '{n} min',
+  'app.energia.subir': 'subindo',
+  'app.energia.estavel': 'estável',
+  'app.energia.descer': 'descendo',
+  'app.grupo.eletronico': 'eletrônico',
+  'app.grupo.brasil': 'brasil',
+  'app.grupo.latino': 'latino',
+
+  'mix.encaixar': 'ENCAIXAR',
+  'mix.encaixar.dica': 'desliza o deck B até a batida cair em cima do A',
+  'mix.encaixe': 'ENCAIXE DAS BATIDAS',
+  'mix.crossfader': 'CROSSFADER',
+  'mix.crossfader.rot': '◄ só o A · os dois · só o B ►',
+  'mix.grave': 'GRAVE',
+  'mix.medio': 'MÉDIO',
+  'mix.agudo': 'AGUDO',
+  'mix.filtro': 'FILTRO',
+  'mix.vol': 'VOL',
+  'mix.fone': 'FONE',
+  'mix.fone.dica': 'ouvir só este deck no fone',
+  'mix.fone.saida': 'fone: escolher saída…',
+  'mix.fone.padrao': 'fone: saída padrão',
+
+  'deck.vazio': 'vazio',
+  'deck.escolha': 'escolha uma música na lista',
+  'deck.jog': 'JOG',
+  'deck.auto': 'AUTO',
+  'deck.auto.dica': 'o professor mantém o encaixe sozinho',
+  'deck.auto.lig': 'o professor está mantendo o encaixe deste deck sozinho',
+  'deck.fino.menos': 'atrasa 5 ms (segure pra repetir)',
+  'deck.fino.mais': 'adianta 5 ms (segure pra repetir)',
+  'deck.falta': 'falta',
+  'deck.carregando': 'carregando…',
+  'deck.parcial': '  ·  tocável, baixando o resto…',
+
+  // ── professor ──
+  'p.audio': 'Toque em qualquer lugar da tela para <b>ligar o áudio</b>.',
+  'p.audio.por': 'O navegador só libera som depois que você interage com a página.',
+  'p.carregar': 'Escolha uma música na lista à direita e mande pro deck <b>A</b>.',
+  'p.carregar.por': 'O deck A é o tocador principal. O B recebe a próxima.',
+  'p.carregar.rot': 'escolha aqui',
+  'p.play': 'Toque em <b>PLAY</b> no deck {d}.',
+  'p.play.por': 'Nada acontece até você dar play.',
+  'p.play.rot': 'PLAY — começa a tocar',
+  'p.limitador': 'O som está <b>estourando</b>. Baixe o volume geral.',
+  'p.limitador.por': 'O limitador está segurando {db} dB pra não distorcer.',
+  'p.limitador.rot': 'baixe o volume geral',
+  'p.fim': 'O deck {d} acaba em <b>{s}s</b> — comece a transição agora.',
+  'p.fim.por': 'Se a faixa acabar sem a outra entrar, o set cai no silêncio.',
+  'p.fim.rot': 'traga o {d}',
+  'p.fim.rot2': 'escolha a próxima',
+  'p.proxima': 'Mande a próxima música pro deck <b>{d}</b>. As <b>verdes</b> combinam.',
+  'p.proxima.por': 'Verde = tom compatível e andamento parecido. Encaixam sem esforço.',
+  'p.proxima.rot': 'as verdes combinam',
+  'p.sync': 'Toque em <b>SYNC</b> no deck {d} — ele casa o andamento sozinho.',
+  'p.sync.por': 'Uma está em {a} e a outra em {b} BPM. Assim as batidas brigam.',
+  'p.sync.rot': 'SYNC — casa o andamento',
+  'p.playOutro': 'Dê <b>PLAY</b> no deck {d}. Ninguém ouve ele ainda.',
+  'p.playOutro.por': 'Com o crossfader do outro lado você pode errar à vontade — é assim que se ensaia a entrada.',
+  'p.playOutro.rot': 'PLAY do deck {d}',
+  'p.cortaGrave': '<b>Corte o grave</b> do deck {d}: o botão <b>×</b> da linha GRAVE.',
+  'p.cortaGrave.por': 'Dois graves juntos viram lama. Corta um e devolve só quando o outro sair.',
+  'p.cortaGrave.rot': 'corta o GRAVE do {d}',
+  'p.fase': 'As batidas estão <b>{ms} ms</b> fora. Toque em <b>ENCAIXAR</b>.',
+  'p.fase.por': 'O deck B está {lado}. O botão desliza a música até cair em cima. No jog, o anel de fora é ajuste fino; o centro é scratch, e aí é fácil errar.',
+  'p.fase.adiantado': 'adiantado',
+  'p.fase.atrasado': 'atrasado',
+  'p.fase.rot': 'ENCAIXAR — alinha sozinho',
+  'p.fase.rot2': 'fica verde quando encaixa',
+  'p.graveEsquecido': 'O <b>grave do deck {d}</b> está cortado e ele é o único tocando — devolva.',
+  'p.graveEsquecido.por': 'Você cortou pra fazer a troca e não devolveu. A música fica sem fundo, fina, como se tocasse num rádio pequeno.',
+  'p.graveEsquecido.rot': 'devolve o GRAVE do {d}',
+  'p.gravesJuntos': 'Os <b>dois graves</b> estão abertos juntos — é isso que embola o som.',
+  'p.gravesJuntos.por': 'As duas linhas de baixo somam e o resultado fica sujo e alto demais.',
+  'p.gravesJuntos.rot': 'corte um dos dois',
+  'p.volume': 'O deck {alto} está <b>{db} dB</b> mais alto. Suba o {baixo}.',
+  'p.volume.por': 'Se os volumes não batem, a troca dá um degrau que todo mundo escuta.',
+  'p.volume.rot': 'suba o volume do {d}',
+  'p.crossfader': 'Traga o <b>crossfader</b> {lado}, devagar.',
+  'p.crossfader.direita': 'pra direita',
+  'p.crossfader.esquerda': 'pra esquerda',
+  'p.crossfader.por': 'Os dois vão soar juntos. Com o grave de um cortado, não vira lama.',
+  'p.crossfader.rot': 'CROSSFADER — devagar',
+  'p.troca': 'Agora a troca: <b>corte o grave do {sai}</b> e <b>devolva o do {entra}</b>.',
+  'p.troca.por': 'Este é o instante da transição. Depois leve o crossfader até o fim e pare o deck que saiu.',
+  'p.troca.rot': 'corta o grave do {d}',
+  'p.troca.rot2': 'devolve o grave do {d}',
+  'p.momento.abre': 'Em <b>{n} tempos</b> o deck {d} <b>abre</b> — é ali que a próxima entra.',
+  'p.momento.abre.por': 'A música é feita em blocos de 16 tempos. Entrar quando o bloco abre soa como se as duas fossem uma só.',
+  'p.momento.abre.rot': 'prepare o {d}',
+  'p.momento.quebra': 'Em <b>{n} tempos</b> o deck {d} <b>quebra</b> — é ali que ele sai limpo.',
+  'p.momento.quebra.por': 'Sair na quebra é sair sem deixar buraco — o ouvido nem percebe que faltou alguém.',
+  'p.momento.quebra.rot': 'leve o crossfader aqui',
+  'p.glitch': 'O áudio está <b>falhando</b>: {ms} ms perdidos no último minuto.',
+  'p.glitch.por': 'O navegador está sem folga de CPU. Feche abas pesadas, ou deixe o keylock desligado.',
+  'p.ok': 'Está tudo no lugar. <b>Ouça</b> e sinta a música.',
+  'p.ok.por': 'Quando não há nada pra corrigir, o trabalho é escutar.',
+};
+
+const EN = {
+  'app.pronto': 'ready',
+  'app.volume': 'VOLUME',
+  'app.ajuda': 'help',
+  'app.musicas': 'tracks',
+  'app.combina': 'what fits now',
+  'app.montar': 'build a sequence',
+  'app.proximas': 'up next',
+  'app.buscar': 'search by name…',
+  'app.arquivo': 'use my own file',
+  'app.fechar': 'close',
+  'app.piloto': '▶ let the teacher play',
+  'app.piloto.parar': '■ stop',
+  'app.piloto.dica': 'the teacher builds and plays a whole set',
+  'app.min': '{n} min',
+  'app.energia.subir': 'building up',
+  'app.energia.estavel': 'steady',
+  'app.energia.descer': 'coming down',
+  'app.grupo.eletronico': 'electronic',
+  'app.grupo.brasil': 'brazil',
+  'app.grupo.latino': 'latin',
+
+  'mix.encaixar': 'LINE UP',
+  'mix.encaixar.dica': 'slides deck B until its beat lands on top of A',
+  'mix.encaixe': 'BEAT ALIGNMENT',
+  'mix.crossfader': 'CROSSFADER',
+  'mix.crossfader.rot': '◄ A only · both · B only ►',
+  'mix.grave': 'LOW',
+  'mix.medio': 'MID',
+  'mix.agudo': 'HIGH',
+  'mix.filtro': 'FILTER',
+  'mix.vol': 'VOL',
+  'mix.fone': 'CUE',
+  'mix.fone.dica': 'hear only this deck in your headphones',
+  'mix.fone.saida': 'headphones: pick an output…',
+  'mix.fone.padrao': 'headphones: default output',
+
+  'deck.vazio': 'empty',
+  'deck.escolha': 'pick a track from the list',
+  'deck.jog': 'JOG',
+  'deck.auto': 'AUTO',
+  'deck.auto.dica': 'the teacher keeps the beats locked for you',
+  'deck.auto.lig': 'the teacher is keeping this deck locked',
+  'deck.fino.menos': 'pull back 5 ms (hold to repeat)',
+  'deck.fino.mais': 'push forward 5 ms (hold to repeat)',
+  'deck.falta': 'left',
+  'deck.carregando': 'loading…',
+  'deck.parcial': '  ·  playable, still downloading…',
+
+  'p.audio': 'Tap anywhere on the screen to <b>turn the sound on</b>.',
+  'p.audio.por': 'Browsers only allow audio after you interact with the page.',
+  'p.carregar': 'Pick a track from the list on the right and send it to deck <b>A</b>.',
+  'p.carregar.por': 'Deck A is your main player. B takes the next track.',
+  'p.carregar.rot': 'pick one here',
+  'p.play': 'Hit <b>PLAY</b> on deck {d}.',
+  'p.play.por': 'Nothing happens until you press play.',
+  'p.play.rot': 'PLAY — starts the track',
+  'p.limitador': 'The sound is <b>clipping</b>. Turn the master down.',
+  'p.limitador.por': 'The limiter is holding back {db} dB to stop it distorting.',
+  'p.limitador.rot': 'turn this down',
+  'p.fim': 'Deck {d} ends in <b>{s}s</b> — start the transition now.',
+  'p.fim.por': 'If the track runs out before the next one is in, the set drops into silence.',
+  'p.fim.rot': 'bring in {d}',
+  'p.fim.rot2': 'pick the next one',
+  'p.proxima': 'Send the next track to deck <b>{d}</b>. The <b>green</b> ones fit.',
+  'p.proxima.por': 'Green = matching key and close tempo. Those blend with no effort.',
+  'p.proxima.rot': 'the green ones fit',
+  'p.sync': 'Hit <b>SYNC</b> on deck {d} — it matches the tempo for you.',
+  'p.sync.por': 'One is at {a} and the other at {b} BPM. Like that the beats fight each other.',
+  'p.sync.rot': 'SYNC — matches the tempo',
+  'p.playOutro': 'Hit <b>PLAY</b> on deck {d}. Nobody can hear it yet.',
+  'p.playOutro.por': 'With the crossfader all the way over you can make a mess and no one hears — that is how you rehearse the entry.',
+  'p.playOutro.rot': 'PLAY on deck {d}',
+  'p.cortaGrave': '<b>Cut the lows</b> on deck {d}: the <b>×</b> button on the LOW row.',
+  'p.cortaGrave.por': 'Two basslines together turn to mush. Cut one, and give it back only when the other leaves.',
+  'p.cortaGrave.rot': 'cut the LOWS on {d}',
+  'p.fase': 'The beats are <b>{ms} ms</b> out. Hit <b>LINE UP</b>.',
+  'p.fase.por': 'Deck B is running {lado}. The button slides the track until it lands on the beat. On the jog, the outer ring is the fine nudge; the centre is scratch, and that is easy to overshoot.',
+  'p.fase.adiantado': 'ahead',
+  'p.fase.atrasado': 'behind',
+  'p.fase.rot': 'LINE UP — aligns it for you',
+  'p.fase.rot2': 'turns green when it locks',
+  'p.graveEsquecido': 'The <b>lows on deck {d}</b> are still cut and it is the only one playing — give them back.',
+  'p.graveEsquecido.por': 'You cut them for the swap and never restored them. The track has no bottom, thin, like a small radio.',
+  'p.graveEsquecido.rot': 'give the LOWS back on {d}',
+  'p.gravesJuntos': '<b>Both basslines</b> are open at once — that is what is muddying the sound.',
+  'p.gravesJuntos.por': 'The two low ends add up and the result is dirty and far too loud.',
+  'p.gravesJuntos.rot': 'cut one of them',
+  'p.volume': 'Deck {alto} is <b>{db} dB</b> louder. Bring {baixo} up.',
+  'p.volume.por': 'If the levels do not match, the swap lands as a step everyone hears.',
+  'p.volume.rot': 'bring {d} up',
+  'p.crossfader': 'Bring the <b>crossfader</b> {lado}, slowly.',
+  'p.crossfader.direita': 'to the right',
+  'p.crossfader.esquerda': 'to the left',
+  'p.crossfader.por': 'Both will sound together. With one bassline cut, it will not turn to mush.',
+  'p.crossfader.rot': 'CROSSFADER — slowly',
+  'p.troca': 'Now the swap: <b>cut the lows on {sai}</b> and <b>give {entra} its lows back</b>.',
+  'p.troca.por': 'This is the moment of the transition. Then take the crossfader all the way and stop the deck that left.',
+  'p.troca.rot': 'cut the lows on {d}',
+  'p.troca.rot2': 'give {d} its lows back',
+  'p.momento.abre': 'In <b>{n} beats</b> deck {d} <b>opens up</b> — that is where the next one comes in.',
+  'p.momento.abre.por': 'Dance music is built in 16-beat blocks. Coming in when the block opens makes the two sound like one track.',
+  'p.momento.abre.rot': 'get {d} ready',
+  'p.momento.quebra': 'In <b>{n} beats</b> deck {d} <b>breaks down</b> — that is where it leaves cleanly.',
+  'p.momento.quebra.por': 'Leaving on the breakdown leaves no hole — the ear never notices anyone went missing.',
+  'p.momento.quebra.rot': 'take the crossfader here',
+  'p.glitch': 'The audio is <b>dropping out</b>: {ms} ms lost in the last minute.',
+  'p.glitch.por': 'The browser is out of CPU headroom. Close heavy tabs, or leave key lock off.',
+  'p.ok': 'Everything is where it should be. <b>Listen</b> and feel the music.',
+  'p.ok.por': 'When there is nothing to fix, the job is to listen.',
+};
+
+const ES = {
+  'app.pronto': 'listo',
+  'app.volume': 'VOLUMEN',
+  'app.ajuda': 'ayuda',
+  'app.musicas': 'canciones',
+  'app.combina': 'lo que pega ahora',
+  'app.montar': 'armar secuencia',
+  'app.proximas': 'siguientes',
+  'app.buscar': 'buscar por nombre…',
+  'app.arquivo': 'usar un archivo mío',
+  'app.fechar': 'cerrar',
+  'app.piloto': '▶ que toque el profesor',
+  'app.piloto.parar': '■ parar',
+  'app.piloto.dica': 'el profesor arma y toca un set entero',
+  'app.min': '{n} min',
+  'app.energia.subir': 'subiendo',
+  'app.energia.estavel': 'estable',
+  'app.energia.descer': 'bajando',
+  'app.grupo.eletronico': 'electrónico',
+  'app.grupo.brasil': 'brasil',
+  'app.grupo.latino': 'latino',
+
+  'mix.encaixar': 'CUADRAR',
+  'mix.encaixar.dica': 'desliza el deck B hasta que su golpe caiga sobre el de A',
+  'mix.encaixe': 'CUADRE DE LOS GOLPES',
+  'mix.crossfader': 'CROSSFADER',
+  'mix.crossfader.rot': '◄ solo A · los dos · solo B ►',
+  'mix.grave': 'GRAVES',
+  'mix.medio': 'MEDIOS',
+  'mix.agudo': 'AGUDOS',
+  'mix.filtro': 'FILTRO',
+  'mix.vol': 'VOL',
+  'mix.fone': 'CUE',
+  'mix.fone.dica': 'escuchar solo este deck en los auriculares',
+  'mix.fone.saida': 'auriculares: elegir salida…',
+  'mix.fone.padrao': 'auriculares: salida por defecto',
+
+  'deck.vazio': 'vacío',
+  'deck.escolha': 'elegí una canción de la lista',
+  'deck.jog': 'JOG',
+  'deck.auto': 'AUTO',
+  'deck.auto.dica': 'el profesor mantiene el cuadre solo',
+  'deck.auto.lig': 'el profesor está manteniendo el cuadre de este deck',
+  'deck.fino.menos': 'atrasa 5 ms (mantené para repetir)',
+  'deck.fino.mais': 'adelanta 5 ms (mantené para repetir)',
+  'deck.falta': 'faltan',
+  'deck.carregando': 'cargando…',
+  'deck.parcial': '  ·  se puede tocar, bajando el resto…',
+
+  'p.audio': 'Tocá en cualquier parte de la pantalla para <b>encender el audio</b>.',
+  'p.audio.por': 'El navegador recién libera el sonido cuando interactuás con la página.',
+  'p.carregar': 'Elegí una canción de la lista de la derecha y mandala al deck <b>A</b>.',
+  'p.carregar.por': 'El deck A es el reproductor principal. El B recibe la siguiente.',
+  'p.carregar.rot': 'elegí acá',
+  'p.play': 'Apretá <b>PLAY</b> en el deck {d}.',
+  'p.play.por': 'No pasa nada hasta que le des play.',
+  'p.play.rot': 'PLAY — empieza a sonar',
+  'p.limitador': 'El sonido está <b>saturando</b>. Bajá el volumen general.',
+  'p.limitador.por': 'El limitador está reteniendo {db} dB para que no distorsione.',
+  'p.limitador.rot': 'bajá acá',
+  'p.fim': 'El deck {d} termina en <b>{s}s</b> — empezá la transición ahora.',
+  'p.fim.por': 'Si la canción se acaba sin que entre la otra, el set se cae en silencio.',
+  'p.fim.rot': 'traé el {d}',
+  'p.fim.rot2': 'elegí la siguiente',
+  'p.proxima': 'Mandá la próxima canción al deck <b>{d}</b>. Las <b>verdes</b> pegan.',
+  'p.proxima.por': 'Verde = tono compatible y tempo parecido. Entran sin esfuerzo.',
+  'p.proxima.rot': 'las verdes pegan',
+  'p.sync': 'Apretá <b>SYNC</b> en el deck {d} — iguala el tempo solo.',
+  'p.sync.por': 'Una está en {a} y la otra en {b} BPM. Así los golpes se pelean.',
+  'p.sync.rot': 'SYNC — iguala el tempo',
+  'p.playOutro': 'Dale <b>PLAY</b> al deck {d}. Todavía nadie lo escucha.',
+  'p.playOutro.por': 'Con el crossfader del otro lado podés equivocarte tranquilo — así se ensaya la entrada.',
+  'p.playOutro.rot': 'PLAY del deck {d}',
+  'p.cortaGrave': '<b>Cortá los graves</b> del deck {d}: el botón <b>×</b> de la fila GRAVES.',
+  'p.cortaGrave.por': 'Dos graves juntos se vuelven barro. Cortá uno y devolvelo recién cuando salga el otro.',
+  'p.cortaGrave.rot': 'cortá los GRAVES del {d}',
+  'p.fase': 'Los golpes están <b>{ms} ms</b> corridos. Apretá <b>CUADRAR</b>.',
+  'p.fase.por': 'El deck B va {lado}. El botón desliza la canción hasta que caiga encima. En el jog, el anillo de afuera es el ajuste fino; el centro es scratch, y ahí es fácil pasarse.',
+  'p.fase.adiantado': 'adelantado',
+  'p.fase.atrasado': 'atrasado',
+  'p.fase.rot': 'CUADRAR — alinea solo',
+  'p.fase.rot2': 'se pone verde cuando cuadra',
+  'p.graveEsquecido': 'Los <b>graves del deck {d}</b> siguen cortados y es el único sonando — devolvelos.',
+  'p.graveEsquecido.por': 'Los cortaste para el cambio y no los devolviste. La canción queda sin fondo, finita, como una radio chiquita.',
+  'p.graveEsquecido.rot': 'devolvé los GRAVES del {d}',
+  'p.gravesJuntos': 'Los <b>dos graves</b> están abiertos a la vez — eso es lo que embarra el sonido.',
+  'p.gravesJuntos.por': 'Las dos líneas de bajo se suman y el resultado queda sucio y demasiado fuerte.',
+  'p.gravesJuntos.rot': 'cortá uno de los dos',
+  'p.volume': 'El deck {alto} está <b>{db} dB</b> más fuerte. Subí el {baixo}.',
+  'p.volume.por': 'Si los volúmenes no coinciden, el cambio da un escalón que escucha todo el mundo.',
+  'p.volume.rot': 'subí el volumen del {d}',
+  'p.crossfader': 'Traé el <b>crossfader</b> {lado}, despacio.',
+  'p.crossfader.direita': 'a la derecha',
+  'p.crossfader.esquerda': 'a la izquierda',
+  'p.crossfader.por': 'Los dos van a sonar juntos. Con los graves de uno cortados, no se vuelve barro.',
+  'p.crossfader.rot': 'CROSSFADER — despacio',
+  'p.troca': 'Ahora el cambio: <b>cortá los graves del {sai}</b> y <b>devolvé los del {entra}</b>.',
+  'p.troca.por': 'Este es el momento de la transición. Después llevá el crossfader hasta el fondo y pará el deck que salió.',
+  'p.troca.rot': 'cortá los graves del {d}',
+  'p.troca.rot2': 'devolvé los graves del {d}',
+  'p.momento.abre': 'En <b>{n} tiempos</b> el deck {d} <b>abre</b> — ahí es donde entra la siguiente.',
+  'p.momento.abre.por': 'La música de pista se arma en bloques de 16 tiempos. Entrar cuando el bloque abre hace que las dos suenen como una sola.',
+  'p.momento.abre.rot': 'prepará el {d}',
+  'p.momento.quebra': 'En <b>{n} tiempos</b> el deck {d} <b>rompe</b> — ahí es donde sale limpio.',
+  'p.momento.quebra.por': 'Salir en la bajada es salir sin dejar hueco — el oído ni se entera de que faltó alguien.',
+  'p.momento.quebra.rot': 'llevá el crossfader acá',
+  'p.glitch': 'El audio está <b>cortándose</b>: {ms} ms perdidos en el último minuto.',
+  'p.glitch.por': 'El navegador está sin margen de CPU. Cerrá pestañas pesadas, o dejá el key lock apagado.',
+  'p.ok': 'Está todo en su lugar. <b>Escuchá</b> y sentí la música.',
+  'p.ok.por': 'Cuando no hay nada que corregir, el trabajo es escuchar.',
+};
+
+const DICIONARIOS = { pt: PT, en: EN, es: ES };
+export const IDIOMAS = [
+  { id: 'pt', nome: 'Português' },
+  { id: 'en', nome: 'English' },
+  { id: 'es', nome: 'Español' },
+];
+
+/**
+ * Idioma inicial: o que você escolheu antes, senão o do navegador, senão
+ * português. Português é o padrão e não o inglês porque este app foi feito em
+ * português e é nele que as frases foram testadas com quem estava aprendendo.
+ */
+function inicial() {
+  try {
+    const salvo = localStorage.getItem('garimpo.idioma');
+    if (salvo && DICIONARIOS[salvo]) return salvo;
+  } catch { /* navegação privada bloqueia o storage; segue com o padrão */ }
+  const nav = (navigator.language || 'pt').slice(0, 2).toLowerCase();
+  return DICIONARIOS[nav] ? nav : 'pt';
+}
+
+let atual = inicial();
+
+export function idioma() { return atual; }
+
+export function setIdioma(id) {
+  if (!DICIONARIOS[id]) return;
+  atual = id;
+  try { localStorage.setItem('garimpo.idioma', id); } catch {}
+  document.documentElement.lang = id === 'pt' ? 'pt-BR' : id;
+  traduzirDOM();
+  window.dispatchEvent(new CustomEvent('idioma', { detail: { id } }));
+}
+
+/**
+ * Traduz. Chave que não existe cai no português e, se nem lá existir, devolve a
+ * própria chave — assim uma tradução faltando aparece como texto estranho na
+ * tela em vez de sumir em silêncio.
+ */
+export function t(chave, vars = null) {
+  let s = DICIONARIOS[atual]?.[chave] ?? PT[chave] ?? chave;
+  if (vars) for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+  return s;
+}
+
+/** Aplica nos elementos com data-i18n / data-i18n-attr. */
+export function traduzirDOM(raiz = document) {
+  for (const el of raiz.querySelectorAll('[data-i18n]')) {
+    el.innerHTML = t(el.dataset.i18n);
+  }
+  for (const el of raiz.querySelectorAll('[data-i18n-attr]')) {
+    // formato: "title:chave" ou "title:chave;placeholder:outra"
+    for (const par of el.dataset.i18nAttr.split(';')) {
+      const [attr, chave] = par.split(':');
+      if (attr && chave) el.setAttribute(attr.trim(), t(chave.trim()));
+    }
+  }
+}

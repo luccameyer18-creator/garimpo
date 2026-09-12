@@ -4,6 +4,7 @@
  * professor entrar depois como mais um cliente da mesma API.
  */
 import { Deck } from '../mix/deck.js';
+import { t, idioma, setIdioma, traduzirDOM, IDIOMAS } from './i18n.js';
 import { Mixer, erroDeFase } from '../mix/mixer.js';
 import { plano, autoajuste } from '../coach/guia.js';
 import { montarFila, resumo as resumoFila } from '../coach/fila.js';
@@ -172,14 +173,14 @@ function montarVista(id) {
   d.addEventListener('loading', (e) => {
     if (e.detail.estado !== 'carregando') return;
     v.titulo.textContent = e.detail.faixa?.title || '…';
-    v.artista.textContent = 'carregando…';
+    v.artista.textContent = t('deck.carregando');
     v.erro.hidden = true;
   });
 
   d.addEventListener('loaded', (e) => {
     const { faixa, duration, parcial, trocado } = e.detail;
     v.titulo.textContent = faixa.title;
-    v.artista.textContent = faixa.artist + (parcial ? '  ·  tocável, baixando o resto…' : '');
+    v.artista.textContent = faixa.artist + (parcial ? t('deck.parcial') : '');
     v.dur.textContent = fmt(duration);
     v.capa.src = faixa.artwork || '';
     v.capa.style.visibility = faixa.artwork ? 'visible' : 'hidden';
@@ -496,9 +497,7 @@ function ligarAuto(id) {
   vistas[id].auto.onclick = () => {
     autoLigado[id] = !autoLigado[id];
     vistas[id].auto.classList.toggle('lig', autoLigado[id]);
-    vistas[id].auto.title = autoLigado[id]
-      ? 'o professor está mantendo o encaixe deste deck sozinho'
-      : 'o professor mantém o encaixe sozinho';
+    vistas[id].auto.title = t(autoLigado[id] ? 'deck.auto.lig' : 'deck.auto.dica');
   };
 }
 
@@ -971,10 +970,10 @@ async function carregarLista(fn) {
  * reggaeton. A diferenca fica escondida atras do chip, que e onde ela pertence.
  */
 const PILHAS = [
-  { grupo: 'eletrônico', itens: GENRES.map((g) => ({ nome: g, carregar: () => trending({ genre: g, limit: 40 }) })) },
-  { grupo: 'brasil',     itens: CRATES.filter((c) => c.reg === 'BR')
+  { grupo: 'app.grupo.eletronico', itens: GENRES.map((g) => ({ nome: g, carregar: () => trending({ genre: g, limit: 40 }) })) },
+  { grupo: 'app.grupo.brasil',   itens: CRATES.filter((c) => c.reg === 'BR')
       .map((c) => ({ nome: c.nome, carregar: () => crateBr(c.nome, { limite: 40 }) })) },
-  { grupo: 'latino',     itens: CRATES.filter((c) => c.reg === 'LAT')
+  { grupo: 'app.grupo.latino',   itens: CRATES.filter((c) => c.reg === 'LAT')
       .map((c) => ({ nome: c.nome, carregar: () => crateBr(c.nome, { limite: 40 }) })) },
 ];
 
@@ -988,7 +987,7 @@ const carregarPilha = (nome) => {
 };
 
 $('crates').innerHTML = PILHAS.map((p) =>
-  `<div class="grupo-chips"><span class="rot-chips">${p.grupo}</span>` +
+  `<div class="grupo-chips"><span class="rot-chips" data-i18n="${p.grupo}">${t(p.grupo)}</span>` +
   p.itens.map((i) => `<button data-pilha="${i.nome}">${i.nome}</button>`).join('') +
   '</div>').join('');
 $('crates').addEventListener('click', (e) => {
@@ -1292,7 +1291,7 @@ function garantirPiloto() {
 
 function pararPiloto() {
   $('b-piloto').classList.remove('lig');
-  $('b-piloto').textContent = '▶ o professor toca';
+  $('b-piloto').textContent = t('app.piloto');
   piloto?.assumirControle?.();
 }
 
@@ -1300,7 +1299,7 @@ $('b-piloto').onclick = async () => {
   if (piloto?.ativo) { pararPiloto(); $('piloto-nota').textContent = 'piloto desligado'; return; }
   await garantirRodando();
   const b = $('b-piloto');
-  b.classList.add('lig'); b.textContent = '■ parar';
+  b.classList.add('lig'); b.textContent = t('app.piloto.parar');
   $('piloto-nota').style.color = 'var(--neon)';
   $('piloto-nota').textContent = 'garimpando faixas…';
   try {
@@ -1339,3 +1338,36 @@ document.addEventListener('pointerdown', (e) => {
   $('piloto-nota').textContent = 'você assumiu — o piloto soltou';
   $('piloto-nota').style.color = 'var(--cue)';
 }, true);
+
+
+// ─────────────────────────── idioma ───────────────────────────
+
+/**
+ * Três idiomas. O português é o original: foi nele que as frases do professor
+ * foram escritas e testadas com alguém aprendendo de verdade — as outras duas
+ * traduzem o sentido, não as palavras.
+ *
+ * Trocar de idioma redesenha o texto fixo pelo `data-i18n` e força o professor
+ * a se redesenhar zerando a chave da última lista; sem isso ele só trocaria de
+ * língua quando o conselho mudasse, o que pode demorar um minuto inteiro.
+ */
+$('idioma').innerHTML = IDIOMAS.map((i) =>
+  `<option value="${i.id}">${i.nome}</option>`).join('');
+$('idioma').value = idioma();
+$('idioma').onchange = () => setIdioma($('idioma').value);
+
+window.addEventListener('idioma', () => {
+  ultimaLista = '';                       // obriga o professor a redesenhar agora
+  $('b-piloto').textContent = piloto?.ativo ? t('app.piloto.parar') : t('app.piloto');
+  for (const id of ['A', 'B']) {
+    const v = vistas[id];
+    if (v && !decks[id]?.faixa) {
+      v.titulo.textContent = t('deck.vazio');
+      v.artista.textContent = t('deck.escolha');
+    }
+    if (v) v.auto.title = t(autoLigado[id] ? 'deck.auto.lig' : 'deck.auto.dica');
+  }
+});
+
+document.documentElement.lang = idioma() === 'pt' ? 'pt-BR' : idioma();
+traduzirDOM();

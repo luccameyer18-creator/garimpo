@@ -220,6 +220,9 @@
   /* flex:1 com base auto nao encolhe abaixo do conteudo, e os dois seletores
      saiam 321px pra fora da coluna. flex:1 1 0 + min-width:0 e o par que
      realmente deixa encolher; o wrap cobre o resto. */
+  #idioma { font:700 9.5px ui-monospace,monospace; padding:4px 6px; margin-left:auto;
+            background:var(--sup); color:var(--mut); border:1px solid var(--linha);
+            border-radius:6px; cursor:pointer; }
   .piloto-cx { display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
   .piloto-cx select { flex:1 1 auto; min-width:0; font-size:9.5px; padding:3px 4px; }
   #b-piloto { flex:1 1 100%; min-width:0; font:800 10px ui-monospace,monospace;
@@ -417,11 +420,17 @@
     .deck { min-height:360px; }
     canvas.onda { max-height:150px; }
     .col.mix { grid-column:1/-1; order:3; }
-    .col.lib { grid-column:1/-1; order:4; min-height:480px; }
+    /* altura por CONTEUDO, nao fixa. Com min-height:480px a lateral prendia
+       590px de conteudo numa caixa de 480 e a lista e o botao de arquivo
+       saiam pela base — medido. Quando o grid solta a linha, quem manda e o
+       conteudo. */
+    .col.lib { grid-column:1/-1; order:4; min-height:auto; }
+    .lateral { height:auto; }
     .mixer { min-height:280px; }
     /* a lista e flex:1 dentro da lateral; com a linha do grid solta ela ficava
-       com ALTURA ZERO — medido 528x0 numa janela de 585px */
-    .lista { min-height:220px; }
+       com ALTURA ZERO — medido 528x0 numa janela de 585px. Aqui ela para de
+       flexionar e passa a ter altura propria. */
+    .lista { min-height:220px; flex:0 0 auto; }
   }
   @media (max-width:700px) {
     .palco { grid-template-columns:1fr; }
@@ -438,6 +447,7 @@
 <div class="topo">
   <div class="marca">GARIM<span>PO</span></div>
   <div id="dica" style="color:var(--fraco);font-size:11px"></div>
+  <select id="idioma" title="idioma / language / idioma"></select>
   <div class="medidor-topo">
     <span style="font:9px ui-monospace,monospace;color:var(--fraco)">VOLUME</span>
     <input type="range" id="master" min="0" max="1" step="0.01" value="0.85"
@@ -463,37 +473,37 @@
       <div>
         <canvas class="fase" id="fase"></canvas>
         <div class="linha-fase">
-          <button id="b-encaixar" title="desliza o deck B até a batida cair em cima do A">ENCAIXAR</button>
-          <span class="rot" id="rot-fase" style="margin:0"><b style="color:var(--mut)">ENCAIXE DAS BATIDAS</b></span>
+          <button id="b-encaixar" data-i18n="mix.encaixar" data-i18n-attr="title:mix.encaixar.dica" title="desliza o deck B até a batida cair em cima do A">ENCAIXAR</button>
+          <span class="rot" id="rot-fase" style="margin:0"><b style="color:var(--mut)" data-i18n="mix.encaixe">ENCAIXE DAS BATIDAS</b></span>
         </div>
       </div>
       <div class="tiras">
         <div class="tira" data-d="A">
           <h3>A</h3>
-          <div class="knob"><label>GRAVE</label><input type="range" id="eq-A-grave" data-d="A" data-eq="grave" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-A-grave" data-d="A" data-kill="grave">×</button></div>
-          <div class="knob"><label>MÉDIO</label><input type="range" id="eq-A-medio" data-d="A" data-eq="medio" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-A-medio" data-d="A" data-kill="medio">×</button></div>
-          <div class="knob"><label>AGUDO</label><input type="range" id="eq-A-agudo" data-d="A" data-eq="agudo" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-A-agudo" data-d="A" data-kill="agudo">×</button></div>
-          <div class="knob"><label>FILTRO</label><input type="range" id="fil-A" data-d="A" data-filtro min="-1" max="1" step="0.01" value="0"></div>
-          <div class="knob"><label>VOL</label><input type="range" id="vol-A" data-d="A" data-fader min="0" max="1" step="0.01" value="1"></div>
-          <button class="fone" id="fone-A" data-d="A" title="ouvir só este deck no fone">FONE</button>
+          <div class="knob"><label data-i18n="mix.grave">GRAVE</label><input type="range" id="eq-A-grave" data-d="A" data-eq="grave" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-A-grave" data-d="A" data-kill="grave">×</button></div>
+          <div class="knob"><label data-i18n="mix.medio">MÉDIO</label><input type="range" id="eq-A-medio" data-d="A" data-eq="medio" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-A-medio" data-d="A" data-kill="medio">×</button></div>
+          <div class="knob"><label data-i18n="mix.agudo">AGUDO</label><input type="range" id="eq-A-agudo" data-d="A" data-eq="agudo" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-A-agudo" data-d="A" data-kill="agudo">×</button></div>
+          <div class="knob"><label data-i18n="mix.filtro">FILTRO</label><input type="range" id="fil-A" data-d="A" data-filtro min="-1" max="1" step="0.01" value="0"></div>
+          <div class="knob"><label data-i18n="mix.vol">VOL</label><input type="range" id="vol-A" data-d="A" data-fader min="0" max="1" step="0.01" value="1"></div>
+          <button class="fone" id="fone-A" data-d="A" data-i18n="mix.fone" data-i18n-attr="title:mix.fone.dica" title="ouvir só este deck no fone">FONE</button>
           <div class="vu"><i id="vu-A"></i></div>
         </div>
         <div class="tira" data-d="B">
           <h3>B</h3>
-          <div class="knob"><label>GRAVE</label><input type="range" id="eq-B-grave" data-d="B" data-eq="grave" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-B-grave" data-d="B" data-kill="grave">×</button></div>
-          <div class="knob"><label>MÉDIO</label><input type="range" id="eq-B-medio" data-d="B" data-eq="medio" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-B-medio" data-d="B" data-kill="medio">×</button></div>
-          <div class="knob"><label>AGUDO</label><input type="range" id="eq-B-agudo" data-d="B" data-eq="agudo" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-B-agudo" data-d="B" data-kill="agudo">×</button></div>
-          <div class="knob"><label>FILTRO</label><input type="range" id="fil-B" data-d="B" data-filtro min="-1" max="1" step="0.01" value="0"></div>
-          <div class="knob"><label>VOL</label><input type="range" id="vol-B" data-d="B" data-fader min="0" max="1" step="0.01" value="1"></div>
-          <button class="fone" id="fone-B" data-d="B" title="ouvir só este deck no fone">FONE</button>
+          <div class="knob"><label data-i18n="mix.grave">GRAVE</label><input type="range" id="eq-B-grave" data-d="B" data-eq="grave" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-B-grave" data-d="B" data-kill="grave">×</button></div>
+          <div class="knob"><label data-i18n="mix.medio">MÉDIO</label><input type="range" id="eq-B-medio" data-d="B" data-eq="medio" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-B-medio" data-d="B" data-kill="medio">×</button></div>
+          <div class="knob"><label data-i18n="mix.agudo">AGUDO</label><input type="range" id="eq-B-agudo" data-d="B" data-eq="agudo" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-B-agudo" data-d="B" data-kill="agudo">×</button></div>
+          <div class="knob"><label data-i18n="mix.filtro">FILTRO</label><input type="range" id="fil-B" data-d="B" data-filtro min="-1" max="1" step="0.01" value="0"></div>
+          <div class="knob"><label data-i18n="mix.vol">VOL</label><input type="range" id="vol-B" data-d="B" data-fader min="0" max="1" step="0.01" value="1"></div>
+          <button class="fone" id="fone-B" data-d="B" data-i18n="mix.fone" data-i18n-attr="title:mix.fone.dica" title="ouvir só este deck no fone">FONE</button>
           <div class="vu"><i id="vu-B"></i></div>
         </div>
       </div>
       <div>
         <input type="range" class="xf" id="xf" min="0" max="1" step="0.005" value="0.5">
-        <div class="rot"><b style="color:var(--mut)">CROSSFADER</b> — ◄ só o A · os dois · só o B ►</div>
+        <div class="rot"><b style="color:var(--mut)" data-i18n="mix.crossfader">CROSSFADER</b> — <span data-i18n="mix.crossfader.rot">◄ só o A · os dois · só o B ►</span></div>
         <div class="linha-fone">
-          <select id="saida-fone" title="para onde vai o fone"><option value="">fone: escolher saída…</option></select>
+          <select id="saida-fone" title="para onde vai o fone"><option value="" data-i18n="mix.fone.saida">fone: escolher saída…</option></select>
           <span class="rot" id="fone-nota" style="margin:0"></span>
         </div>
       </div>
@@ -506,37 +516,37 @@
     <div class="lateral">
       <div class="fila-cx" id="fila-cx" hidden>
         <div class="fila-topo">
-          <h2 style="margin:0">próximas</h2>
+          <h2 style="margin:0" data-i18n="app.proximas">próximas</h2>
           <span class="rot" id="fila-resumo" style="margin:0"></span>
           <button class="ic" id="b-fila-fechar" title="fechar">×</button>
         </div>
         <div class="fila" id="fila"></div>
       </div>
-      <h2>músicas</h2>
+      <h2 data-i18n="app.musicas">músicas</h2>
       <div style="display:flex;gap:5px">
-        <button id="b-compat" disabled style="flex:1">combina agora</button>
-        <button id="b-fila" disabled title="monta a sequência do set">montar sequência</button>
+        <button id="b-compat" disabled style="flex:1" data-i18n="app.combina">combina agora</button>
+        <button id="b-fila" disabled title="monta a sequência do set" data-i18n="app.montar">montar sequência</button>
       </div>
       <div class="piloto-cx">
-        <button id="b-piloto" title="o professor monta e toca um set inteiro">▶ o professor toca</button>
+        <button id="b-piloto" data-i18n="app.piloto" data-i18n-attr="title:app.piloto.dica" title="o professor monta e toca um set inteiro">▶ o professor toca</button>
         <select id="pref-min" title="duração do set">
-          <option value="15">15 min</option>
-          <option value="30" selected>30 min</option>
-          <option value="45">45 min</option>
-          <option value="60">60 min</option>
+          <option value="15" data-min="15">15 min</option>
+          <option value="30" selected data-min="30">30 min</option>
+          <option value="45" data-min="45">45 min</option>
+          <option value="60" data-min="60">60 min</option>
         </select>
         <select id="pref-energia" title="curva de energia">
-          <option value="subir" selected>subindo</option>
-          <option value="estavel">estável</option>
-          <option value="descer">descendo</option>
+          <option value="subir" selected data-i18n="app.energia.subir">subindo</option>
+          <option value="estavel" data-i18n="app.energia.estavel">estável</option>
+          <option value="descer" data-i18n="app.energia.descer">descendo</option>
         </select>
       </div>
       <div class="rot" id="piloto-nota" style="margin:0"></div>
       <div class="crates" id="crates"></div>
-      <input type="text" id="busca" placeholder="buscar por nome…">
+      <input type="text" id="busca" placeholder="buscar por nome…" data-i18n-attr="placeholder:app.buscar">
       <div class="lista" id="lista"></div>
       <div class="creditos" id="creditos"></div>
-      <button id="b-arquivo" style="font-size:10px;font-weight:600">usar um arquivo meu</button>
+      <button id="b-arquivo" style="font-size:10px;font-weight:600" data-i18n="app.arquivo">usar um arquivo meu</button>
       <input type="file" id="arquivo" accept="audio/*" hidden>
     </div>
   </div>
@@ -572,8 +582,8 @@
       <div class="letra"></div>
       <img class="capa" alt="">
       <div style="min-width:0">
-        <div class="titulo">vazio</div>
-        <div class="artista">escolha uma música na lista</div>
+        <div class="titulo" data-i18n="deck.vazio">vazio</div>
+        <div class="artista" data-i18n="deck.escolha">escolha uma música na lista</div>
       </div>
       <div class="selo">
         <span class="bpm" title="toque no número pra corrigir">
@@ -591,12 +601,12 @@
           <div class="anel-jog"></div>
           <div class="marca-jog"></div>
           <div class="visor"><div><div class="bpm">—</div><div class="un">BPM</div></div></div>
-          <div class="nome-jog">JOG</div>
+          <div class="nome-jog" data-i18n="deck.jog">JOG</div>
         </div>
         <div class="finos">
-          <button class="fino" data-dir="-1" title="atrasa 5 ms (segure pra repetir)">◀</button>
-          <button class="auto" title="o professor mantém o encaixe sozinho">AUTO</button>
-          <button class="fino" data-dir="1" title="adianta 5 ms (segure pra repetir)">▶</button>
+          <button class="fino" data-dir="-1" data-i18n-attr="title:deck.fino.menos" title="atrasa 5 ms (segure pra repetir)">◀</button>
+          <button class="auto" data-i18n="deck.auto" data-i18n-attr="title:deck.auto.dica" title="o professor mantém o encaixe sozinho">AUTO</button>
+          <button class="fino" data-dir="1" data-i18n-attr="title:deck.fino.mais" title="adianta 5 ms (segure pra repetir)">▶</button>
         </div>
       </div>
       <div class="transp">
@@ -608,7 +618,7 @@
         </div>
         <div class="tempo">
           <span><b class="pos">0:00</b>/<span class="dur">0:00</span></span>
-          <span>falta <b class="rest">0:00</b></span>
+          <span><span data-i18n="deck.falta">falta</span> <b class="rest">0:00</b></span>
         </div>
         <div class="efeito"></div>
         <div class="aviso erro" hidden></div>
