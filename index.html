@@ -70,6 +70,27 @@
   .prof .fala { font-size:13.5px; line-height:1.4; }
   .prof .fala b { color:var(--ok); font-weight:700; }
   .prof .fala small { display:block; color:var(--mut); font-size:11.5px; margin-top:1px; }
+
+  /* o professor virou LISTA: ate 3 ajustes, do mais grave ao mais simples.
+     a cor e o numero do item sao os MESMOS da luz que acende no controle —
+     e isso e o que liga a frase ao botao pra quem nunca viu uma controladora */
+  .prof .plano { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
+  .prof .item { display:flex; align-items:flex-start; gap:8px; min-width:0; }
+  .prof .item i { width:17px; height:17px; flex:none; border-radius:50%; margin-top:1px;
+                  display:grid; place-items:center; font:800 10px ui-monospace,monospace;
+                  font-style:normal; color:#06131a; }
+  .prof .item .txt { font-size:12.5px; line-height:1.35; min-width:0; }
+  .prof .item .txt b { font-weight:700; }
+  .prof .item .txt small { display:block; color:var(--mut); font-size:11px; margin-top:1px; }
+  .prof .item:nth-child(n+2) .txt { font-size:11.5px; opacity:.84; }
+  .prof .item:nth-child(n+2) .txt small { display:none; }   /* só o 1o explica o porquê */
+
+  .prof .item.c-urgente i { background:var(--neon); box-shadow:0 0 10px rgba(255,78,205,.6); }
+  .prof .item.c-urgente .txt b { color:var(--neon); }
+  .prof .item.c-agora   i { background:var(--ok); box-shadow:0 0 10px rgba(46,230,168,.55); }
+  .prof .item.c-agora   .txt b { color:var(--ok); }
+  .prof .item.c-depois  i { background:var(--acc); box-shadow:0 0 10px rgba(76,201,240,.5); }
+  .prof .item.c-depois  .txt b { color:var(--acc); }
   .prof .acao { margin-left:auto; flex:none; display:flex; gap:6px; }
   .prof.azul { background:linear-gradient(90deg, rgba(76,201,240,.16), rgba(199,125,255,.05) 48%, transparent 78%); }
   .prof.azul .rosto { background:linear-gradient(160deg,var(--acc),#1c8fb8); color:#03202b;
@@ -119,7 +140,11 @@
      controles tinha flex:1 — quando a coluna apertava, quem era espremido e
      cortado pelo overflow do deck eram os BOTOES. Invertido: controle tem
      altura fixa e inviolavel, a onda encolhe. */
-  canvas.onda { display:block; width:100%; flex:1 1 auto; min-height:46px; max-height:120px;
+  /* o teto era 120px e sobrava um vao morto de 229px no fim do deck em 768px de
+     altura. os botoes ja estao protegidos por flex:none em .ctrl e .pitch, entao
+     a onda pode engolir a folga toda — que e onde ela vale mais, porque e nela
+     que se enxerga a batida */
+  canvas.onda { display:block; width:100%; flex:1 1 auto; min-height:46px; max-height:none;
                 background:var(--fundo-tela);
                 border-top:1px solid var(--linha); border-bottom:1px solid var(--linha); }
   canvas.mini { display:block; width:100%; height:18px; background:var(--fundo-tela); flex:none;
@@ -154,6 +179,48 @@
                    pointer-events:none; }
   .jog.apontado .nome-jog { color:var(--ok); }
 
+  /* DUAS ZONAS no jog, e e isso que resolve "o jog e sensivel demais".
+     anel de fora = ajuste fino (pitch bend, 1 volta = 0.25 s de audio)
+     centro      = scratch (1 volta = 1.8 s, como vinil de verdade)
+     A reclamacao nao era da fisica do scratch, era de nao existir uma zona
+     onde errar a mao nao estrague o som. */
+  .jog .anel-jog { position:absolute; inset:0; border-radius:50%; pointer-events:none;
+                   box-shadow:inset 0 0 0 1px rgba(76,201,240,.18); }
+  .jog .anel-jog::before { content:""; position:absolute; inset:26%; border-radius:50%;
+                   border:1px dashed rgba(255,255,255,.13); }
+  .jog.fino { cursor:ew-resize; }
+  .jog.fino .anel-jog { box-shadow:inset 0 0 0 2px var(--acc), inset 0 0 14px rgba(76,201,240,.3); }
+  .jog.scratch .anel-jog::before { border-color:var(--neon); box-shadow:0 0 12px rgba(255,78,205,.35); }
+
+  .lado-jog { display:flex; flex-direction:column; gap:5px; flex:none; align-items:center; }
+  .finos { display:flex; gap:4px; }
+  .finos button { padding:4px 6px; font:700 9px ui-monospace,monospace; border-radius:5px; min-width:22px; }
+  .finos .auto { letter-spacing:.08em; }
+  .finos .auto.lig { background:linear-gradient(180deg,#7fdcfa,var(--acc)); border-color:var(--acc);
+                     color:#04202b; box-shadow:0 0 14px rgba(76,201,240,.5); }
+
+  .linha-fase { display:flex; align-items:center; gap:7px; margin-top:4px; }
+  #b-encaixar { padding:5px 9px; font:800 9.5px ui-monospace,monospace; letter-spacing:.09em; flex:none; }
+  #b-encaixar:disabled { opacity:.3; }
+
+  .tira .fone { padding:3px 5px; font:700 8.5px ui-monospace,monospace; letter-spacing:.1em; }
+  .tira .fone.lig { background:linear-gradient(180deg,#ffd089,var(--cue)); border-color:var(--cue);
+                    color:#2b1603; box-shadow:0 0 12px rgba(255,179,71,.45); }
+  .linha-fone { display:flex; align-items:center; gap:6px; margin-top:5px; }
+  .linha-fone select { flex:1; min-width:0; font-size:9.5px; padding:3px 5px; }
+  #fone-nota { font-size:9px; }
+
+  /* todas as pilhas de musica com a mesma gramatica: chip. cabe num teto com
+     rolagem propria pra nao comer o espaco da lista de faixas */
+  .crates { display:flex; flex-direction:column; gap:3px; max-height:132px; overflow-y:auto;
+            padding-right:2px; flex:none; }
+  .grupo-chips { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+  .rot-chips { font:800 8px ui-monospace,monospace; letter-spacing:.14em; color:var(--fraco);
+               text-transform:uppercase; width:100%; margin-top:2px; }
+  .crates button { padding:3px 7px; font:700 9.5px ui-monospace,monospace; border-radius:20px; }
+  .crates button.lig { background:linear-gradient(180deg,#ffa2e6,var(--neon)); border-color:var(--neon);
+                       color:#2b0420; box-shadow:0 0 12px rgba(255,78,205,.45); }
+
   .transp { display:flex; flex-direction:column; gap:7px; flex:1; min-width:0; }
   .botoes { display:grid; grid-template-columns:1fr 1fr; gap:6px; flex:none; }
   .botoes button { padding:11px 8px; font-size:11.5px; }
@@ -173,21 +240,31 @@
                        box-shadow:0 0 18px rgba(199,125,255,.45); }
 
   /* como o professor aponta pra um controle — e como ele mostra o que mexeu */
-  @keyframes aponta { 0%,100% { box-shadow:0 0 0 0 rgba(46,230,168,.8); }
-                      50% { box-shadow:0 0 0 9px rgba(46,230,168,0); } }
-  .apontado { animation:aponta 1.25s ease-out infinite; border-color:var(--ok) !important;
-              color:var(--ok) !important; }
+  @keyframes aponta { 0%,100% { box-shadow:0 0 0 0 var(--luz); }
+                      50% { box-shadow:0 0 0 9px transparent; } }
+  /* a luz do controle carrega a COR e o NUMERO do item da lista. sem o numero,
+     com tres coisas acesas ao mesmo tempo, nao da pra saber qual e qual */
+  .apontado { --luz:rgba(46,230,168,.8); --cor:var(--ok);
+              animation:aponta 1.25s ease-out infinite;
+              border-color:var(--cor) !important; color:var(--cor) !important; position:relative; }
+  .apontado.c-urgente { --luz:rgba(255,78,205,.85); --cor:var(--neon); }
+  .apontado.c-agora   { --luz:rgba(46,230,168,.8);  --cor:var(--ok); }
+  .apontado.c-depois  { --luz:rgba(76,201,240,.75); --cor:var(--acc); }
+  /* o NUMERO do item vai dentro do texto da etiqueta (app.js monta "2 · SYNC…"),
+     porque um elemento tem um ::after so e a etiqueta ja ocupa ele */
   /* etiqueta que o professor pendura no controle que ele esta apontando.
      Acender so nao basta: quem nunca mixou nao sabe qual daqueles e o "jog". */
   [data-rotulo] { position:relative; }
+  [data-rotulo] { --cor:var(--ok); }
   [data-rotulo]::after { content:attr(data-rotulo); position:absolute; left:50%; bottom:calc(100% + 9px);
                      transform:translateX(-50%); white-space:nowrap; z-index:30; pointer-events:none;
-                     background:var(--ok); color:#03261b; font:800 10px ui-monospace,monospace;
+                     background:var(--cor); color:#03261b; font:800 10px ui-monospace,monospace;
                      padding:5px 9px; border-radius:7px;
-                     box-shadow:0 4px 14px rgba(0,0,0,.55), 0 0 18px rgba(46,230,168,.35); }
+                     box-shadow:0 4px 14px rgba(0,0,0,.55); }
   [data-rotulo]::before { content:""; position:absolute; left:50%; bottom:calc(100% + 3px);
                      transform:translateX(-50%); z-index:30; pointer-events:none;
-                     border:5px solid transparent; border-top-color:var(--ok); }
+                     border:5px solid transparent; border-top-color:var(--cor); }
+
   /* no jog e na lista a etiqueta vai por DENTRO, senao sai da tela */
   #lista[data-rotulo]::after, #lista[data-rotulo]::before { bottom:auto; top:6px; }
   #lista[data-rotulo]::before { top:-4px; border-top-color:transparent; border-bottom-color:var(--ok); }
@@ -343,8 +420,9 @@
 </div>
 
 <div class="prof" id="prof">
-  <div class="rosto" id="prof-rosto">1</div>
-  <div class="fala" id="prof-fala">Toque em qualquer lugar da tela para ligar o áudio.</div>
+  <div class="plano" id="prof-plano">
+    <div class="item c-urgente"><i>1</i><div class="txt">Toque em qualquer lugar da tela para <b>ligar o áudio</b>.</div></div>
+  </div>
   <div class="acao" id="prof-acao"></div>
 </div>
 
@@ -355,7 +433,10 @@
     <div class="mixer">
       <div>
         <canvas class="fase" id="fase"></canvas>
-        <div class="rot" id="rot-fase"><b style="color:var(--mut)">ENCAIXE DAS BATIDAS</b></div>
+        <div class="linha-fase">
+          <button id="b-encaixar" title="desliza o deck B até a batida cair em cima do A">ENCAIXAR</button>
+          <span class="rot" id="rot-fase" style="margin:0"><b style="color:var(--mut)">ENCAIXE DAS BATIDAS</b></span>
+        </div>
       </div>
       <div class="tiras">
         <div class="tira" data-d="A">
@@ -365,6 +446,7 @@
           <div class="knob"><label>AGUDO</label><input type="range" id="eq-A-agudo" data-d="A" data-eq="agudo" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-A-agudo" data-d="A" data-kill="agudo">×</button></div>
           <div class="knob"><label>FILTRO</label><input type="range" id="fil-A" data-d="A" data-filtro min="-1" max="1" step="0.01" value="0"></div>
           <div class="knob"><label>VOL</label><input type="range" id="vol-A" data-d="A" data-fader min="0" max="1" step="0.01" value="1"></div>
+          <button class="fone" id="fone-A" data-d="A" title="ouvir só este deck no fone">FONE</button>
           <div class="vu"><i id="vu-A"></i></div>
         </div>
         <div class="tira" data-d="B">
@@ -374,12 +456,17 @@
           <div class="knob"><label>AGUDO</label><input type="range" id="eq-B-agudo" data-d="B" data-eq="agudo" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-B-agudo" data-d="B" data-kill="agudo">×</button></div>
           <div class="knob"><label>FILTRO</label><input type="range" id="fil-B" data-d="B" data-filtro min="-1" max="1" step="0.01" value="0"></div>
           <div class="knob"><label>VOL</label><input type="range" id="vol-B" data-d="B" data-fader min="0" max="1" step="0.01" value="1"></div>
+          <button class="fone" id="fone-B" data-d="B" title="ouvir só este deck no fone">FONE</button>
           <div class="vu"><i id="vu-B"></i></div>
         </div>
       </div>
       <div>
         <input type="range" class="xf" id="xf" min="0" max="1" step="0.005" value="0.5">
         <div class="rot"><b style="color:var(--mut)">CROSSFADER</b> — ◄ só o A · os dois · só o B ►</div>
+        <div class="linha-fone">
+          <select id="saida-fone" title="para onde vai o fone"><option value="">fone: escolher saída…</option></select>
+          <span class="rot" id="fone-nota" style="margin:0"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -401,7 +488,7 @@
         <button id="b-compat" disabled style="flex:1">combina agora</button>
         <button id="b-fila" disabled title="monta a sequência do set">montar sequência</button>
       </div>
-      <select id="genero"></select>
+      <div class="crates" id="crates"></div>
       <input type="text" id="busca" placeholder="buscar por nome…">
       <div class="lista" id="lista"></div>
       <div class="creditos" id="creditos"></div>
@@ -455,10 +542,18 @@
     <canvas class="onda"></canvas>
     <canvas class="mini"></canvas>
     <div class="ctrl">
-      <div class="jog">
-        <div class="marca-jog"></div>
-        <div class="visor"><div><div class="bpm">—</div><div class="un">BPM</div></div></div>
-        <div class="nome-jog">JOG</div>
+      <div class="lado-jog">
+        <div class="jog">
+          <div class="anel-jog"></div>
+          <div class="marca-jog"></div>
+          <div class="visor"><div><div class="bpm">—</div><div class="un">BPM</div></div></div>
+          <div class="nome-jog">JOG</div>
+        </div>
+        <div class="finos">
+          <button class="fino" data-dir="-1" title="atrasa 5 ms (segure pra repetir)">◀</button>
+          <button class="auto" title="o professor mantém o encaixe sozinho">AUTO</button>
+          <button class="fino" data-dir="1" title="adianta 5 ms (segure pra repetir)">▶</button>
+        </div>
       </div>
       <div class="transp">
         <div class="botoes">

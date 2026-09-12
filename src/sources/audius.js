@@ -390,12 +390,14 @@ export async function compativeis(faixa, {
   toleranciaBpm = 0.08,     // o que o pitch fader alcança
   limite = 60,
   generos = null,
+  permitirMeioTempo = true, // aceitar faixa no dobro/metade do andamento
   signal,
 } = {}) {
   if (!faixa?.bpm) throw new AudiusError('a faixa carregada não tem BPM');
 
   const alvo = faixa.bpm;
-  const busca = generos || [faixa.genre, 'House', 'Disco', 'Deep House', 'Tech House']
+  const busca = generos || [faixa.genre, 'House', 'Disco', 'Deep House', 'Tech House',
+    'Latin', 'Funk', 'Hip-Hop/Rap', 'World']
     .filter((g, i, a) => g && a.indexOf(g) === i);
 
   const vistas = new Map();
@@ -410,7 +412,16 @@ export async function compativeis(faixa, {
 
   const fora = [];
   for (const t of vistas.values()) {
-    const razao = t.bpm / alvo;
+    // TRES relacoes de tempo, nao uma. Um brega funk de 150 e um trap de 75 tem
+    // a MESMA batida, em metade e no dobro do andamento — tocar um em cima do
+    // outro e justamente como se mistura ritmo diferente. Recusar o 2:1 seria
+    // recusar metade da musica brasileira.
+    let razao = t.bpm / alvo, relacao = 1;
+    if (permitirMeioTempo) {
+      for (const [r, rel] of [[t.bpm / alvo, 1], [t.bpm / (alvo * 2), 0.5], [t.bpm / (alvo / 2), 2]]) {
+        if (Math.abs(r - 1) < Math.abs(razao - 1)) { razao = r; relacao = rel; }
+      }
+    }
     const desvio = Math.abs(razao - 1);
     if (desvio > toleranciaBpm) continue;               // fora do pitch fader
 
@@ -422,10 +433,13 @@ export async function compativeis(faixa, {
     fora.push({
       ...t,
       pitchNecessario: (razao - 1),                      // fração; -0.02 = -2%
+      tempoRelacao: relacao,                             // 1 | 0.5 (meio tempo) | 2 (dobro)
       harmonia: harmonia.reason,
       harmonicamenteOk: harmonia.ok,
-      // ordena por harmonia primeiro, depois por quão pouco precisa de pitch
-      _score: (harmonia.ok ? 0 : 10) + (harmonia.distance ?? 2) + desvio * 20,
+      // ordena por harmonia primeiro, depois por quão pouco precisa de pitch.
+      // meio tempo entra, mas atrás do casamento direto: exige mais da mão.
+      _score: (harmonia.ok ? 0 : 10) + (harmonia.distance ?? 2) + desvio * 20
+              + (relacao === 1 ? 0 : 1.5),
     });
   }
 
@@ -436,4 +450,57 @@ export async function compativeis(faixa, {
 export const GENRES = [
   'Electronic', 'House', 'Techno', 'Deep House', 'Tech House', 'Progressive House',
   'Drum & Bass', 'Dubstep', 'Trap', 'Hip-Hop/Rap', 'Disco', 'Trance', 'Ambient',
+  // estes tres sao onde mora o que veio do Brasil no Audius, conferido por busca
+  'Latin', 'Funk', 'World',
 ];
+
+/**
+ * Crates brasileiras — busca por texto, não por gênero.
+ *
+ * O Audius não tem gênero "funk carioca", "pagode" nem "sertanejo": o que existe
+ * está espalhado em Latin, World, Funk e Hip-Hop/Rap. Então o caminho é busca
+ * textual, e foi medida uma por uma contra o filtro de deck (tocável, 60–600 s):
+ *
+ *   pagode 30/30 · sertanejo 30/30 · baile funk 25/30 · brega funk 22/24
+ *   samba 27/30 · rap nacional 15/16 · trap brasileiro 14/14 · funk carioca 8/8
+ *
+ * `termo` é o que vai pro Audius; `filtro` é o que separa acerto de homônimo —
+ * buscar "forró" devolve "forlorn" e buscar "axé" devolve "Maze of the Axe".
+ */
+export const CRATES = [
+  // ── Brasil ──
+  { nome: 'Funk',      reg: 'BR',  termo: 'baile funk',      filtro: /funk|baile|favela|mc|brasil/i },
+  { nome: 'Brega funk',reg: 'BR',  termo: 'brega funk',      filtro: /brega|funk|mc/i },
+  { nome: 'Funk RJ',   reg: 'BR',  termo: 'funk carioca',    filtro: /funk|carioca|brasil|mc/i },
+  { nome: 'Pagode',    reg: 'BR',  termo: 'pagode',          filtro: /pagode|samba|turma/i },
+  { nome: 'Samba',     reg: 'BR',  termo: 'samba',           filtro: /samba|brasil|bossa/i },
+  { nome: 'Sertanejo', reg: 'BR',  termo: 'sertanejo',       filtro: /sertanejo|modão|moda de viola|forró/i },
+  { nome: 'Trap BR',   reg: 'BR',  termo: 'trap brasileiro', filtro: /.*/ },
+  { nome: 'Rap BR',    reg: 'BR',  termo: 'rap nacional',    filtro: /.*/ },
+  // ── América Latina — medido do mesmo jeito, um termo por vez ──
+  // reggaeton 18 · cumbia 23 · dembow 23 · guaracha 24 · perreo 25
+  // salsa 24 · bachata 22 · merengue 12 · moombahton 26 · amapiano 22 · afro house 19
+  { nome: 'Reggaeton', reg: 'LAT', termo: 'reggaeton',       filtro: /reggaeton|reggaetón|perreo|latin/i },
+  { nome: 'Perreo',    reg: 'LAT', termo: 'perreo',          filtro: /.*/ },
+  { nome: 'Cumbia',    reg: 'LAT', termo: 'cumbia',          filtro: /cumbia/i },
+  { nome: 'Dembow',    reg: 'LAT', termo: 'dembow',          filtro: /dembow|dancehall/i },
+  { nome: 'Guaracha',  reg: 'LAT', termo: 'guaracha',        filtro: /guaracha|aleteo|zapateo/i },
+  { nome: 'Salsa',     reg: 'LAT', termo: 'salsa',           filtro: /salsa|son|timba/i },
+  { nome: 'Bachata',   reg: 'LAT', termo: 'bachata',         filtro: /bachata/i },
+  { nome: 'Moombahton',reg: 'LAT', termo: 'moombahton',      filtro: /moombah/i },
+  { nome: 'Amapiano',  reg: 'LAT', termo: 'amapiano',        filtro: /amapiano|piano/i },
+];
+
+/** Compatibilidade: a primeira versão só tinha crates do Brasil. */
+export const CRATES_BR = CRATES.filter((c) => c.reg === 'BR');
+
+/** Busca uma crate e descarta o homônimo. */
+export async function crateBr(nome, { limite = 40, signal } = {}) {
+  const c = CRATES.find((x) => x.nome === nome);
+  if (!c) throw new AudiusError(`crate desconhecida: ${nome}`);
+  const res = await search(c.termo, { limit: 50, signal });
+  const casa = (t) => c.filtro.test(`${t.title} ${t.artist} ${t.genre || ''}`);
+  const bons = res.filter(casa), resto = res.filter((t) => !casa(t));
+  // se o filtro foi severo demais, completa com o resto em vez de devolver vazio
+  return [...bons, ...resto].slice(0, limite);
+}

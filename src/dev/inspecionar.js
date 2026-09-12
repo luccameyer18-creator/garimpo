@@ -19,9 +19,11 @@
 export const CONTROLES = [
   ...['A', 'B'].flatMap((d) =>
     ['.play', '.cue', '.sync', '.keylock', '.jog', '.fader', '.onda', '.mini',
-     '.bpm-val', '.pos', '.faixa-sel'].map((c) => `#deck${d} ${c}`)),
-  '#xf', '#master', '#fase', '#lista', '#b-compat', '#genero', '#busca',
-  '#prof-fala', '#prof-rosto', '#b-ajuda', '#b-diag', '#b-arquivo',
+     '.bpm-val', '.pos', '.faixa-sel', '.auto'].map((c) => `#deck${d} ${c}`)),
+  '#xf', '#master', '#fase', '#lista', '#b-compat', '#busca',
+  '#prof-plano', '#b-ajuda', '#b-diag', '#b-arquivo',
+  '#b-encaixar', '#crates', '#saida-fone',
+  ...['A', 'B'].flatMap((d) => [`#fone-${d}`, `#vol-${d}`, `#fino-menos-${d}`, `#fino-mais-${d}`]),
   ...['A', 'B'].flatMap((d) =>
     ['grave', 'medio', 'agudo'].flatMap((b) => [`#eq-${d}-${b}`, `#kill-${d}-${b}`])),
 ];
@@ -45,7 +47,14 @@ function avaliar(sel) {
   }
 
   // alvo de toque pequeno demais para dedo
-  if (el.matches('button, input[type=range]') && (r.height < 22 || r.width < 22)) {
+  // Alvo pequeno so e problema em DEDO. Num mouse, um slider de 16px de altura
+  // e o controle nativo e acerta de primeira — acusar isso enchia o relatorio
+  // de 13 falsos positivos e escondia os achados de verdade.
+  // Os botoes auxiliares (ms, FONE, AUTO, kill) sao pequenos de proposito: o
+  // alvo grande deles e o anel do jog e a tira do mixer.
+  const dedo = matchMedia('(pointer: coarse)').matches;
+  const auxiliar = el.matches('.fino, .fone, .auto, .mini-b, .kill');
+  if (dedo && !auxiliar && el.matches('button, input[type=range]') && (r.height < 22 || r.width < 22)) {
     return { sel, problema: 'alvo de toque pequeno', medida: `${r.width | 0}x${r.height | 0}` };
   }
   return null;

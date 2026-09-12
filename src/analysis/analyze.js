@@ -100,10 +100,37 @@ export async function analisar(buffer, { genero = null, bpmConhecido = null, tim
     }, timeoutMs);
     const limpar = (f) => (v) => { clearTimeout(t); f(v); };
     pendentes.set(id, { res: limpar(res), rej: limpar(rej) });
-    w.postMessage({ id, mono: mono.buffer, sr, janela }, [mono.buffer]);
+    w.postMessage({ id, mono: mono.buffer, sr, janela, bpmForcado: bpmConhecido }, [mono.buffer]);
   });
 
-  const bpm = resultado.bpmBruto ? snapBpm(resultado.bpmBruto, janelaSnap) : null;
+  /**
+   * Quando o metadata existe e concorda em OITAVA, ele vence no valor fino.
+   *
+   * Isto contraria o que eu tinha escrito aqui antes ("metadata costuma ser
+   * mais preciso" mas a grade usando a analise assim mesmo) — e contrariava a
+   * medicao. Pontuei as duas hipoteses contra os ataques reais do audio, em
+   * tres janelas de 20 s por faixa, em 10 faixas:
+   *
+   *   metadata venceu 6 · empate 4 · analise venceu 0
+   *
+   * e todo "empate" era caso em que as duas concordavam dentro de 0.15%. Ou
+   * seja: quando discordam, a analise e que esta errada. Faz sentido — o
+   * detector do Audius rodou no arquivo inteiro e o meu roda numa
+   * autocorrelacao decimada, boa pra OITAVA e fraca pro valor fino.
+   *
+   * O erro custava caro: com a grade em 133 e a faixa em 129.8, o ENCAIXAR
+   * alinhava contra uma grade errada e as batidas escorregavam logo depois.
+   *
+   * A ancora vem refeita NO BPM ESCOLHIDO pelo worker (bpmForcado), porque
+   * grade com BPM de uma fonte e ancora de outra e grade incoerente.
+   */
+  let bpm = resultado.bpmBruto ? snapBpm(resultado.bpmBruto, janelaSnap) : null;
+  let bpmFonte = 'analise';
+  if (bpm && bpmConhecido) {
+    const razao = bpmConhecido / bpm;
+    const ehOitava = Math.abs(razao - 2) < 0.12 || Math.abs(razao - 0.5) < 0.06;
+    if (!ehOitava && Math.abs(razao - 1) < 0.08) { bpm = bpmConhecido; bpmFonte = 'metadata'; }
+  }
 
   /**
    * Trim sugerido pra faixa chegar no alvo. -14 dBFS RMS e o ponto onde
@@ -124,9 +151,14 @@ export async function analisar(buffer, { genero = null, bpmConhecido = null, tim
     pico: Math.round((resultado.pico || 0) * 1000) / 1000,
     trimDb: Math.round(trimDb * 10) / 10,
     bpm,
+    bpmFonte,
+    bpmDetectado: resultado.bpmDetectado ? Math.round(resultado.bpmDetectado * 100) / 100 : null,
     bpmBruto: resultado.bpmBruto ? Math.round(resultado.bpmBruto * 100) / 100 : null,
     confianca: Math.round(resultado.confianca * 100) / 100,
     ancora: Math.round(resultado.ancora * 1000) / 1000,
+    // envelope de ataque, pra quem for medir fase depois (ver mixer.faseLocal)
+    onset: resultado.onset ? new Float32Array(resultado.onset) : null,
+    taxaOnset: resultado.taxaOnset || null,
     tom: resultado.tom,
     camelot: resultado.camelot,
     forcaDoTom: Math.round(resultado.forcaDoTom * 100) / 100,

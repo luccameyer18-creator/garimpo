@@ -114,7 +114,25 @@ export class EQ3 {
     rampa(this.ganhos[banda].gain, ligado ? 0 : EQ3.lei(this.valores[banda]), this.ctx);
   }
 
-  get(banda) { return this.valores[banda]; }
+  /**
+   * Valor EFETIVO da banda, 0..1 — com o kill contado.
+   *
+   * Devolvia this.valores[banda] cru, ou seja a POSICAO DO KNOB, ignorando o
+   * botao de kill. Consequencia: o professor, que le daqui, era cego pros
+   * botoes de kill. Ele achava que o grave estava aberto com o grave cortado, e
+   * por isso passou um set inteiro sem avisar que faltava grave — quem estava
+   * ouvindo percebeu, e eu nao, porque meu proprio teste lia o mesmo valor
+   * errado.
+   *
+   * Quem precisa da posicao do knob (pra redesenhar o controle) usa `posicao`.
+   */
+  get(banda) { return this.kill[banda] ? 0 : this.valores[banda]; }
+
+  /** Posicao do knob, sem o kill. É o que a UI desenha no slider. */
+  posicao(banda) { return this.valores[banda]; }
+
+  /** O kill desta banda está ligado? */
+  morto(banda) { return !!this.kill[banda]; }
   connect(n) { return this.saida.connect(n); }
   disconnect() { try { this.saida.disconnect(); } catch {} }
 }

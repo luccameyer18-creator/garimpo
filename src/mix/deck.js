@@ -50,6 +50,7 @@ export class Deck extends EventTarget {
     this.transport = null;
     this.faixa = null;
     this.picos = null;
+    this.onset = null;
     this.estado = 'vazio';      // vazio | carregando | pronto | erro
     this.erro = null;
     this.progresso = 0;
@@ -195,13 +196,34 @@ export class Deck extends EventTarget {
           const posAntes = this.transport.position;
           const tocava = this.transport.playing;
           await this.transport.load(cheio);
-          this.picos = calcularPicos(cheio);
+          // RESTAURA A POSICAO ANTES de calcular picos, nao depois.
+          // calcularPicos varre 200 s de PCM e leva dezenas de ms; com ele no
+          // meio, existia uma janela em que transport.duration ja era a nova e
+          // a posicao ainda nao tinha voltado — um seek do usuario (ou um hot
+          // cue) nessa fresta era apagado pelo seek(posAntes) logo depois.
+          // Peguei isso no meu proprio teste: o deck ignorou um seek pra 68 s e
+          // comecou do zero.
           this.transport.seek(posAntes);
           if (tocava) { this.transport.playing = false; this.transport.play(); }
           this.parcial = false;
+          this.picos = calcularPicos(cheio);
           this.dispatchEvent(new CustomEvent('loaded', {
             detail: { faixa, duration: cheio.duration, parcial: false, trocado: true },
           }));
+
+          /**
+           * RE-ANALISA no arquivo inteiro.
+           *
+           * Faltava, e o preco era alto: a grade de batida e o envelope de
+           * ataque saiam dos primeiros 52 s — o prefixo que o deck carrega pra
+           * tocar rapido. Ou seja, a musica toda era julgada pela INTRODUCAO,
+           * que e justamente onde a batida costuma nao estar definida.
+           *
+           * Peguei isso medindo fase no meio da faixa: o envelope tinha 4909
+           * quadros (52 s) numa faixa de 201 s, e a medicao simplesmente nao
+           * tinha dado pra ler. Custa uma passada de worker em segundo plano.
+           */
+          this.#analisar(cheio, faixa, ac);
         }).catch((e) => {
           if (!ac.signal.aborted) console.warn('[deck] troca pelo completo falhou:', e.message);
         });
@@ -253,6 +275,8 @@ export class Deck extends EventTarget {
       }
       if (!faixa.camelot && r.camelot) { faixa.camelot = r.camelot; faixa.key = r.tom; }
       this.grid = r.bpm ? { bpm: r.bpm, ancora: r.ancora } : null;
+      // envelope de ataque em ~86 Hz: e com ele que se mede fase de verdade
+      this.onset = r.onset ? { v: r.onset, taxa: r.taxaOnset } : null;
       this.#passo('analisado', `${r.bpm} BPM, ${r.camelot}, ancora ${r.ancora}s`);
       this.dispatchEvent(new CustomEvent('analysis', { detail: { faixa, ...r } }));
     } catch (e) {
@@ -272,6 +296,7 @@ export class Deck extends EventTarget {
   setCuePoint(p) { this.transport.setCuePoint(p); }
   cuePress() { this.transport.cuePress(); }
   cueRelease() { this.transport.cueRelease(); }
+  deslocar(delta, o) { return this.transport.deslocar(delta, o); }
   touchStart() { this.transport.touchStart(); }
   setScratchRate(r) { this.transport.setScratchRate(r); }
   touchEnd() { this.transport.touchEnd(); }

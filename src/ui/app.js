@@ -5,14 +5,15 @@
  */
 import { Deck } from '../mix/deck.js';
 import { Mixer, erroDeFase } from '../mix/mixer.js';
-import { proximoPasso, avisos } from '../coach/guia.js';
+import { plano, autoajuste } from '../coach/guia.js';
 import { montarFila, resumo as resumoFila } from '../coach/fila.js';
+import { momentos, proximoMomento, faltaPara } from '../coach/momentos.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
-  keyCompatible, resolveStreamUrl,
+  keyCompatible, resolveStreamUrl, CRATES, crateBr,
 } from '../sources/audius.js';
 
-export const VERSAO = '2026-09-12.17';
+export const VERSAO = '2026-09-12.18';
 
 const $ = (id) => document.getElementById(id);
 /** Elemento que pode nao existir (diagnostico saiu da tela). */
@@ -145,7 +146,8 @@ function montarVista(id) {
   const v = {
     raiz: no, titulo: q('.titulo'), artista: q('.artista'), capa: q('.capa'),
     bpmVal: q('.bpm-val'), tom: q('.tom'), onda: q('.onda'), mini: q('.mini'),
-    jog: q('.jog'), marcaJog: q('.marca-jog'),
+    jog: q('.jog'), marcaJog: q('.marca-jog'), anelJog: q('.anel-jog'),
+    finos: [...no.querySelectorAll('.fino')], auto: q('.auto'),
     play: q('.play'), cue: q('.cue'), keylock: q('.keylock'), sync: q('.sync'),
     pos: q('.pos'), dur: q('.dur'), rest: q('.rest'), visorBpm: q('.visor .bpm'),
     efeito: q('.efeito'), erro: q('.erro'), passos: q('.passos'),
@@ -158,6 +160,9 @@ function montarVista(id) {
   v.sync.id = 'sync-' + id;
   v.keylock.id = 'keylock-' + id;
   v.jog.id = 'jog-' + id;
+  v.auto.id = 'auto-' + id;
+  v.finos[0].id = 'fino-menos-' + id;
+  v.finos[1].id = 'fino-mais-' + id;
   vistas[id] = v;
   const d = decks[id];
 
@@ -305,6 +310,8 @@ function montarVista(id) {
   };
 
   ligarJog(id);
+  ligarFinos(id);
+  ligarAuto(id);
 }
 
 /** Mostra o que o keylock está fazendo agora — com pitch zero ele não faz nada. */
@@ -357,43 +364,155 @@ function sincronizar(id) {
 
 // ─────────────────────────── jog ───────────────────────────
 
+/**
+ * O jog, com DUAS zonas — e é isto que conserta "o jog é sensível demais".
+ *
+ * O problema nunca foi a física do scratch: 1 volta = 1.8 s é o que um vinil a
+ * 33⅓ rpm faz de verdade. O problema é que o prato aqui tem 100 px, então um
+ * peteleco de 40 px já move 0.25 s de áudio — e não existia lugar nenhum onde
+ * errar a mão não estragasse o som.
+ *
+ * Agora existe:
+ *
+ *   anel de fora (r > 0.58)  →  AJUSTE FINO. É um pitch bend: a música continua
+ *                               tocando e só acelera/freia de leve. 1 volta
+ *                               inteira vale 0.25 s, 7× menos que o centro, e o
+ *                               desvio de taxa é preso em ±18%. Não dá pra
+ *                               estragar: o pior caso é ficar 18% fora por um
+ *                               instante, que se ouve como um empurrão.
+ *   centro       (r ≤ 0.58)  →  SCRATCH, inalterado. Quem quer parar a música
+ *                               com a mão continua podendo.
+ *
+ * A zona é decidida no pointerdown e não muda no meio do gesto: trocar de modo
+ * com o dedo no ar é como se perde a referência.
+ */
 function ligarJog(id) {
   const d = decks[id], jog = vistas[id].jog;
-  let girando = false, angAnt = 0, tAnt = 0;
-  const ang = (e) => {
+  let girando = false, angAnt = 0, tAnt = 0, modo = 'scratch';
+
+  const geo = () => {
     const r = jog.getBoundingClientRect();
-    return Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2));
+    return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, raio: r.width / 2 };
   };
+  const ang = (e, g) => Math.atan2(e.clientY - g.cy, e.clientX - g.cx);
+
   jog.addEventListener('pointerdown', (e) => {
     if (!pronto) return;
+    const g = geo();
+    const dist = Math.hypot(e.clientX - g.cx, e.clientY - g.cy) / g.raio;
+    modo = dist > 0.58 ? 'fino' : 'scratch';
     jog.setPointerCapture(e.pointerId);
-    girando = true; jog.classList.add('ativo');
-    angAnt = ang(e); tAnt = e.timeStamp;
+    girando = true;
+    jog.classList.add('ativo', modo);
+    angAnt = ang(e, g); tAnt = e.timeStamp;
     d.touchStart();
   });
+
   jog.addEventListener('pointermove', (e) => {
     if (!girando) return;
-    // eventos aglomerados + timeStamp de cada um: usar o relógio do rAF pro dt
-    // dá velocidade ruidosa e o prato fica mole
+    const g = geo();
+    const base = d.tocando ? d.nominalRate : 0;
+    // eventos aglomerados + timeStamp de cada um: usar o relogio do rAF pro dt
+    // da velocidade ruidosa e o prato fica mole
     for (const ev of (e.getCoalescedEvents ? e.getCoalescedEvents() : [e])) {
-      const a = ang(ev);
+      const a = ang(ev, g);
       let dd = a - angAnt;
       if (dd > Math.PI) dd -= 2 * Math.PI;
       if (dd < -Math.PI) dd += 2 * Math.PI;
       const dt = Math.max(0.001, (ev.timeStamp - tAnt) / 1000);
       angAnt = a; tAnt = ev.timeStamp;
-      const taxa = (dd / (2 * Math.PI)) * 1.8 / dt;   // 1 volta ≈ 1.8 s de áudio
-      d.setScratchRate(Math.abs(taxa) < 0.02 ? 0 : taxa);
+      const voltas = dd / (2 * Math.PI);
+
+      if (modo === 'fino') {
+        // pitch bend: a taxa nominal mais um desvio pequeno e preso
+        const desvio = Math.max(-0.18, Math.min(0.18, (voltas * SEG_POR_VOLTA_FINA) / dt));
+        d.setScratchRate(base + desvio);
+      } else {
+        const taxa = voltas * SEG_POR_VOLTA_SCRATCH / dt;
+        d.setScratchRate(Math.abs(taxa) < 0.02 ? 0 : taxa);
+      }
     }
   });
+
   const soltar = (e) => {
     if (!girando) return;
-    girando = false; jog.classList.remove('ativo');
+    girando = false;
+    jog.classList.remove('ativo', 'fino', 'scratch');
     try { jog.releasePointerCapture(e.pointerId); } catch {}
     d.touchEnd();
   };
   jog.addEventListener('pointerup', soltar);
   jog.addEventListener('pointercancel', soltar);
+  jog.addEventListener('lostpointercapture', soltar);
+}
+
+/** 1 volta no anel vale isto de áudio. Baixo de proposito: é o ajuste fino. */
+const SEG_POR_VOLTA_FINA = 0.25;
+/** 1 volta no centro vale isto. É o vinil de verdade a 33⅓ rpm. */
+const SEG_POR_VOLTA_SCRATCH = 1.8;
+
+/**
+ * Botões de milissegundo — o ajuste que não precisa de mão firme nenhuma.
+ *
+ * Um clique desloca 5 ms. Segurar repete, e acelera até 20 ms por passo, porque
+ * quando o erro é de 200 ms ninguém vai clicar 40 vezes.
+ */
+function ligarFinos(id) {
+  const d = decks[id];
+  for (const b of vistas[id].finos) {
+    const dir = Number(b.dataset.dir);
+    let t = null, n = 0;
+    const passo = () => {
+      if (!d?.faixa) return;
+      const ms = Math.min(20, 5 + n * 1.5);
+      d.deslocar(dir * ms / 1000, { emSeg: 0.25 });
+      n++;
+      t = setTimeout(passo, n < 3 ? 260 : 110);
+    };
+    const parar = () => { clearTimeout(t); t = null; n = 0; };
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); n = 0; passo(); });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, parar);
+  }
+}
+
+/**
+ * AUTO — o autoajuste discreto, pra quando você só quer ouvir.
+ *
+ * Faz UMA coisa e deliberadamente não mais: mantém andamento e fase no lugar.
+ * Cortar grave, abrir crossfader e escolher a próxima música continuam suas,
+ * porque essas são decisões musicais e não erros mensuráveis — e um piloto que
+ * toma decisão musical por você não ensina nada.
+ *
+ * Corrige devagar (um décimo do erro por ciclo, no máximo 12 ms) pra que a
+ * correção seja inaudível. Um salto de 200 ms de uma vez se ouve; 20 correções
+ * de 10 ms, não.
+ */
+const autoLigado = { A: false, B: false };
+let tAuto = 0;
+
+function ligarAuto(id) {
+  vistas[id].auto.onclick = () => {
+    autoLigado[id] = !autoLigado[id];
+    vistas[id].auto.classList.toggle('lig', autoLigado[id]);
+    vistas[id].auto.title = autoLigado[id]
+      ? 'o professor está mantendo o encaixe deste deck sozinho'
+      : 'o professor mantém o encaixe sozinho';
+  };
+}
+
+function rodarAuto(est) {
+  if (performance.now() - tAuto < 420) return;     // devagar: correção tem que ser inaudível
+  tAuto = performance.now();
+  for (const id of ['A', 'B']) {
+    if (!autoLigado[id] || !decks[id]?.faixa) continue;
+    for (const a of autoajuste(est, id)) {
+      if (a.o === 'sync') { sincronizar(id); }
+      else if (a.o === 'deslocar') {
+        const ms = Math.max(-12, Math.min(12, a.ms * 0.35));
+        decks[id].deslocar(ms / 1000, { emSeg: 0.3 });
+      }
+    }
+  }
 }
 
 // ─────────────────────────── mixer ───────────────────────────
@@ -460,91 +579,97 @@ function quadro() {
   if (performance.now() - ultimoProf > 220) { ultimoProf = performance.now(); rodarProfessor(); }
 }
 
-let ultimoProf = 0, ultimaFala = '', apontados = [];
-let avisosVivos = [], tAviso = 0;
+let ultimoProf = 0, ultimaLista = '', apontados = [];
 
 /**
- * Desenha o professor e ACENDE os controles que ele aponta.
+ * Desenha o plano do professor e ACENDE os controles, na cor e com o numero.
  *
- * O mecanismo de acender e o mesmo que os "controles fantasma" vao usar na
- * Fase 6, quando o professor executar acoes por conta propria — por isso ele
- * e generico: recebe ids e liga uma classe.
+ * Mudou de um passo pra uma lista de até 3 porque quando três coisas estão
+ * erradas ao mesmo tempo, mostrar só uma esconde o que é urgente. E a luz no
+ * controle passou a carregar a COR e o NÚMERO do item: sem isso, com dois
+ * controles acesos, não havia como saber qual frase era de qual botão — foi
+ * exatamente a reclamação de quem não conhece a controladora.
+ *
+ * É o mesmo mecanismo que os "controles fantasma" vão usar na Fase 6.
  */
 function rodarProfessor() {
+  const est = montarEstado();
+  rodarAuto(est);
+
+  const itens = plano(est);
+  const chave = itens.map((i) => i.id + i.fala).join('|');
+  if (chave === ultimaLista) return;          // só redesenha quando a lista muda
+  ultimaLista = chave;
+
+  const cx = $('prof-plano');
+  cx.innerHTML = itens.length
+    ? itens.map((it, k) => `<div class="item c-${it.cor}"><i>${k + 1}</i><div class="txt">${it.fala}` +
+        (it.porque ? `<small>${it.porque}</small>` : '') + '</div></div>').join('')
+    : '<div class="item c-depois"><i>✓</i><div class="txt">Está tudo no lugar. ' +
+      '<b>Ouça</b> e sinta a música.<small>Quando não há nada pra corrigir, o trabalho é escutar.</small></div></div>';
+  $('prof').classList.toggle('azul', itens[0]?.cor === 'depois');
+
+  // apaga o que estava aceso
+  for (const el of apontados) {
+    el.classList.remove('apontado', 'c-urgente', 'c-agora', 'c-depois');
+    el.removeAttribute('data-rotulo');
+  }
+  // acende, NOMEIA e NUMERA. Acender sem dizer o que é deixa quem nunca mixou
+  // adivinhando qual daqueles controles é o "jog"; sem o numero, com dois
+  // acesos, nao da pra saber qual pertence a qual frase.
+  apontados = [];
+  itens.forEach((it, k) => {
+    for (const alvo of it.apontar || []) {
+      const el = $(typeof alvo === 'string' ? alvo : alvo.id);
+      if (!el) continue;
+      el.classList.add('apontado', 'c-' + it.cor);
+      if (alvo.rotulo) el.setAttribute('data-rotulo', `${k + 1} · ${alvo.rotulo}`);
+      apontados.push(el);
+    }
+  });
+}
+
+/**
+ * O estado que o professor lê. Uma fonte só, e nenhuma regra faz conta de áudio
+ * por conta própria — é o que impede o professor de discordar da realidade.
+ */
+function montarEstado() {
   const est = {
     audioOk: pronto && ctx?.state === 'running',
     crossfader: mixer?.crossfader ?? 0.5,
-    fase: erroDeFase(decks.A, decks.B),
+    fase: medirEncaixe(),
     eq: { A: { grave: mixer?.canal('A').eq.get('grave') },
           B: { grave: mixer?.canal('B').eq.get('grave') } },
+    reducao: mixer?.reducao ?? 0,
+    nivelA: mixer?.canal('A').nivel ?? 0,
+    nivelB: mixer?.canal('B').nivel ?? 0,
+    glitches: (decks.A?.transport.ultimoAnchor?.glitchCount || 0) +
+              (decks.B?.transport.ultimoAnchor?.glitchCount || 0),
   };
   for (const id of ['A', 'B']) {
     const d = decks[id];
     est[id] = d ? {
       temFaixa: !!d.faixa, tocando: d.tocando, bpm: d.faixa?.bpm,
       camelot: d.faixa?.camelot, grid: d.grid, pitch: d.pitch, bpmEfetivo: d.bpmEfetivo,
+      restante: d.duration - d.displayPosition,
+      keylockPedido: d.keylockPedido, keylockAtivo: d.keylockAtivo,
+      motivoKeylock: d.transport?.motivoSemKeylock,
     } : null;
   }
+  est.ambosAudiveis = est.A?.tocando && est.B?.tocando &&
+                      est.crossfader > 0.12 && est.crossfader < 0.88;
 
-  // avisos ao vivo: canal separado do passo a passo. Quem esta no meio de uma
-  // faixa nao esta executando passo nenhum, e mesmo assim precisa de alguem
-  // olhando o som.
-  const estVivo = {
-    ...est,
-    reducao: mixer?.reducao ?? 0,
-    nivelA: mixer?.canal('A').nivel ?? 0,
-    nivelB: mixer?.canal('B').nivel ?? 0,
-    ambosAudiveis: est.A?.tocando && est.B?.tocando &&
-                   est.crossfader > 0.12 && est.crossfader < 0.88,
-    glitches: (decks.A?.transport.ultimoAnchor?.glitchCount || 0) +
-              (decks.B?.transport.ultimoAnchor?.glitchCount || 0),
-  };
+  // ── momento de virada chegando ──
+  // quem ainda nao esta no ar procura DROP (hora de trazer); quem ja esta
+  // dividindo o som procura QUEBRA (hora de tirar)
   for (const id of ['A', 'B']) {
-    if (estVivo[id] && decks[id]) {
-      estVivo[id].restante = decks[id].duration - decks[id].displayPosition;
-      estVivo[id].keylockPedido = decks[id].keylockPedido;
-      estVivo[id].keylockAtivo = decks[id].keylockAtivo;
-      estVivo[id].motivoKeylock = decks[id].transport?.motivoSemKeylock;
-    }
+    if (!est[id]?.tocando) continue;
+    const pra = est.ambosAudiveis ? 'sair' : 'entrar';
+    const m = proximoMomento(momentosDe[id], decks[id].displayPosition, { pra, antecedencia: 1 });
+    const f = faltaPara(m, decks[id]);
+    if (m && f && f.seg < 22) est[id].momento = { ...m, ...f, deck: id };
   }
-  const novos = avisos(estVivo);
-  if (novos.length) {
-    avisosVivos = [...novos, ...avisosVivos].slice(0, 2);
-    tAviso = performance.now();
-  } else if (performance.now() - tAviso > 14000) {
-    avisosVivos = [];
-  }
-  const cx = $('avisos');
-  if (cx) {
-    cx.innerHTML = avisosVivos.map((av) =>
-      `<div class="aviso-vivo g${av.grav}">${av.texto}</div>`).join('');
-  }
-
-  const p = proximoPasso(est);
-  const chave = p.num + p.fala;
-  if (chave === ultimaFala) return;      // so redesenha a FALA quando ela muda
-  ultimaFala = chave;
-
-  $('prof-rosto').textContent = p.num;
-  $('prof-fala').innerHTML = p.fala + (p.porque ? `<small>${p.porque}</small>` : '') +
-    '<div class="avisos" id="avisos"></div>';
-  $('prof').classList.toggle('azul', p.cor === 'azul');
-
-  // apaga o que estava aceso
-  for (const el of apontados) {
-    el.classList.remove('apontado');
-    el.removeAttribute('data-rotulo');
-  }
-  // acende E NOMEIA. Acender sem dizer o que e ainda deixa quem nunca mixou
-  // adivinhando qual daqueles controles e o "jog".
-  apontados = [];
-  for (const alvo of p.apontar || []) {
-    const el = $(typeof alvo === 'string' ? alvo : alvo.id);
-    if (!el) continue;
-    el.classList.add('apontado');
-    if (alvo.rotulo) el.setAttribute('data-rotulo', alvo.rotulo);
-    apontados.push(el);
-  }
+  return est;
 }
 
 function nivelMaster() {
@@ -553,6 +678,16 @@ function nivelMaster() {
   let s = 0;
   for (let i = 0; i < bufMed.length; i++) s += bufMed[i] * bufMed[i];
   return Math.sqrt(s / bufMed.length);
+}
+
+/**
+ * Momentos de virada por deck. Recalculados só quando a análise muda — são
+ * ~40 frases por faixa, não vale refazer a 60 Hz.
+ */
+const momentosDe = { A: [], B: [] };
+export function recalcularMomentos(id) {
+  momentosDe[id] = momentos(decks[id]);
+  return momentosDe[id];
 }
 
 function desenharOnda(id) {
@@ -588,6 +723,28 @@ function desenharOnda(id) {
         c.fillRect(x, forte ? 0 : A * 0.34, dpr, forte ? A : A * 0.32);
       }
     }
+    /**
+     * Momentos de virada. É a resposta pra "como você achou a hora certa":
+     * eu entrava em múltiplo de frase, e agora dá pra ver onde elas caem.
+     *   ▲ verde  = drop, a música abrindo — hora de TRAZER a próxima
+     *   ▼ rosa   = quebra, a música fechando — hora de TIRAR esta
+     *   traço    = limite de frase comum
+     */
+    for (const m of momentosDe[id] || []) {
+      if (m.t < de || m.t > de + SEG_VISIVEL) continue;
+      const x = (m.t - de) * pxSeg;
+      if (m.tipo === 'frase' && !m.bloco) continue;   // só os de bloco, senão polui
+      const cor = m.tipo === 'drop' ? '#2ee6a8' : m.tipo === 'quebra' ? '#ff4ecd' : 'rgba(255,255,255,.3)';
+      c.fillStyle = cor;
+      c.fillRect(x - dpr / 2, 0, dpr, A);
+      if (m.tipo !== 'frase') {
+        const s = 5 * dpr, y = m.tipo === 'drop' ? s + 1 : A - s - 1;
+        c.beginPath();
+        c.moveTo(x, m.tipo === 'drop' ? 1 : A - 1);
+        c.lineTo(x - s, y); c.lineTo(x + s, y); c.closePath(); c.fill();
+      }
+    }
+
     const xc = L / 2 + (d.cuePoint - pos) * pxSeg;
     if (xc >= 0 && xc <= L) { c.fillStyle = '#ff8a3d'; c.fillRect(xc - dpr, 0, 2 * dpr, A); }
   }
@@ -619,7 +776,7 @@ function desenharFase() {
   const L = cv.width, A = cv.height;
   c.fillStyle = '#070909'; c.fillRect(0, 0, L, A);
 
-  const e = erroDeFase(decks.A, decks.B);
+  const e = medirEncaixe();
   if (!e) {
     $('rot-fase').textContent = decks.A?.grid && decks.B?.grid
       ? 'toque play nos dois' : 'carregue os dois decks';
@@ -779,16 +936,49 @@ async function carregarLista(fn) {
   }
 }
 
-const genero = $('genero');
-genero.innerHTML = GENRES.map((g) => `<option>${g}</option>`).join('');
-genero.value = 'House';
-genero.onchange = () => carregarLista(() => trending({ genre: genero.value, limit: 40 }));
+/**
+ * UM so jeito de escolher musica: todas as pilhas viram chip.
+ *
+ * Antes os generos eletronicos moravam num <select> e as crates brasileiras e
+ * latinas eram chips — duas gramaticas pra mesma acao, e a pergunta obvia foi
+ * "por que esses nao sao iguais aos novos?". Agora sao.
+ *
+ * Generos eletronicos vao por GENERO na API; Brasil e America Latina vao por
+ * BUSCA DE TEXTO, porque o Audius nao tem genero pra funk carioca, pagode nem
+ * reggaeton. A diferenca fica escondida atras do chip, que e onde ela pertence.
+ */
+const PILHAS = [
+  { grupo: 'eletrônico', itens: GENRES.map((g) => ({ nome: g, carregar: () => trending({ genre: g, limit: 40 }) })) },
+  { grupo: 'brasil',     itens: CRATES.filter((c) => c.reg === 'BR')
+      .map((c) => ({ nome: c.nome, carregar: () => crateBr(c.nome, { limite: 40 }) })) },
+  { grupo: 'latino',     itens: CRATES.filter((c) => c.reg === 'LAT')
+      .map((c) => ({ nome: c.nome, carregar: () => crateBr(c.nome, { limite: 40 }) })) },
+];
+
+let pilhaAtual = 'House';
+const carregarPilha = (nome) => {
+  const it = PILHAS.flatMap((p) => p.itens).find((x) => x.nome === nome);
+  if (!it) return;
+  pilhaAtual = nome;
+  for (const b of $('crates').querySelectorAll('button')) b.classList.toggle('lig', b.dataset.pilha === nome);
+  carregarLista(it.carregar);
+};
+
+$('crates').innerHTML = PILHAS.map((p) =>
+  `<div class="grupo-chips"><span class="rot-chips">${p.grupo}</span>` +
+  p.itens.map((i) => `<button data-pilha="${i.nome}">${i.nome}</button>`).join('') +
+  '</div>').join('');
+$('crates').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-pilha]');
+  if (b) carregarPilha(b.dataset.pilha);
+});
+
 
 let tBusca = null;
 $('busca').oninput = (e) => {
   clearTimeout(tBusca);
   const q = e.target.value.trim();
-  if (!q) return carregarLista(() => trending({ genre: genero.value, limit: 40 }));
+  if (!q) return carregarPilha(pilhaAtual);
   tBusca = setTimeout(() => carregarLista(() => search(q, { limit: 40 })), 350);
 };
 
@@ -943,3 +1133,90 @@ $('b-diag').onclick = async () => {
   }
   setTimeout(() => { b.textContent = 'diagnóstico'; }, 8000);
 };
+
+
+// ─────────────────── encaixe exato, pré-escuta e saídas ───────────────────
+
+/**
+ * ENCAIXAR — o botão que faltava.
+ *
+ * O professor mandava "arraste o jog até ficar verde", e quem nunca mixou não
+ * tem como acertar 20 ms à mão num prato de 100 px. Aqui o erro de fase é
+ * medido e desfeito deslizando, não saltando: a taxa muda o suficiente pra
+ * recuperar o atraso na janela e volta pro normal. Inaudível por construção.
+ *
+ * Corrige sempre o deck B, porque é a convenção do resto do app (o A é o que
+ * está no ar, o B é o que está entrando).
+ */
+$('b-encaixar').onclick = () => {
+  const r = medirEncaixe();
+  if (!r) { qd('dica').textContent = 'preciso das duas faixas tocando pra medir o encaixe'; return; }
+  const aplicado = decks.B.deslocar(-r.emMs / 1000, { emSeg: 0.5 });
+  qd('dica').textContent = `encaixei o B: ${r.emMs > 0 ? 'atrasei' : 'adiantei'} ` +
+    `${Math.abs(aplicado * 1000).toFixed(0)} ms (erro era ${r.emMs.toFixed(0)} ms)`;
+};
+
+/**
+ * O encaixe vem da GRADE. Ponto.
+ *
+ * Tentei medir pelo áudio pra não depender da âncora (ver mixer.js) e o
+ * resultado foi instável a ponto de estragar uma transição. A grade, desde que
+ * a análise passou a rodar na faixa inteira e não só no prefixo, é exata e não
+ * treme.
+ */
+function medirEncaixe() {
+  return erroDeFase(decks.A, decks.B);
+}
+
+/**
+ * Pré-escuta no fone — a segunda saída.
+ *
+ * O barramento fica no mesmo AudioContext e sai por um <audio> com setSinkId,
+ * porque um segundo AudioContext teria relógio próprio e os decks não poderiam
+ * alimentar os dois. O preço é atraso SÓ no fone, e por isso a nota na tela
+ * avisa: serve pra conferir a batida, não pra casar de ouvido só pelo fone.
+ *
+ * enumerateDevices() esconde o nome das saídas até haver permissão de
+ * microfone — daí o texto "nome oculto" em vez de um dropdown misterioso.
+ */
+async function popularSaidas() {
+  const sel = $('saida-fone');
+  let ds = [];
+  try { ds = await Mixer.saidas(); } catch {}
+  sel.innerHTML = '<option value="">fone: saída padrão</option>' +
+    ds.map((d) => `<option value="${d.id}">${d.nome}</option>`).join('');
+  if (!ds.length) {
+    $('fone-nota').textContent = 'sem lista de saídas neste navegador';
+    $('fone-nota').style.color = 'var(--fraco)';
+  }
+}
+popularSaidas();
+navigator.mediaDevices?.addEventListener?.('devicechange', popularSaidas);
+
+$('saida-fone').onchange = async () => {
+  if (!mixer) return;
+  const r = await mixer.ligarFone($('saida-fone').value || null);
+  $('fone-nota').textContent = r.ok ? `fone ok · +${r.latenciaMs} ms de atraso` : r.motivo;
+  $('fone-nota').style.color = r.ok ? 'var(--cue)' : 'var(--bad)';
+};
+
+for (const id of ['A', 'B']) {
+  const b = $('fone-' + id);
+  b.onclick = async () => {
+    if (!mixer) return;
+    await garantirRodando();
+    const ligando = !b.classList.contains('lig');
+    b.classList.toggle('lig', ligando);
+    mixer.setCue(id, ligando);
+    if (ligando) {
+      const r = await mixer.ligarFone($('saida-fone').value || null);
+      $('fone-nota').textContent = r.ok
+        ? `fone: ${mixer.cueAtivos.join('+') || '—'} · +${r.latenciaMs} ms de atraso`
+        : r.motivo;
+      $('fone-nota').style.color = r.ok ? 'var(--cue)' : 'var(--bad)';
+    } else if (!mixer.cueAtivos.length) {
+      mixer.desligarFone();
+      $('fone-nota').textContent = '';
+    }
+  };
+}

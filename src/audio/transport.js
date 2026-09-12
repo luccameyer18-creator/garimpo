@@ -492,6 +492,54 @@ export class Transport extends EventTarget {
     }
   }
 
+  /**
+   * Desloca a posição por `delta` segundos DESLIZANDO, não saltando.
+   *
+   * É o ajuste fino de fase, e é o que um iniciante precisa em vez de scratch:
+   * o jog cru pede que você acerte uma velocidade à mão, e errar a velocidade
+   * estraga o som. Aqui você pede o deslocamento em milissegundos e a taxa é
+   * calculada pra caber na janela — inaudível por construção.
+   *
+   * O desvio de taxa é limitado a 50% da nominal. Se o delta pedido não couber
+   * na janela nessa taxa, a janela é esticada em vez de a taxa estourar:
+   * preferir demorar mais a ser ouvido.
+   *
+   * @param {number} delta  segundos; positivo adianta a música, negativo atrasa
+   * @param {number} emSeg  janela do deslize
+   * @returns {number} o delta realmente aplicado
+   */
+  deslocar(delta, { emSeg = 0.45 } = {}) {
+    if (!this.duration || !delta || this.tocandoPrato) return 0;
+    const base = this.playing ? this.nominalRate : 0;
+    const desvioMax = Math.max(0.35, base * 0.5);
+    // estica a janela em vez de estourar a taxa
+    const janela = Math.max(emSeg, Math.abs(delta) / desvioMax);
+    const t0 = this.ctx.currentTime + this.lookahead;
+    const t1 = t0 + janela;
+    const p0 = this.map.positionAt(t0);
+    const alvo = Math.max(0, Math.min(p0 + base * janela + delta, this.duration));
+    const taxa = (alvo - p0) / janela;
+
+    this.map.push({ t0, p0, rate: taxa });
+    this.map.push({ t0: t1, p0: alvo, rate: base });
+    this.reader.port.postMessage({ t: 'seg', frame: this.#frame(t0), pos: p0, rate: taxa, nominal: this.nominalRate });
+    this.reader.port.postMessage({ t: 'seg', frame: this.#frame(t1), pos: alvo, rate: base, nominal: this.nominalRate });
+
+    if (this.tocando === 'lock') {
+      const T = this.ctx.currentTime + this.horizonteStretch;
+      // se o horizonte do stretch já passou do fim do deslize, só agenda o estado
+      // final: agendar uma taxa que já não vale nenhum instante deixa mudo
+      if (T < t1) {
+        this.#agendarStretch(Math.max(T, t0), this.map.positionAt(Math.max(T, t0)), taxa);
+        this.stretch.schedule({ output: t1, active: true, input: alvo, rate: base, semitones: 0 }).catch(() => {});
+      } else {
+        this.#agendarStretch(T, this.map.positionAt(T), base);
+      }
+      if (this.playing) this.#soltarCao(T);
+    }
+    return alvo - (p0 + base * janela);
+  }
+
   // ─────────────────────────── prato / jog ───────────────────────────
 
   /** Pegar o prato tira do keylock na hora: scratch sempre roda no leitor. */

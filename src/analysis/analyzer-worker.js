@@ -140,12 +140,50 @@ function estimarBpm(onset, taxaQuadro, { min = 70, max = 190 } = {}) {
 /** Fase do grid: qual deslocamento faz as batidas caírem nos onsets. */
 function acharAncora(onset, taxaQuadro, bpm) {
   const periodo = taxaQuadro * 60 / bpm;
+  const n = onset.length;
+
+  /**
+   * A varredura de fase acontece numa JANELA CENTRAL, nao no track inteiro.
+   *
+   * Medido: com o track inteiro, uma faixa de 161 s saiu com a ancora 0.168
+   * tempos fora da batida — 78 ms a 130 BPM, que se ouve como batida dupla.
+   * O motivo e aritmetico: 161 s a 130 BPM sao 350 tempos, entao 0.1% de erro
+   * no BPM ja desloca 1/3 de tempo entre o comeco e o fim da faixa. A media
+   * sobre tudo vira um meio-termo que nao esta certo em lugar nenhum.
+   *
+   * A janela central tambem evita intro e final, que e onde costuma nao ter
+   * batida nenhuma ou ter uma levada diferente.
+   *
+   * 60 s e o teto: e material suficiente pra media ser estavel e curto o
+   * bastante pra deriva de BPM nao estragar a fase.
+   */
+  const maxQuadros = Math.round(60 * taxaQuadro);
+  let ini = Math.round(n * 0.25), fim = Math.round(n * 0.75);
+  if (fim - ini > maxQuadros) {
+    const centro = (ini + fim) >> 1;
+    ini = centro - (maxQuadros >> 1);
+    fim = ini + maxQuadros;
+  }
+  if (fim - ini < periodo * 8) { ini = 0; fim = n; }   // faixa curta: usa tudo
+
+  /**
+   * Media simples da forca do onset nas batidas dessa fase.
+   *
+   * TENTEI um criterio "robusto" — maximizar o PIOR dos tres tercos da janela,
+   * pra nao ancorar num trecho nao representativo. Medi, e PIOROU nas duas
+   * faixas que tinha conferido (0.062 -> 0.084 e 0.028 -> 0.121 tempos de erro).
+   * Faz sentido em retrospecto: o pior terco costuma ser o trecho mais fraco da
+   * musica, e deixar o trecho mais fraco decidir a fase e dar o voto a quem
+   * menos sabe. A media fica.
+   */
   const passos = Math.max(8, Math.round(periodo));
   let melhor = -1, melhorFase = 0;
   for (let p = 0; p < passos; p++) {
     const fase = (p / passos) * periodo;
     let soma = 0, k = 0;
-    for (let t = fase; t < onset.length; t += periodo, k++) {
+    // começa na primeira batida dentro da janela, mantendo a fase
+    const primeiro = ini + ((fase - ini) % periodo + periodo) % periodo;
+    for (let t = primeiro; t < fim; t += periodo, k++) {
       const i = Math.round(t);
       // janela de 1 quadro pra cada lado: o onset nunca cai exato no inteiro
       soma += Math.max(onset[i - 1] || 0, onset[i] || 0, onset[i + 1] || 0);
@@ -273,7 +311,7 @@ function medirVolume(x, sr) {
 // ─────────────────────────── entrada ───────────────────────────
 
 self.onmessage = (e) => {
-  const { mono, sr, janela, id } = e.data;
+  const { mono, sr, janela, id, bpmForcado = null } = e.data;
   const t0 = performance.now();
   try {
     const x = new Float32Array(mono);
@@ -282,18 +320,45 @@ self.onmessage = (e) => {
 
     const onset = envelopeDeOnset(x, sr, hop);
     const { bpm: bruto, confianca } = estimarBpm(onset, taxaQuadro, janela);
-    let bpm = null, ancora = 0;
+    let bpm = null, ancora = 0, ancoraBruta = 0;
     if (bruto) {
       bpm = bruto;
-      ancora = acharAncora(onset, taxaQuadro, bpm);
+      ancora = ancoraBruta = acharAncora(onset, taxaQuadro, bpm);
+      /**
+       * Segunda passada com o BPM que veio de fora.
+       *
+       * A ancora TEM que ser achada no MESMO BPM que a grade vai usar, senao a
+       * grade fica internamente incoerente e as batidas escorregam. Quem decide
+       * qual BPM vale e o analyze.js; aqui so garantimos que, se ele mandar um,
+       * a ancora e refeita nele.
+       */
+      if (bpmForcado && Math.abs(bpmForcado / bruto - 1) < 0.08) {
+        bpm = bpmForcado;
+        ancora = acharAncora(onset, taxaQuadro, bpm);
+      }
     }
     const tom = detectarTom(x, sr);
     const vol = medirVolume(x, sr);
 
+    /**
+     * Devolve o ENVELOPE DE ONSET junto, transferido.
+     *
+     * Ele ja foi calculado aqui pra achar o BPM, e jogar fora obrigava quem
+     * quisesse medir fase depois a se virar com o envelope de 10 ms que existe
+     * pra DESENHAR a forma de onda — banda cheia, sem normalizacao, grosseiro.
+     * Medi a consequencia: tres estimativas de encaixe pra mesma dupla de
+     * faixas, discordando em ate 380 ms. Este envelope e de duas bandas,
+     * normalizado por media movel, a ~86 quadros/s: e o sinal certo.
+     *
+     * Custo: 200 s a 86 Hz sao 69 KB em Float32. Irrelevante perto dos 138 MB
+     * de PCM que o deck ja segura.
+     */
     self.postMessage({
       id, ok: true, bpmBruto: bpm, confianca, ancora,
+      bpmDetectado: bruto, ancoraDetectada: ancoraBruta,
+      onset: onset.buffer, taxaOnset: taxaQuadro,
       ...tom, ...vol, ms: Math.round(performance.now() - t0),
-    });
+    }, [onset.buffer]);
   } catch (err) {
     self.postMessage({ id, ok: false, erro: err.message });
   }
