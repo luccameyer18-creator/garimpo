@@ -105,6 +105,14 @@ export class Transport extends EventTarget {
     this._cao = null;
     this.caoDerrubou = false;
 
+    /**
+     * A linha de entrada do stretch acumula TUDO que ja foi carregado (ver
+     * load()). `stretchOffset` e onde a faixa atual comeca nela; `stretchUltimo`
+     * e a duracao da faixa atual, pra saber quanto descartar na proxima carga.
+     */
+    this.stretchOffset = 0;
+    this.stretchUltimo = 0;
+
     // estado
     this.duration = 0;
     this.playing = false;
@@ -206,15 +214,38 @@ export class Transport extends EventTarget {
     }
 
     if (this.stretch) {
-      // descarta o material da faixa anterior: sem isto o stretch acumula
-      // buffers a cada carga e a posicao de entrada deixa de bater
-      try { await this.stretch.dropBuffers(1e9); } catch {}
+      /**
+       * O BUG QUE MATAVA O KEYLOCK EM TODA FAIXA — e a semantica de verdade.
+       *
+       * Aqui estava `dropBuffers(1e9)` pra "descartar o material da faixa
+       * anterior". Medi em OfflineAudioContext: add -> drop(1e9) -> add produz
+       * SILENCIO ABSOLUTO. Como load() roda em toda carga, o keylock nunca
+       * funcionou depois da primeira faixa. E eu vinha procurando o defeito no
+       * seek, porque era la que ele aparecia — era o cao de guarda derrubando,
+       * e ele derrubava desde a hora de LIGAR.
+       *
+       * A semantica real do signalsmith, medida:
+       *   - addBuffers EMPILHA numa linha de tempo de entrada que so cresce.
+       *     Dois buffers de 8 s: o primeiro em [0,8), o segundo em [8,16).
+       *   - dropBuffers(n) libera memoria mas NAO renumera: depois de
+       *     drop(8), o segundo buffer continua em [8,16).
+       *   - dropBuffers alem do que existe destroi tudo.
+       *
+       * Entao: descarta exatamente o buffer anterior (seguro, medido), e todo
+       * `input` agendado soma `stretchOffset`, que e onde a faixa ATUAL comeca
+       * naquela linha de tempo.
+       */
+      try {
+        if (this.stretchUltimo > 0) await this.stretch.dropBuffers(this.stretchUltimo);
+      } catch { /* liberar memoria e otimizacao; falhar aqui nao quebra o som */ }
+      this.stretchOffset += this.stretchUltimo;
       // addBuffers recebe ARRAY de Float32Array. AudioBuffer dá DataCloneError.
       const canais = [];
       for (let c = 0; c < 2; c++) {
         canais.push(audioBuffer.getChannelData(Math.min(c, audioBuffer.numberOfChannels - 1)).slice());
       }
       await this.stretch.addBuffers(canais);
+      this.stretchUltimo = audioBuffer.duration;
     }
 
     this.map = new TimeMap({ time: this.ctx.currentTime, pos: 0, rate: 0 });
@@ -233,6 +264,23 @@ export class Transport extends EventTarget {
     if (m.glitchCount > this.underrunsAvisados) {
       this.underrunsAvisados = m.glitchCount;
       this.dispatchEvent(new CustomEvent('glitch', { detail: { count: m.glitchCount, ms: m.glitchMs } }));
+    }
+
+    /**
+     * FIM DA FAIXA.
+     *
+     * Ninguem parava o deck no fim, e o leitor simplesmente continuava: medi um
+     * deck em 277.7 s numa faixa de 203 s, ainda com `tocando = true` e nivel
+     * zero. Silencio que o app achava que era musica — e o aviso de "acaba em
+     * Ns" do professor calculava com um `restante` negativo.
+     *
+     * Para sem freio: freio de vinil aqui seria efeito, e nao houve gesto
+     * nenhum. Quem quer final com freio usa pause({brake}).
+     */
+    if (this.playing && this.duration && m.pos >= this.duration - 0.02) {
+      this.pause();
+      this.seek(this.duration);
+      this.dispatchEvent(new CustomEvent('fim', { detail: { duration: this.duration } }));
     }
   }
 
@@ -461,12 +509,20 @@ export class Transport extends EventTarget {
     return Math.max(this.lookahead, 2 * this.stretchLatency + 0.02);
   }
 
+  /**
+   * Posicao da faixa -> instante na linha de entrada do stretch.
+   *
+   * Nunca agende `input` com a posicao crua: a linha de entrada do stretch
+   * acumula tudo que ja foi carregado nesta sessao (ver load()).
+   */
+  #entradaStretch(pos) { return pos + this.stretchOffset; }
+
   #agendarStretch(quando, pos, taxa) {
     if (!this.stretch) return;
     // nunca agenda dentro da janela de latencia dele
     const minimo = this.ctx.currentTime + this.horizonteStretch;
     if (quando < minimo) { pos = this.map.positionAt(minimo); quando = minimo; }
-    const p = pos ?? this.map.positionAt(quando);
+    const p = this.#entradaStretch(pos ?? this.map.positionAt(quando));
     // não await: estamos no caminho crítico. A latência já foi medida no init.
     this.stretch.schedule({ output: quando, active: true, input: p, rate: taxa, semitones: 0 })
       .catch((e) => this.dispatchEvent(new CustomEvent('keylockFalhou', {
@@ -531,7 +587,8 @@ export class Transport extends EventTarget {
       // final: agendar uma taxa que já não vale nenhum instante deixa mudo
       if (T < t1) {
         this.#agendarStretch(Math.max(T, t0), this.map.positionAt(Math.max(T, t0)), taxa);
-        this.stretch.schedule({ output: t1, active: true, input: alvo, rate: base, semitones: 0 }).catch(() => {});
+        this.stretch.schedule({ output: t1, active: true, input: this.#entradaStretch(alvo),
+                                rate: base, semitones: 0 }).catch(() => {});
       } else {
         this.#agendarStretch(T, this.map.positionAt(T), base);
       }
@@ -574,9 +631,10 @@ export class Transport extends EventTarget {
     if (this.stretch && this.tocando === 'lock') {
       this.stretch.schedule({
         output: this.ctx.currentTime + this.lookahead, active: true,
-        input: this.map.positionAt(this.ctx.currentTime + this.lookahead),
+        input: this.#entradaStretch(this.map.positionAt(this.ctx.currentTime + this.lookahead)),
         rate: this.playing ? this.nominalRate : 0, semitones: 0,
-        loopStart: on ? start : 0, loopEnd: on ? end : 0,
+        loopStart: on ? this.#entradaStretch(start) : 0,
+        loopEnd: on ? this.#entradaStretch(end) : 0,
       }).catch(() => {});
     }
   }

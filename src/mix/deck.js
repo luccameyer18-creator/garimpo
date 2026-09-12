@@ -274,6 +274,9 @@ export class Deck extends EventTarget {
         }
       }
       if (!faixa.camelot && r.camelot) { faixa.camelot = r.camelot; faixa.key = r.tom; }
+      // guarda o ganho medido NA FAIXA tambem: o canal ja recebeu, mas sem isto
+      // quem le a faixa depois (fila, diagnostico, log) ve `trimDb: undefined`
+      if (typeof r.trimDb === 'number') { faixa.trimDb = r.trimDb; faixa.volumeDb = r.volumeDb; }
       this.grid = r.bpm ? { bpm: r.bpm, ancora: r.ancora } : null;
       // envelope de ataque em ~86 Hz: e com ele que se mede fase de verdade
       this.onset = r.onset ? { v: r.onset, taxa: r.taxaOnset } : null;

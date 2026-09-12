@@ -635,6 +635,24 @@ function rodarProfessor() {
  * O estado que o professor lê. Uma fonte só, e nenhuma regra faz conta de áudio
  * por conta própria — é o que impede o professor de discordar da realidade.
  */
+/**
+ * Quanto tempo de audio se perdeu no ultimo minuto.
+ *
+ * Contagem cumulativa nao serve de aviso: ela so cresce, e depois de meia hora
+ * qualquer limiar estoura. O que importa e a taxa recente.
+ */
+const historicoFalhas = [];
+function taxaDeFalhas() {
+  const ms = Math.max(decks.A?.transport.ultimoAnchor?.glitchMs || 0,
+                      decks.B?.transport.ultimoAnchor?.glitchMs || 0);
+  const agora = performance.now();
+  historicoFalhas.push({ agora, ms });
+  while (historicoFalhas.length > 1 && agora - historicoFalhas[0].agora > 60000) historicoFalhas.shift();
+  const velho = historicoFalhas[0];
+  const janela = (agora - velho.agora) / 60000;
+  return janela > 0.15 ? (ms - velho.ms) / janela : 0;   // precisa de 9 s de historico
+}
+
 function montarEstado() {
   const est = {
     audioOk: pronto && ctx?.state === 'running',
@@ -645,8 +663,11 @@ function montarEstado() {
     reducao: mixer?.reducao ?? 0,
     nivelA: mixer?.canal('A').nivel ?? 0,
     nivelB: mixer?.canal('B').nivel ?? 0,
-    glitches: (decks.A?.transport.ultimoAnchor?.glitchCount || 0) +
-              (decks.B?.transport.ultimoAnchor?.glitchCount || 0),
+    // os dois decks contam o MESMO buraco (e da thread de audio, nao do deck),
+    // entao somar contava duas vezes. O maximo e a contagem real.
+    glitches: Math.max(decks.A?.transport.ultimoAnchor?.glitchCount || 0,
+                       decks.B?.transport.ultimoAnchor?.glitchCount || 0),
+    glitchMsPorMin: taxaDeFalhas(),
   };
   for (const id of ['A', 'B']) {
     const d = decks[id];

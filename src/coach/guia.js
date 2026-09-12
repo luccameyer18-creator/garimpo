@@ -250,10 +250,24 @@ const REGRAS = [
       return null;
     } },
 
-  // ── falhas de áudio: informação, não ajuste ──
-  { id: 'glitch', grav: 1, facil: 0, quando: (e) => e.glitches > 0 && {
-      fala: `Houve <b>${e.glitches} falha(s)</b> de áudio.`,
-      porque: 'Se repetir, feche abas pesadas — o navegador está sem folga de CPU.',
+  /**
+   * Falhas de audio — medidas em TEMPO PERDIDO, nao em contagem.
+   *
+   * A versao anterior avisava "houve 8 falhas de audio" e assustava. Fui medir:
+   * cada falha e exatamente UM quantum, 2.7 ms, e 8 delas somam 16 ms em dois
+   * minutos de musica. Isso nao se ouve. Pior, o numero era cumulativo da
+   * sessao, entao depois de meia hora ele avisaria sempre.
+   *
+   * (Detalhe que a medicao tambem revelou: os dois decks contam SEMPRE o mesmo
+   * numero, mesmo com um deles parado, porque o buraco e da thread de audio
+   * inteira e nao de um deck. Entao contar por deck e somar contava duas vezes.)
+   *
+   * O criterio agora e o que se ouve: mais de 40 ms perdidos no ultimo minuto,
+   * ou um buraco unico grande. Abaixo disso, silencio.
+   */
+  { id: 'glitch', grav: 2, facil: 0, quando: (e) => (e.glitchMsPorMin || 0) > 40 && {
+      fala: `O áudio está <b>falhando</b>: ${Math.round(e.glitchMsPorMin)} ms perdidos no último minuto.`,
+      porque: 'O navegador está sem folga de CPU. Feche abas pesadas, ou deixe o keylock desligado.',
       apontar: [] } },
 ];
 

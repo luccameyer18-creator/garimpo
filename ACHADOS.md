@@ -230,3 +230,71 @@ deveria. Roda sobre 44 controles.
 
 Depois da correção, em 1366×768 e em 1280×700: zero problemas, página com a
 altura exata do viewport.
+
+## 12 · `dropBuffers(1e9)` matava o keylock em toda faixa
+
+`Transport.load()` chamava `stretch.dropBuffers(1e9)` antes de `addBuffers`,
+para "descartar o material da faixa anterior". Medido em OfflineAudioContext:
+
+| sequência | som |
+|---|---|
+| `addBuffers` só | 0.353 RMS |
+| `add` → `drop(1e9)` → `add` | **0** |
+| `add` → `drop(1e9)` | **0** |
+
+Como `load()` roda em toda carga, o keylock nunca funcionava. O sintoma aparecia
+no seek (era lá que o cão de guarda derrubava e o usuário via a mensagem), e eu
+procurei a causa no seek por isso. Ela estava na carga.
+
+Semântica real do signalsmith, medida com senoides de frequências diferentes:
+
+- `addBuffers` **empilha** numa linha de entrada que só cresce. Dois buffers de
+  8 s ficam em `[0,8)` e `[8,16)`.
+- `dropBuffers(n)` libera memória e **não renumera**: depois de `drop(8)`, o
+  segundo buffer continua em `[8,16)`.
+- Dropar além do que existe destrói tudo.
+
+Correção: descartar exatamente a duração do buffer anterior, e somar
+`stretchOffset` em todo `input` agendado. Verificado ao vivo — keylock liga e
+sobrevive a dois seeks, ao ENCAIXAR e a pitch de +6% → −4%, sem o cão latir.
+
+## 13 · Cada "falha de áudio" é um quantum, e os dois decks contam a mesma
+
+Medido: 6 falhas somam 16 ms — **2,67 ms cada, exatamente um quantum de
+render**. E os dois decks reportam sempre o mesmo número, mesmo com um parado,
+porque o buraco é da thread de áudio inteira e não do deck. Somar os dois
+contava em dobro.
+
+Carregar faixa (decode + transferência de lajes) produziu **zero** falhas; elas
+aparecem a ~1 por 20 s durante a reprodução, com ou sem deck tocando.
+
+O professor avisava "houve 8 falhas de áudio" — alarme por 16 ms em dois
+minutos, e o número era cumulativo da sessão. Agora o critério é tempo perdido
+no último minuto, acima de 40 ms.
+
+## 14 · A análise rodava só no prefixo de 52 s
+
+O deck carrega ~2 MB primeiro pra tocar rápido e troca pelo arquivo completo
+depois. A análise rodava no prefixo e **nunca era refeita**: a grade de batida
+da música inteira saía da introdução, que é onde a batida menos está definida.
+
+Sintoma: envelope de onset com 4909 quadros (52 s) numa faixa de 201 s. Depois
+de re-analisar no arquivo completo, o erro de fase nas transições caiu para
+**3 ms** e ficou constante durante o crossfade.
+
+## 15 · BPM: o metadata ganha da análise local no valor fino
+
+Pontuei as duas hipóteses contra os ataques reais do áudio, em três janelas de
+20 s por faixa, em 10 faixas:
+
+| vencedor | faixas |
+|---|---|
+| metadata | 6 |
+| empate | 4 |
+| análise local | **0** |
+
+Todo "empate" era concordância dentro de 0,15%. Quando discordam, a análise é
+que erra — o detector do Audius rodou no arquivo inteiro, o meu roda numa
+autocorrelação decimada, boa pra **oitava** e fraca pro valor fino. Regra: a
+oitava é da análise, o valor fino é do metadata, e a âncora é refeita no BPM
+escolhido (grade com BPM de uma fonte e âncora de outra é grade incoerente).
