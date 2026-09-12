@@ -21,30 +21,62 @@ let ctx = null, deck = null, pronto = false;
  * Medido: a thread de render do Chrome demora ~900 ms pra partir depois do
  * resume. Criar no play deixaria o primeiro play quase um segundo atrasado.
  */
+let ligando = null;
+
 async function ligar() {
-  if (ctx) return;
-  ctx = new AudioContext({ latencyHint: 'interactive' });
-  await ctx.audioWorklet.addModule(new URL('../audio/worklets/turntable-reader.js', import.meta.url));
-  await ctx.resume();
+  if (pronto) return;
+  if (ligando) return ligando;          // chamadas concorrentes esperam a mesma
+  ligando = (async () => {
+    try {
+      $('dica').textContent = 'ligando o áudio…';
 
-  const master = ctx.createGain();
-  master.gain.value = 0.85;
-  master.connect(ctx.destination);
+      // resume() PRIMEIRO, ainda dentro do gesto. Se vier depois de um await
+      // (addModule leva centenas de ms), a ativacao do toque ja expirou e o
+      // celular recusa em silencio. No desktop passava; no celular nao.
+      ctx = new AudioContext({ latencyHint: 'interactive' });
+      const p = ctx.resume();
 
-  deck = await new Deck('A', ctx, { destination: master }).init();
-  ligarEventos();
-  pronto = true;
+      $('dica').textContent = 'carregando o motor…';
+      await ctx.audioWorklet.addModule(
+        new URL('../audio/worklets/turntable-reader.js', import.meta.url));
+      await p;
 
-  $('dica').textContent = deck.temKeylock ? 'áudio ligado' : 'áudio ligado (sem keylock: signalsmith não carregou)';
-  $('e-keylock').innerHTML = `keylock <b>${deck.temKeylock ? 'disponível' : 'indisponível'}</b>`;
-  setInterval(() => {
-    const l = ctx.outputLatency ?? 0;
-    $('e-lat').textContent = `${(l * 1e3).toFixed(0)} ms`;
-  }, 1000);
-  requestAnimationFrame(quadro);
+      const master = ctx.createGain();
+      master.gain.value = 0.85;
+      master.connect(ctx.destination);
+
+      $('dica').textContent = 'preparando o deck…';
+      deck = await new Deck('A', ctx, { destination: master }).init();
+      ligarEventos();
+      pronto = true;
+
+      $('dica').textContent = deck.temKeylock
+        ? 'áudio ligado' : 'áudio ligado (sem keylock)';
+      $('e-keylock').innerHTML = `keylock <b>${deck.temKeylock ? 'ok' : 'indisponível'}</b>`;
+      setInterval(() => {
+        $('e-lat').textContent = `${((ctx.outputLatency ?? 0) * 1e3).toFixed(0)} ms`;
+      }, 1000);
+      requestAnimationFrame(quadro);
+    } catch (e) {
+      // NUNCA falhar calado: sem isto o usuario toca e nao acontece nada
+      pronto = false;
+      ctx = null;
+      $('dica').innerHTML = `<span style="color:var(--bad)">áudio não ligou: ${e.name} — ${e.message}</span> · toque de novo`;
+      $('erro').hidden = false;
+      $('erro').textContent = `falha ao ligar o áudio: ${e.name}: ${e.message}`;
+      throw e;
+    } finally {
+      ligando = null;       // permite tentar de novo; antes o {once:true} matava
+    }
+  })();
+  return ligando;
 }
-addEventListener('pointerdown', ligar, { once: true });
-addEventListener('keydown', ligar, { once: true });
+
+// sem {once:true}: se a primeira tentativa falhar, o proximo toque tenta de novo
+const tentarLigar = () => { ligar().catch(() => {}); };
+addEventListener('pointerdown', tentarLigar);
+addEventListener('touchend', tentarLigar);
+addEventListener('keydown', tentarLigar);
 
 // ─────────────────────────── eventos do deck ───────────────────────────
 
@@ -329,7 +361,10 @@ jog.addEventListener('pointercancel', soltarJog);
 
 const solta = $('solta'), arquivo = $('arquivo');
 solta.onclick = () => arquivo.click();
-arquivo.onchange = async () => { await ligar(); if (arquivo.files[0]) deck.carregarArquivo(arquivo.files[0]); };
+arquivo.onchange = async () => {
+  try { await ligar(); } catch { return; }
+  if (arquivo.files[0]) deck.carregarArquivo(arquivo.files[0]);
+};
 ['dragenter', 'dragover'].forEach((t) => solta.addEventListener(t, (e) => {
   e.preventDefault(); solta.classList.add('sobre');
 }));
@@ -337,7 +372,7 @@ arquivo.onchange = async () => { await ligar(); if (arquivo.files[0]) deck.carre
   e.preventDefault(); solta.classList.remove('sobre');
 }));
 solta.addEventListener('drop', async (e) => {
-  await ligar();
+  try { await ligar(); } catch { return; }
   const f = e.dataTransfer.files[0];
   if (f) deck.carregarArquivo(f);
 });
@@ -373,7 +408,10 @@ async function carregarLista(fn) {
       // Sem isso o clique paga resolve + DNS + TLS de um host novo (~2 s).
       let aquecida = false;
       el.onpointerenter = () => { if (!aquecida) { aquecida = true; prefetch(t.id).catch(() => {}); } };
-      el.onclick = async () => { await ligar(); deck.carregarAudius(t); };
+      el.onclick = async () => {
+        try { await ligar(); } catch { return; }   // ligar() ja mostrou o erro
+        deck.carregarAudius(t);
+      };
       lista.appendChild(el);
     }
     // as tres primeiras ja aquecem sozinhas: sao as mais provaveis de clicar

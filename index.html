@@ -108,6 +108,48 @@
   .passos .ruim .nm { color:var(--bad); }
   .creditos { font-size:10px; color:var(--mut); line-height:1.5; }
   .creditos a { color:var(--mut); }
+
+  /* ─────────────── celular ───────────────
+     Fader vertical e botao de 9px nao funcionam com o dedo. Aqui o pitch vira
+     horizontal, os alvos de toque vao pra 46px (minimo confortavel), e a ordem
+     muda: primeiro o que se toca, depois o que se le. */
+  @media (max-width: 760px) {
+    body { font-size:14px; }
+    .topo { padding:10px 12px; gap:10px; flex-wrap:wrap; }
+    .estado { width:100%; margin-left:0; justify-content:space-between; font-size:10px; }
+    .palco { padding:10px; gap:12px; }
+
+    .faixa { padding:10px; gap:10px; flex-wrap:wrap; }
+    .capa { width:44px; height:44px; }
+    .tags { margin-left:0; width:100%; }
+
+    canvas.onda { height:96px; }
+
+    /* uma coluna: transporte -> jog -> pitch */
+    .controles { grid-template-columns:1fr; gap:14px; padding:14px 12px; justify-items:stretch; }
+    .centro { order:1; }
+    .jog { order:2; justify-self:center; width:180px; height:180px; }
+    .jog .marca-jog { transform-origin:50% 85px; }
+    .pitch { order:3; flex-direction:row; align-items:center; gap:12px; width:100%; }
+
+    /* fader horizontal: vertical-lr nao responde bem ao dedo */
+    .pitch input[type=range] { writing-mode:horizontal-tb; direction:ltr;
+                               width:auto; flex:1; height:34px; }
+    .pitch .val { min-width:64px; font-size:13px; }
+    .pitch .faixa-sel button { padding:9px 10px; font-size:12px; }
+
+    .botoes { gap:8px; }
+    .botoes button { flex:1; min-width:84px; min-height:46px; font-size:13px; }
+    button { min-height:44px; }
+    .mini-b { min-height:30px; }
+
+    .tempo { flex-wrap:wrap; gap:8px 14px; font-size:13px; }
+    .lista { max-height:none; }
+    .item { padding:11px 10px; }
+    .item .t { font-size:13px; white-space:normal; }
+    .passos { font-size:10px; }
+    .passos .nm { min-width:96px; }
+  }
 </style>
 </head>
 <body>
