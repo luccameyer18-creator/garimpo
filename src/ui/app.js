@@ -11,7 +11,7 @@ import {
   keyCompatible, resolveStreamUrl,
 } from '../sources/audius.js';
 
-export const VERSAO = '2026-09-12.12';
+export const VERSAO = '2026-09-12.13';
 
 const $ = (id) => document.getElementById(id);
 /** Elemento que pode nao existir (diagnostico saiu da tela). */
@@ -419,10 +419,10 @@ const SEG_VISIVEL = 8;
 
 function ajustar(cv) {
   const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
-  if (cv.width !== Math.round(r.width * dpr)) {
-    cv.width = Math.round(r.width * dpr);
-    cv.height = Math.round(r.height * dpr);
-  }
+  const L = Math.round(r.width * dpr), A = Math.round(r.height * dpr);
+  // confere a ALTURA tambem: a onda agora e flexivel, entao ela muda de
+  // tamanho quando a janela muda e o canvas precisa acompanhar
+  if (cv.width !== L || cv.height !== A) { cv.width = L; cv.height = A; }
   return dpr;
 }
 

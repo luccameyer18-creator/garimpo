@@ -200,3 +200,33 @@ disso: **6/6** no teste ao vivo, incluindo hosts que falhavam isolados.
 
 **A lição:** amostra de 18 sem variação temporal não prova "100%". O que
 detectou isto foi o console do navegador em uso real, não o meu teste.
+
+---
+
+## 11. "Existe no DOM" não é "o usuário vê" — 2026-09-12
+
+Entreguei uma versão em que os botões PLAY, CUE, SYNC e KEY LOCK **tinham
+sumido da tela**, e eu tinha "verificado". Verifiquei com `querySelector` se
+eles existiam — e existiam. Estavam cortados pelo `overflow:hidden` do deck.
+
+**Elemento cortado continua no DOM, responde a `querySelector`, tem
+`className`, e é invisível.** Checar existência não é checar entrega.
+
+A causa raiz era de layout: eu tinha dado altura **fixa** à forma de onda e
+`flex:1` ao bloco de controles. Quando a coluna apertava, quem era espremido
+eram os botões. O certo é o inverso — controle tem altura fixa e inviolável,
+a onda absorve a sobra.
+
+E um segundo, que só apareceu ao medir: `.palco` era um grid sem
+`grid-template-rows`, então criava uma linha de altura automática e cada
+coluna crescia até o conteúdo. A página ficava com **1738 px num viewport de
+768**, o oposto de "cabe numa tela". `grid-template-rows: minmax(0,1fr)`
+obriga os filhos a caber.
+
+**A ferramenta:** `src/dev/inspecionar.js` mede posição e tamanho reais e
+acusa o que o DOM esconde — tamanho zero, corte pela borda, cobertura por
+outro elemento, alvo de toque pequeno demais, e página que rola quando não
+deveria. Roda sobre 44 controles.
+
+Depois da correção, em 1366×768 e em 1280×700: zero problemas, página com a
+altura exata do viewport.
