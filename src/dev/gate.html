@@ -273,6 +273,71 @@ try {
       tr.dispose();
     }
   }
+  // ─────────────── 8 · análise: BPM, âncora do grid e tom ───────────────
+  head('8 · análise local — BPM, âncora e tom em material sintético');
+  {
+    const { analisar } = await import('/src/analysis/analyze.js');
+    const oc = new OfflineAudioContext(1, SR, SR);
+
+    /** Pista com bumbo em BPM conhecido, deslocada de `offset` segundos. */
+    function pista(bpm, offset, seg = 20, comHarmonia = null) {
+      const b = oc.createBuffer(2, Math.ceil(SR * seg), SR);
+      const d = b.getChannelData(0);
+      const periodo = 60 / bpm;
+      for (let t = offset; t < seg; t += periodo) {
+        const i0 = Math.floor(t * SR);
+        // bumbo: senoide de 55 Hz com decaimento rápido
+        for (let k = 0; k < SR * 0.12; k++) {
+          const env = Math.exp(-k / (SR * 0.03));
+          d[i0 + k] = (d[i0 + k] || 0) + 0.8 * env * Math.sin(2 * Math.PI * 55 * k / SR);
+        }
+        // hi-hat no contratempo, pra não ser só grave
+        const i1 = Math.floor((t + periodo / 2) * SR);
+        for (let k = 0; k < SR * 0.03; k++) {
+          const env = Math.exp(-k / (SR * 0.006));
+          d[i1 + k] = (d[i1 + k] || 0) + 0.25 * env * (Math.random() * 2 - 1);
+        }
+      }
+      if (comHarmonia) {
+        for (let i = 0; i < d.length; i++) {
+          let s = 0;
+          for (const hz of comHarmonia) s += Math.sin(2 * Math.PI * hz * i / SR);
+          d[i] += 0.22 * s / comHarmonia.length;
+        }
+      }
+      b.getChannelData(1).set(d);
+      return b;
+    }
+
+    for (const [bpm, offset] of [[128, 0.0], [124, 0.37], [140, 0.21], [96, 0.5]]) {
+      const r = await analisar(pista(bpm, offset), { genero: 'House' });
+      const errBpm = r.bpm != null ? Math.abs(r.bpm - bpm) : Infinity;
+      // a âncora pode cair em qualquer batida, não só na primeira: o que
+      // importa é estar EM FASE com o grid, não ser o mesmo número
+      const per = 60 / bpm;
+      let faseErr = Math.abs(((r.ancora - offset) % per + per) % per);
+      faseErr = Math.min(faseErr, per - faseErr);
+      inf(`${bpm} BPM off ${offset}s → detectou ${r.bpm} (bruto ${r.bpmBruto}, conf ${r.confianca}), âncora ${r.ancora}s, ${r.ms} ms`);
+      if (errBpm < 0.6) ok(`BPM ${bpm}: acertou (erro ${errBpm.toFixed(2)})`);
+      else bad(`BPM ${bpm}: detectou ${r.bpm}, erro ${errBpm.toFixed(2)}`);
+      if (faseErr < 0.035) ok(`  âncora em fase com o grid (erro ${(faseErr * 1e3).toFixed(0)} ms)`);
+      else bad(`  âncora fora de fase por ${(faseErr * 1e3).toFixed(0)} ms — o SYNC não teria onde alinhar`);
+    }
+
+    // tom: tríade de lá menor (A C E) deve dar 8A
+    const la = 220, dó = 220 * Math.pow(2, 3 / 12), mi = 220 * Math.pow(2, 7 / 12);
+    const rk = await analisar(pista(126, 0, 20, [la, dó, mi, la * 2]), { genero: 'House' });
+    inf(`tríade de lá menor → ${rk.tom} (${rk.camelot}), força ${rk.forcaDoTom}`);
+    if (rk.camelot === '8A') ok('tom: acertou lá menor = 8A');
+    else if (rk.camelot === '5A' || rk.camelot === '11A' || rk.camelot === '8B')
+      warn(`tom: deu ${rk.camelot}, vizinho de 8A na roda — aceitável em material sintético`);
+    else bad(`tom: deu ${rk.camelot}, esperado 8A`);
+
+    // com BPM conhecido, a análise deve concordar em vez de "corrigir"
+    const rc = await analisar(pista(128, 0.25), { genero: 'House', bpmConhecido: 128 });
+    if (Math.abs(rc.bpm - 128) < 0.6) ok(`com BPM conhecido não desvia: ${rc.bpm}`);
+    else bad(`com BPM conhecido desviou pra ${rc.bpm}`);
+  }
 } catch (e) {
   bad('excecao: ' + e.message);
   put(String(e.stack).slice(0, 400), 'mut');

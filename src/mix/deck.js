@@ -12,6 +12,7 @@
 
 import { Transport } from '../audio/transport.js';
 import { resolveStreamUrl, urlAquecida } from '../sources/audius.js';
+import { analisar } from '../analysis/analyze.js';
 
 /** Picos min/max por bin, pra desenhar forma de onda sem guardar o PCM. */
 export function calcularPicos(buffer, binsPorSegundo = 100) {
@@ -55,6 +56,8 @@ export class Deck extends EventTarget {
     this._abort = null;
     this.passos = [];
     this._t0 = 0;
+    this.analise = null;
+    this.grid = null;
   }
 
   async init() {
@@ -178,6 +181,11 @@ export class Deck extends EventTarget {
         detail: { faixa, duration: buf.duration, parcial: this.parcial, bytes },
       }));
 
+      // Analise em segundo plano: NUNCA bloqueia o play. A faixa fica tocavel
+      // primeiro e o grid chega depois — esperar a analise pra soltar o som
+      // seria trocar 2 s de espera por nada.
+      this.#analisar(buf, faixa, ac);
+
       // troca pelo arquivo inteiro quando ele chegar, sem interromper o som
       if (res.completo) {
         res.completo.then(async (todo) => {
@@ -206,6 +214,28 @@ export class Deck extends EventTarget {
       // precisa mostrar e oferecer nova tentativa, nunca falhar em silêncio
       this.#passo('FALHOU', e.message);
       this.dispatchEvent(new CustomEvent('error', { detail: { erro: e.message, faixa, passos: this.passos } }));
+    }
+  }
+
+  /**
+   * Detecta BPM, ancora do grid e tom. Em faixa do Audius o BPM ja vem do
+   * metadata, entao passamos como conhecido: a analise serve pra achar a
+   * ANCORA (que o metadata nao da e o SYNC precisa) e pra confirmar, nao pra
+   * discordar.
+   */
+  async #analisar(buf, faixa, ac) {
+    try {
+      const r = await analisar(buf, { genero: faixa.genre, bpmConhecido: faixa.bpm || null });
+      if (ac.signal.aborted) return;
+      this.analise = r;
+      // so sobrescreve o BPM se nao havia um; o do metadata tem prioridade
+      if (!faixa.bpm && r.bpm) faixa.bpm = r.bpm;
+      if (!faixa.camelot && r.camelot) { faixa.camelot = r.camelot; faixa.key = r.tom; }
+      this.grid = r.bpm ? { bpm: r.bpm, ancora: r.ancora } : null;
+      this.#passo('analisado', `${r.bpm} BPM, ${r.camelot}, ancora ${r.ancora}s`);
+      this.dispatchEvent(new CustomEvent('analysis', { detail: { faixa, ...r } }));
+    } catch (e) {
+      if (!ac.signal.aborted) console.warn('[deck] analise falhou:', e.message);
     }
   }
 

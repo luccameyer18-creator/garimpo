@@ -34,7 +34,7 @@ function nivelMaster() {
 let ligando = null;
 
 /** Versão do build. Sem isto não dá pra saber se o celular pegou cache. */
-export const VERSAO = '2026-09-12.5';
+export const VERSAO = '2026-09-12.6';
 
 /**
  * Fase atual de ligar(). Vai pro diagnóstico.
@@ -237,6 +237,19 @@ function ligarEventos() {
   });
 
   deck.addEventListener('glitch', (e) => { $('e-glitch').textContent = e.detail.count; });
+
+  // analise chegou: arquivo local ganha BPM e tom; faixa do Audius ganha o grid
+  deck.addEventListener('analysis', (e) => {
+    const { faixa, bpm, camelot, tom, confianca, ancora, ms } = e.detail;
+    $('bpm-val').textContent = faixa.bpm ?? bpm ?? '—';
+    if (faixa.camelot || camelot) {
+      $('tag-tom').innerHTML = `<b>${faixa.camelot || camelot}</b> ${faixa.key || tom}`;
+    }
+    $('b-compat').disabled = !faixa.bpm;
+    $('b-compat').textContent = faixa.bpm ? `mixa com esta (${faixa.bpm} ${faixa.camelot || ''})` : 'carregue uma faixa';
+    $('e-grid').textContent = `${bpm ?? '?'} @ ${ancora}s`;
+    $('e-grid').title = `confianca ${confianca}, analisado em ${ms} ms`;
+  });
 
   // o keylock voltou pro vinil sozinho porque nao saiu som: avisar, nunca calar
   deck.addEventListener('keylockFalhou', (e) => {
