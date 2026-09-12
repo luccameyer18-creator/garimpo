@@ -210,13 +210,14 @@
         <div class="botoes">
           <button class="cue" id="b-cue">CUE</button>
           <button class="play" id="b-play">PLAY</button>
-          <button id="b-keylock">KEY LOCK</button>
+          <button id="b-keylock" title="Trava o tom da música enquanto você muda o andamento. Sem ele, acelerar a faixa deixa a voz fina, como um vinil acelerado.">KEY LOCK</button>
         </div>
         <div class="tempo">
           <span><b id="t-pos">0:00.00</b> / <span id="t-dur">0:00</span></span>
           <span>rest <b id="t-rest">0:00</b></span>
           <span>BPM efetivo <b id="t-bpm">—</b></span>
         </div>
+        <div id="efeito-tom" style="font:12px ui-monospace,Consolas,monospace"></div>
         <div id="erro" class="aviso" hidden></div>
         <div id="passos" class="passos" hidden></div>
       </div>

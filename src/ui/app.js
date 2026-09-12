@@ -34,7 +34,7 @@ function nivelMaster() {
 let ligando = null;
 
 /** Versão do build. Sem isto não dá pra saber se o celular pegou cache. */
-export const VERSAO = '2026-09-12.8';
+export const VERSAO = '2026-09-12.9';
 
 /**
  * Fase atual de ligar(). Vai pro diagnóstico.
@@ -189,6 +189,7 @@ function ligarEventos() {
     $('erro').hidden = true;
     desenharMini();
     repintarLista();
+    mostrarEfeitoDoTom();
     if (!trocado) mostrarCreditos(faixa);
     $('b-compat').disabled = !faixa.bpm;
     $('b-compat').textContent = faixa.bpm
@@ -224,6 +225,7 @@ function ligarEventos() {
     const p = deck.pitch;
     $('p-val').textContent = `${p >= 0 ? '+' : ''}${(p * 100).toFixed(2)}%`;
     $('t-bpm').textContent = deck.bpmEfetivo ? deck.bpmEfetivo.toFixed(2) : '—';
+    mostrarEfeitoDoTom();
   });
 
   deck.addEventListener('keylock', (e) => {
@@ -235,6 +237,7 @@ function ligarEventos() {
     $('b-keylock').title = pedido && !ativo
       ? 'keylock suspenso: fora da faixa de qualidade (0.70x–1.45x)'
       : 'trava o tom ao mudar o andamento';
+    mostrarEfeitoDoTom();
   });
 
   deck.addEventListener('glitch', (e) => { $('e-glitch').textContent = e.detail.count; });
@@ -255,11 +258,41 @@ function ligarEventos() {
 
   // o keylock voltou pro vinil sozinho porque nao saiu som: avisar, nunca calar
   deck.addEventListener('keylockFalhou', (e) => {
+    caoDeGuarda.push({ quando: new Date().toISOString().slice(11,19), ...e.detail });
     $('erro').hidden = false;
     $('erro').textContent = `keylock desligado sozinho: ${e.detail.motivo}`;
     $('e-keylock').innerHTML = 'keylock <b style="color:var(--bad)">falhou</b>';
     setTimeout(() => { $('erro').hidden = true; }, 6000);
   });
+}
+
+/**
+ * Mostra o que o keylock esta fazendo AGORA.
+ *
+ * Com pitch em 0% ligar ou desligar soa identico, porque nao ha nada pra
+ * corrigir — e o usuario conclui, com razao, que "nunca funciona". A interface
+ * tem que dizer isso em vez de deixar adivinhar.
+ */
+function mostrarEfeitoDoTom() {
+  const el = $('efeito-tom');
+  if (!deck?.faixa) { el.textContent = ''; return; }
+  const semitons = 12 * Math.log2(deck.nominalRate);
+  if (Math.abs(semitons) < 0.02) {
+    el.innerHTML = '<span style="color:var(--mut)">pitch em zero: keylock não muda nada</span>';
+    return;
+  }
+  const sinal = semitons >= 0 ? '+' : '−';
+  const abs = Math.abs(semitons).toFixed(2);
+  if (deck.keylockAtivo) {
+    el.innerHTML = `<span style="color:var(--lock)">tom travado</span> ` +
+      `<span style="color:var(--mut)">(sem keylock subiria ${sinal}${abs} semitom)</span>`;
+  } else if (deck.keylockPedido) {
+    el.innerHTML = `<span style="color:var(--quente)">keylock suspenso fora de 0.70×–1.45×</span> ` +
+      `<span style="color:var(--mut)">tom ${sinal}${abs} semitom</span>`;
+  } else {
+    el.innerHTML = `<span style="color:var(--quente)">tom ${sinal}${abs} semitom</span> ` +
+      `<span style="color:var(--mut)">— ligue KEY LOCK pra travar</span>`;
+  }
 }
 
 function desenharPassos(passos, falhou = false) {
@@ -374,7 +407,17 @@ $('b-play').onclick = () => deck?.alternar();
 $('b-cue').onpointerdown = () => deck?.cuePress();
 $('b-cue').onpointerup = () => deck?.cueRelease();
 $('b-cue').onpointerleave = () => deck?.cueRelease();
-$('b-keylock').onclick = () => deck?.setKeylock(!deck.keylockPedido);
+$('b-keylock').onclick = () => {
+  if (!deck) return;
+  deck.setKeylock(!deck.keylockPedido);
+  // se o pitch esta em zero, nao ha o que ouvir: dizer isso em vez de deixar
+  // o usuario concluir que o recurso esta quebrado
+  if (Math.abs(deck.pitch) < 0.001) {
+    $('dica').innerHTML = 'keylock ' + (deck.keylockPedido ? 'ligado' : 'desligado') +
+      ' — <b>mova o pitch</b> pra ouvir a diferença';
+  }
+  mostrarEfeitoDoTom();
+};
 
 $('p-fader').oninput = (e) => {
   const r = Number(document.querySelector('.faixa-sel .lig').dataset.r);
@@ -617,6 +660,7 @@ $('b-compat').onclick = () => {
 // esta é a única forma de saber o que aconteceu de verdade em vez de supor.
 
 const problemas = [];
+const caoDeGuarda = [];   // registros de quando o keylock caiu sozinho
 addEventListener('error', (e) => problemas.push('error: ' + e.message));
 addEventListener('unhandledrejection', (e) =>
   problemas.push('rejeição: ' + String(e.reason?.message || e.reason)));
@@ -656,7 +700,15 @@ $('b-diag').onclick = async () => {
       : 'NAO EXISTE',
     passosDaUltimaCarga: deck?.passos ?? [],
     faixasNaLista: document.querySelectorAll('#lista .item').length,
-    keylockDisponivel: deck?.temKeylock ?? null,
+    keylock: deck ? {
+      disponivel: deck.temKeylock,
+      pedido: deck.keylockPedido,
+      ATIVO: deck.keylockAtivo,
+      motorTocando: deck.transport?.tocando,
+      latenciaMedida: deck.transport?.stretchLatency,
+      pitchAgora: deck.pitch,
+      quedas: caoDeGuarda,
+    } : null,
     tocando: deck?.tocando ?? null,
     nivelMasterAgora: +nivelMaster().toFixed(5),
     picoMasterDesdeOInicio: +picoMaster.toFixed(5),
