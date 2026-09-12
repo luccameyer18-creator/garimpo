@@ -23,7 +23,8 @@
  */
 
 import { APP_NAME, GENRES, CRATES, isDeckable, normalizeTrack } from './audius.js';
-import { guardar, contar, artistas, artistasVarridos, marcarVarrido } from './crate.js';
+import { guardar, contar, artistas, artistasVarridos, marcarVarrido,
+         frentesEsgotadas, marcarEsgotada } from './crate.js';
 
 const H = 'https://api.audius.co/v1';
 const PAUSA = 120;          // ms entre requisições
@@ -147,12 +148,46 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
    * que um DJ procura: edit, bootleg, mashup, remix. Sem filtro — aqui não há
    * homônimo em outra língua pra separar.
    */
+  /**
+   * HOUSE, TECHNO e DISCO vêm primeiro e com muito mais variações que o resto.
+   *
+   * É o pedido de quem usa, e faz sentido de catálogo: são as três famílias com
+   * mais material no Audius e as que melhor se misturam entre si — todas moram
+   * entre 118 e 132 BPM, que é exatamente a faixa em que a corrente de set
+   * consegue caminhar sem esticar pitch.
+   *
+   * As variações não são sinônimos decorativos: no Audius elas são etiquetas
+   * DIFERENTES, e buscar "jackin house" alcança faixas que uma busca por
+   * "house" não traz nas primeiras mil.
+   */
+  const FOCO = [
+    // house e suas famílias
+    'house', 'deep house', 'tech house', 'progressive house', 'afro house',
+    'bass house', 'future house', 'melodic house', 'soulful house',
+    'funky house', 'jackin house', 'tribal house', 'latin house',
+    'organic house', 'g house', 'uk house', 'chicago house', 'acid house',
+    'disco house', 'french house', 'garage house', 'slap house',
+    'brazilian bass', 'house music', 'house edit', 'house remix',
+    // techno e suas famílias
+    'techno', 'melodic techno', 'minimal techno', 'hard techno',
+    'peak time techno', 'industrial techno', 'acid techno', 'detroit techno',
+    'dub techno', 'hypnotic techno', 'raw techno', 'techno remix',
+    // disco e suas famílias
+    'disco', 'nu disco', 'italo disco', 'disco funk', 'cosmic disco',
+    'space disco', 'boogie', 'disco edit', 'disco remix', 'disco house edit',
+    'funk disco', 'modern disco', 'indie dance',
+    // hip-hop: mora em 85-100 BPM, que casa com house em MEIO TEMPO — 90 contra
+    // 180, ou 95 contra 127 puxando a fase. É por isso que ele entra no foco e
+    // não numa pilha à parte: o set alterna quando há material dos dois lados.
+    'hip hop', 'hip-hop', 'boom bap', 'trap', 'rap', 'old school hip hop',
+    'lo-fi hip hop', 'jazz rap', 'g funk', 'west coast', 'east coast',
+    'underground hip hop', 'instrumental hip hop', 'hip hop remix',
+    'rap remix', 'trap remix', 'drill', 'phonk',
+  ];
   const TERMOS_ELETRONICOS = [
-    'house', 'tech house', 'deep house', 'progressive house', 'afro house',
-    'bass house', 'future house', 'melodic house', 'techno', 'melodic techno',
-    'minimal techno', 'hard techno', 'trance', 'psytrance', 'electro',
-    'drum and bass', 'dnb', 'jungle', 'dubstep', 'bass music', 'garage',
-    'breakbeat', 'hardstyle', 'disco', 'nu disco', 'italo disco', 'funky house',
+    ...FOCO,
+    'trance', 'psytrance', 'electro', 'drum and bass', 'dnb', 'jungle',
+    'dubstep', 'bass music', 'garage', 'breakbeat', 'hardstyle',
     'edit', 'bootleg', 'mashup', 'remix', 'club mix', 'extended mix',
   ];
   for (const q of TERMOS_ELETRONICOS) {
@@ -229,7 +264,7 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
         const novas = await guardar(preparar(cru), null);
         total += novas;
         marcarVarrido(a.handle);
-        aoAndar({ total, novas, frente: `artista ${a.handle}`, feito, de: frentes.length + pendentes.length });
+        aoAndar({ total, novas, frente: `artista ${a.handle}`, feito, de: aFazer.length + pendentes.length });
       } catch (e) {
         if (signal?.aborted) break;
         marcarVarrido(a.handle);   // não insiste num handle que deu erro
@@ -238,7 +273,12 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
     }
   };
 
-  for (const f of frentes) {
+  // pula o que ja se esgotou em garimpos anteriores: sem isto, cada execucao
+  // recomecava pelas crates brasileiras devolvendo +0 por minutos a fio
+  const esgotadas = frentesEsgotadas();
+  const aFazer = frentes.filter((f) => !esgotadas.has(f.nome));
+
+  for (const f of aFazer) {
     if (signal?.aborted || total >= alvo) break;
     feito++;
     try {
@@ -296,15 +336,17 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
         novas = await guardar(lote, f.pilha || null);
       }
       total += novas;
-      aoAndar({ total, novas, frente: f.nome, feito, de: frentes.length });
+      // frente que nao trouxe nada esta esgotada: nao volta no proximo garimpo
+      if (!novas) marcarEsgotada(f.nome);
+      aoAndar({ total, novas, frente: f.nome, feito, de: aFazer.length });
     } catch (e) {
       if (signal?.aborted) break;
-      aoAndar({ total, novas: 0, frente: f.nome, feito, de: frentes.length, erro: e.message });
+      aoAndar({ total, novas: 0, frente: f.nome, feito, de: aFazer.length, erro: e.message });
     }
     await dormir(PAUSA);
   }
 
   if (!signal?.aborted && total < alvo) await varrerArtistas();
 
-  return { total, frentes: feito, de: frentes.length, parou: !!signal?.aborted };
+  return { total, frentes: feito, de: aFazer.length, parou: !!signal?.aborted };
 }

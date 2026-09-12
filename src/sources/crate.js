@@ -179,6 +179,30 @@ export async function artistas({ max = 4000 } = {}) {
   });
 }
 
+/**
+ * Frentes já esgotadas, pra que "garimpar mais" CONTINUE em vez de repetir.
+ *
+ * Sem isto, cada garimpo recomeçava pelas crates brasileiras — que se esgotam
+ * rápido — e gastava minutos devolvendo `+0` antes de chegar em terreno novo.
+ * Uma frente só é marcada como esgotada quando não trouxe NADA de novo; se
+ * trouxe alguma coisa, pode trazer mais da próxima vez.
+ */
+const CHAVE_FRENTES = 'garimpo.frentesEsgotadas';
+export function frentesEsgotadas() {
+  try { return new Set(JSON.parse(localStorage.getItem(CHAVE_FRENTES) || '[]')); }
+  catch { return new Set(); }
+}
+export function marcarEsgotada(nome) {
+  try {
+    const s = frentesEsgotadas();
+    s.add(nome);
+    localStorage.setItem(CHAVE_FRENTES, JSON.stringify([...s].slice(-2000)));
+  } catch {}
+}
+export function esquecerFrentes() {
+  try { localStorage.removeItem(CHAVE_FRENTES); } catch {}
+}
+
 /** Handles de artista já varridos, pra não varrer duas vezes. */
 const CHAVE_VARRIDOS = 'garimpo.artistasVarridos';
 export function artistasVarridos() {
@@ -196,7 +220,7 @@ export function marcarVarrido(handle) {
 
 export async function limpar() {
   const b = await abrir();
-  try { localStorage.removeItem(CHAVE_VARRIDOS); } catch {}
+  try { localStorage.removeItem(CHAVE_VARRIDOS); localStorage.removeItem(CHAVE_FRENTES); } catch {}
   return new Promise((ok, no) => {
     const p = b.transaction(LOJA, 'readwrite').objectStore(LOJA).clear();
     p.onsuccess = () => ok(true);
