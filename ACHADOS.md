@@ -149,3 +149,28 @@ Amostras de 30 e 100 faixas:
 
 BPM errado visto na prática: techno marcado como **64.9** (erro de meio-tempo).
 Daí as janelas por gênero e os botões ×2 / ÷2 na UI.
+
+---
+
+## 9. Dirigir o Chrome do usuário: dois obstáculos distintos — 2026-09-11
+
+Perdi tempo com um diagnóstico errado, então vale registrar os dois separados.
+
+**(a) Escala de coordenadas — real, mas não era a causa.** O screenshot reporta
+frame `1568 × 675` enquanto o viewport CSS é `1280 × 495` (`devicePixelRatio`
+1.5). Razão **0,8163**. Provado: passei frame `(417, 263)` e a página recebeu CSS
+`(340, 215)`, exatamente o alvo. Para clicar em CSS `(x, y)`, passar
+`(x, y) × frameWidth / innerWidth` — medir o fator na página, não fixar.
+
+**(b) Permissão por site — a causa de verdade.** Em `developer.spotify.com` os
+cliques chegam com `isTrusted: true` (concedem ativação de usuário). Em
+`http://127.0.0.1:8080`, **nenhum evento chega** — nem no `document`, com
+listener em fase de captura. Silencioso, sem erro.
+
+**Como diagnosticar isso em 2 chamadas**, em vez de supor: instalar
+`addEventListener('click', ..., true)` no `window`, mandar o clique, ler o que
+chegou. Diz de uma vez se o evento chegou, onde chegou, e se é confiável.
+
+**Consequência:** o harness automático é o `gate.html` rodando no painel interno
+com `OfflineAudioContext` — sem placa de som, sem clique, sem permissão. O Chrome
+do usuário fica só para escuta real.
