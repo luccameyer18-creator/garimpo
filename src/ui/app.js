@@ -4,7 +4,7 @@
  * professor entrar depois como mais um cliente da mesma API.
  */
 import { Deck } from '../mix/deck.js';
-import { trending, search, GENRES, attribution, prefetch, compativeis, keyCompatible } from '../sources/audius.js';
+import { trending, search, GENRES, attribution, prefetch, compativeis, keyCompatible, resolveStreamUrl } from '../sources/audius.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (s, casas = 0) => {
@@ -34,7 +34,7 @@ function nivelMaster() {
 let ligando = null;
 
 /** Versão do build. Sem isto não dá pra saber se o celular pegou cache. */
-export const VERSAO = '2026-09-12.7';
+export const VERSAO = '2026-09-12.8';
 
 /**
  * Fase atual de ligar(). Vai pro diagnóstico.
@@ -670,12 +670,16 @@ $('b-diag').onclick = async () => {
     const j = await (await fetch(`${DP}/tracks/trending?genre=House&limit=1&app_name=garimpo`)).json();
     const id = j.data?.[0]?.id;
     if (id) {
-      const u = (await (await fetch(`${DP}/tracks/${id}/stream?app_name=garimpo&no_redirect=true`)).json()).data;
-      rel.sondas.push('validator sorteado: ' + new URL(u).host);
-      rel.sondas.push(await sondar('stream 2B', u, { headers: { Range: 'bytes=0-1' } }));
+      // Usar resolveStreamUrl, que VERIFICA e sorteia outro validator se
+      // precisar — era o que o app ja fazia. A sonda antiga chamava o endpoint
+      // cru e reportava falha em faixas que o app carregava sem problema:
+      // alarme falso no meu proprio diagnostico.
+      const t0 = performance.now();
+      const u = await resolveStreamUrl(id);
+      rel.sondas.push(`resolve com verificacao: ${new URL(u).host} em ${Math.round(performance.now() - t0)}ms`);
       rel.sondas.push(await sondar('stream 64KB', u, { headers: { Range: 'bytes=0-65535' } }));
     }
-  } catch (e) { rel.sondas.push('sonda de stream FALHOU: ' + e.message); }
+  } catch (e) { rel.sondas.push('resolve FALHOU de verdade: ' + e.message); }
 
   const txt = JSON.stringify(rel, null, 1);
   try {
