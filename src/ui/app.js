@@ -5,14 +5,19 @@
  */
 import { Deck } from '../mix/deck.js';
 import { Mixer, erroDeFase } from '../mix/mixer.js';
+import { proximoPasso } from '../coach/guia.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
   keyCompatible, resolveStreamUrl,
 } from '../sources/audius.js';
 
-export const VERSAO = '2026-09-12.11';
+export const VERSAO = '2026-09-12.12';
 
 const $ = (id) => document.getElementById(id);
+/** Elemento que pode nao existir (diagnostico saiu da tela). */
+const qd = (id) => document.getElementById(id) || { style: {}, classList: { add(){}, remove(){}, toggle(){} },
+                                                    set textContent(v){}, get textContent(){return '';},
+                                                    set innerHTML(v){}, hidden: true };
 const fmt = (s, casas = 0) => {
   if (!isFinite(s)) return '0:00';
   const m = Math.floor(Math.abs(s) / 60), r = Math.abs(s) % 60;
@@ -27,7 +32,7 @@ let medidor = null, bufMed = null, picoMaster = 0;
 // ─────────────────────────── ligar o áudio ───────────────────────────
 
 let fase = 'nao comecou', ligando = null;
-const marcar = (f) => { fase = f; $('dica').textContent = f; };
+const marcar = (f) => { fase = f; qd('dica').textContent = f; };
 
 /** Prazo em tudo: travar é pior que falhar, porque não deixa rastro. */
 function comPrazo(p, ms, oQue) {
@@ -72,6 +77,7 @@ async function ligar() {
           new Deck(id, ctx, { destination: mixer.canal(id).entrada }).init(), 9000, `Deck ${id}`);
         montarVista(id);
       }
+      marcar('ligando o mixer');
       ligarMixer();
       pronto = true;
       // handle de depuracao: sem isto so da pra inspecionar o estado pelo
@@ -80,21 +86,21 @@ async function ligar() {
       fase = 'pronto';
 
       const comLock = decks.A.temKeylock;
-      $('e-keylock').innerHTML = `keylock <b>${comLock ? 'ok' : 'indisponível'}</b>`;
-      $('e-estado').textContent = ctx.state;
-      $('dica').textContent = ctx.state === 'running'
+      qd('e-keylock').innerHTML = `keylock <b>${comLock ? 'ok' : 'indisponível'}</b>`;
+      qd('e-estado').textContent = ctx.state;
+      qd('dica').textContent = ctx.state === 'running'
         ? (comLock ? 'pronto' : 'pronto (sem keylock)')
         : 'toque de novo para liberar o áudio';
 
       setInterval(() => {
-        $('e-lat').textContent = `${((ctx.outputLatency ?? 0) * 1e3).toFixed(0)} ms`;
-        if ($('e-estado').textContent !== ctx.state) $('e-estado').textContent = ctx.state;
+        qd('e-lat').textContent = `${((ctx.outputLatency ?? 0) * 1e3).toFixed(0)} ms`;
+        if (qd('e-estado').textContent !== ctx.state) qd('e-estado').textContent = ctx.state;
       }, 1000);
       requestAnimationFrame(quadro);
     } catch (e) {
       pronto = false; ctx = null;
       fase = 'FALHOU em: ' + fase;
-      $('dica').innerHTML = `<span style="color:var(--bad)">parou em "${fase}": ${e.message}</span> · toque de novo`;
+      qd('dica').innerHTML = `<span style="color:var(--bad)">parou em "${fase}": ${e.message}</span> · toque de novo`;
       throw e;
     } finally { ligando = null; }
   })();
@@ -109,15 +115,15 @@ async function ligar() {
 async function garantirRodando() {
   if (!ctx || ctx.state === 'running') return;
   try { await ctx.resume(); } catch {}
-  $('e-estado').textContent = ctx.state;
+  qd('e-estado').textContent = ctx.state;
   if (ctx.state === 'running') {
-    $('dica').textContent = 'pronto';
+    qd('dica').textContent = 'pronto';
     for (const id of ['A', 'B']) {
       if (decks[id] && !decks[id].temKeylock) await decks[id].transport.tentarKeylockDepois();
     }
-    if (decks.A) $('e-keylock').innerHTML = `keylock <b>${decks.A.temKeylock ? 'ok' : 'indisponível'}</b>`;
+    if (decks.A) qd('e-keylock').innerHTML = `keylock <b>${decks.A.temKeylock ? 'ok' : 'indisponível'}</b>`;
   } else {
-    $('dica').textContent = 'toque de novo para liberar o áudio';
+    qd('dica').textContent = 'toque de novo para liberar o áudio';
   }
 }
 
@@ -139,11 +145,17 @@ function montarVista(id) {
     bpmVal: q('.bpm-val'), tom: q('.tom'), onda: q('.onda'), mini: q('.mini'),
     jog: q('.jog'), marcaJog: q('.marca-jog'),
     play: q('.play'), cue: q('.cue'), keylock: q('.keylock'), sync: q('.sync'),
-    pos: q('.pos'), dur: q('.dur'), rest: q('.rest'), bpmef: q('.bpmef'),
+    pos: q('.pos'), dur: q('.dur'), rest: q('.rest'), visorBpm: q('.visor .bpm'),
     efeito: q('.efeito'), erro: q('.erro'), passos: q('.passos'),
     pval: q('.val'), fader: q('.fader'), faixaSel: q('.faixa-sel'),
     ctxOnda: q('.onda').getContext('2d'), ctxMini: q('.mini').getContext('2d'),
   };
+  // ids estaveis: e por eles que o professor aponta pros controles
+  v.play.id = 'play-' + id;
+  v.cue.id = 'cue-' + id;
+  v.sync.id = 'sync-' + id;
+  v.keylock.id = 'keylock-' + id;
+  v.jog.id = 'jog-' + id;
   vistas[id] = v;
   const d = decks[id];
 
@@ -195,7 +207,7 @@ function montarVista(id) {
 
   d.addEventListener('rate', () => {
     v.pval.textContent = `${d.pitch >= 0 ? '+' : ''}${(d.pitch * 100).toFixed(2)}%`;
-    v.bpmef.textContent = d.bpmEfetivo ? d.bpmEfetivo.toFixed(2) : '—';
+    v.visorBpm.textContent = d.bpmEfetivo ? d.bpmEfetivo.toFixed(2) : '—';
     efeitoDoTom(id);
   });
 
@@ -210,12 +222,12 @@ function montarVista(id) {
     const { faixa, bpm, camelot, tom } = e.detail;
     v.bpmVal.textContent = faixa.bpm ?? bpm ?? '—';
     if (faixa.camelot || camelot) v.tom.innerHTML = `<b>${faixa.camelot || camelot}</b> ${faixa.key || tom}`;
-    v.bpmef.textContent = d.bpmEfetivo ? d.bpmEfetivo.toFixed(2) : '—';
+    v.visorBpm.textContent = d.bpmEfetivo ? d.bpmEfetivo.toFixed(2) : '—';
     repintarLista();
     atualizarCompat();
   });
 
-  d.addEventListener('glitch', (e) => { $('e-glitch').textContent = e.detail.count; });
+  d.addEventListener('glitch', (e) => { qd('e-glitch').textContent = e.detail.count; });
   d.addEventListener('keylockFalhou', (e) => {
     caoDeGuarda.push({ deck: id, quando: new Date().toISOString().slice(11,19), ...e.detail });
     v.erro.hidden = false;
@@ -225,13 +237,14 @@ function montarVista(id) {
 
   // ── controles ──
   v.play.onclick = () => d.alternar();
-  v.cue.onpointerdown = () => d.cuePress();
-  v.cue.onpointerup = () => d.cueRelease();
-  v.cue.onpointerleave = () => d.cueRelease();
+  v.cue.onpointerdown = () => { d.cuePress(); v.cue.classList.add('aceso'); };
+  v.cue.onpointerup = () => { d.cueRelease(); v.cue.classList.remove('aceso'); };
+  v.cue.onpointerleave = () => { d.cueRelease(); v.cue.classList.remove('aceso'); };
   v.keylock.onclick = () => {
     d.setKeylock(!d.keylockPedido);
     if (Math.abs(d.pitch) < 0.001) {
-      $('dica').innerHTML = `keylock ${d.keylockPedido ? 'ligado' : 'desligado'} no ${id} — <b>mova o pitch</b> pra ouvir`;
+      v.efeito.innerHTML = '<span style="color:var(--mut)">keylock ' +
+        (d.keylockPedido ? 'ligado' : 'desligado') + ' — mova o PITCH pra ouvir a diferença</span>';
     }
     efeitoDoTom(id);
   };
@@ -255,7 +268,7 @@ function montarVista(id) {
     if (!d.faixa || !isFinite(val) || val <= 0) return;
     d.faixa.bpm = Math.round(val * 100) / 100;
     v.bpmVal.textContent = d.faixa.bpm;
-    v.bpmef.textContent = d.bpmEfetivo ? d.bpmEfetivo.toFixed(2) : '—';
+    v.visorBpm.textContent = d.bpmEfetivo ? d.bpmEfetivo.toFixed(2) : '—';
     repintarLista(); atualizarCompat();
   };
   no.querySelector('.x2').onclick = (e) => { e.stopPropagation(); setBpm((d.faixa?.bpm || 0) * 2); };
@@ -314,7 +327,7 @@ function sincronizar(id) {
   const outro = id === 'A' ? 'B' : 'A';
   const a = decks[id], b = decks[outro];
   if (!a?.faixa?.bpm || !b?.faixa?.bpm) {
-    $('dica').textContent = 'SYNC precisa de BPM nos dois decks';
+    qd('dica').textContent = 'SYNC precisa de BPM nos dois decks';
     return;
   }
   const alvo = b.bpmEfetivo;
@@ -324,12 +337,14 @@ function sincronizar(id) {
   const pitch = razao - 1;
   const limite = a.transport.pitchRange;
   if (Math.abs(pitch) > limite) {
-    $('dica').innerHTML = `SYNC precisa de ${(pitch * 100).toFixed(1)}%, mais que o fader de ${(limite * 100).toFixed(0)}% — troque a faixa do pitch`;
+    qd('dica').innerHTML = `SYNC precisa de ${(pitch * 100).toFixed(1)}%, mais que o fader de ${(limite * 100).toFixed(0)}% — troque a faixa do pitch`;
     return;
   }
   a.setPitch(pitch);
   vistas[id].fader.value = -pitch / limite;
-  $('dica').textContent = `${id} sincronizado com ${outro}: ${a.bpmEfetivo.toFixed(2)} BPM`;
+  vistas[id].sync.classList.add('lig');
+  setTimeout(() => vistas[id].sync.classList.remove('lig'), 1800);
+  qd('dica').textContent = `${id} sincronizado com ${outro}: ${a.bpmEfetivo.toFixed(2)} BPM`;
 }
 
 // ─────────────────────────── jog ───────────────────────────
@@ -392,8 +407,10 @@ function ligarMixer() {
   document.querySelectorAll('[data-fader]').forEach((el) => {
     el.oninput = () => mixer.canal(el.dataset.d).setFader(Number(el.value));
   });
-  $('xf').oninput = (e) => mixer.setCrossfader(Number(e.target.value));
-  $('master').oninput = (e) => mixer.setMaster(Number(e.target.value));
+  // guardas: um controle que some do HTML nao pode derrubar a montagem inteira
+  const em = (id, fn) => { const el = $(id); if (el) el.oninput = fn; else console.warn('[ui] falta #' + id); };
+  em('xf', (e) => mixer.setCrossfader(Number(e.target.value)));
+  em('master', (e) => mixer.setMaster(Number(e.target.value)));
 }
 
 // ─────────────────────────── desenho ───────────────────────────
@@ -415,11 +432,7 @@ function quadro() {
 
   const n = nivelMaster();
   if (n > picoMaster) picoMaster = n;
-  $('e-nivel').textContent = n > 0.0005 ? (20 * Math.log10(n)).toFixed(0) + ' dB' : 'silêncio';
-  $('e-nivel').style.color = n > 0.0005 ? 'var(--ok)' : 'var(--mut)';
-  const red = mixer.reducao;
-  $('rot-master').textContent = red > 0.5 ? `master — limitando ${red.toFixed(0)} dB` : 'master';
-  $('rot-master').style.color = red > 6 ? 'var(--bad)' : 'var(--mut)';
+  $('vu-master').style.width = Math.min(100, n * 190) + '%';
 
   for (const id of ['A', 'B']) {
     const d = decks[id], v = vistas[id];
@@ -431,10 +444,51 @@ function quadro() {
     v.rest.textContent = fmt(Math.max(0, rest));
     v.rest.style.color = rest < 30 && d.tocando ? 'var(--quente)' : '';
     v.marcaJog.style.transform = `rotate(${(pos * 1.8 * 360) % 360}deg)`;
+    if (v.visorBpm) v.visorBpm.textContent = d.bpmEfetivo ? d.bpmEfetivo.toFixed(1) : '—';
     const nv = mixer.canal(id).nivel;
     $('vu-' + id).style.width = Math.min(100, nv * 190) + '%';
   }
   desenharFase();
+  if (performance.now() - ultimoProf > 220) { ultimoProf = performance.now(); rodarProfessor(); }
+}
+
+let ultimoProf = 0, ultimaFala = '', apontados = [];
+
+/**
+ * Desenha o professor e ACENDE os controles que ele aponta.
+ *
+ * O mecanismo de acender e o mesmo que os "controles fantasma" vao usar na
+ * Fase 6, quando o professor executar acoes por conta propria — por isso ele
+ * e generico: recebe ids e liga uma classe.
+ */
+function rodarProfessor() {
+  const est = {
+    audioOk: pronto && ctx?.state === 'running',
+    crossfader: mixer?.crossfader ?? 0.5,
+    fase: erroDeFase(decks.A, decks.B),
+    eq: { A: { grave: mixer?.canal('A').eq.get('grave') },
+          B: { grave: mixer?.canal('B').eq.get('grave') } },
+  };
+  for (const id of ['A', 'B']) {
+    const d = decks[id];
+    est[id] = d ? {
+      temFaixa: !!d.faixa, tocando: d.tocando, bpm: d.faixa?.bpm,
+      camelot: d.faixa?.camelot, grid: d.grid, pitch: d.pitch, bpmEfetivo: d.bpmEfetivo,
+    } : null;
+  }
+
+  const p = proximoPasso(est);
+  const chave = p.num + p.fala;
+  if (chave === ultimaFala) return;      // so redesenha quando muda
+  ultimaFala = chave;
+
+  $('prof-rosto').textContent = p.num;
+  $('prof-fala').innerHTML = p.fala + (p.porque ? `<small>${p.porque}</small>` : '');
+  $('prof').classList.toggle('azul', p.cor === 'azul');
+
+  for (const el of apontados) el?.classList.remove('apontado');
+  apontados = (p.apontar || []).map((id) => $(id)).filter(Boolean);
+  for (const el of apontados) el.classList.add('apontado');
 }
 
 function nivelMaster() {
@@ -685,16 +739,19 @@ $('b-compat').onclick = () => {
   carregarLista(() => compativeis(base));
 };
 
-const solta = $('solta'), arquivo = $('arquivo');
-solta.onclick = () => arquivo.click();
+$('b-ajuda').onclick = () => $('ajuda').showModal();
+$('fechar-ajuda').onclick = () => $('ajuda').close();
+
+const arquivo = $('arquivo');
+$('b-arquivo').onclick = () => arquivo.click();
 arquivo.onchange = async () => {
   try { await ligar(); } catch { return; }
   await garantirRodando();
   if (arquivo.files[0]) decks[deckLivre()].carregarArquivo(arquivo.files[0]);
 };
-['dragenter', 'dragover'].forEach((t) => solta.addEventListener(t, (e) => { e.preventDefault(); solta.classList.add('sobre'); }));
-['dragleave', 'drop'].forEach((t) => solta.addEventListener(t, (e) => { e.preventDefault(); solta.classList.remove('sobre'); }));
-solta.addEventListener('drop', async (e) => {
+['dragenter', 'dragover'].forEach((t) => addEventListener(t, (e) => e.preventDefault()));
+addEventListener('drop', async (e) => {
+  e.preventDefault();
   try { await ligar(); } catch { return; }
   await garantirRodando();
   if (e.dataTransfer.files[0]) decks[deckLivre()].carregarArquivo(e.dataTransfer.files[0]);
@@ -707,7 +764,7 @@ addEventListener('keydown', (e) => {
 });
 
 carregarLista(() => trending({ genre: 'House', limit: 40 }));
-$('e-ver').textContent = VERSAO;
+qd('e-ver').textContent = VERSAO;
 
 // ─────────────────────────── diagnóstico ───────────────────────────
 
