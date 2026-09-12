@@ -31,9 +31,24 @@ const XFADE = 0.008; // 8 ms de crossfade no handoff
 const SLAB_BITS = 19;
 const SLAB = 1 << SLAB_BITS;
 
-/** Ganho sem clique: a trajetória do ganho tem que ser contínua. */
+/**
+ * Ganho sem clique: a trajetória do ganho tem que ser contínua.
+ *
+ * cancelAndHoldAtTime nao existe em todo navegador (historicamente o Safari
+ * nao tinha). Sem guarda isso LANCA e derruba o handoff inteiro, em vez de
+ * degradar. O plano B — cancelScheduledValues + fixar o valor atual — e um
+ * pouco menos preciso mas nunca quebra.
+ */
+const TEM_HOLD = typeof AudioParam !== 'undefined' &&
+                 typeof AudioParam.prototype.cancelAndHoldAtTime === 'function';
+
 function ramp(param, alvo, quando, dur = 0.012) {
-  param.cancelAndHoldAtTime(quando);
+  try {
+    if (TEM_HOLD) param.cancelAndHoldAtTime(quando);
+    else { param.cancelScheduledValues(quando); param.setValueAtTime(param.value, quando); }
+  } catch {
+    try { param.setValueAtTime(param.value, quando); } catch {}
+  }
   param.linearRampToValueAtTime(alvo, quando + dur);
 }
 
