@@ -23,32 +23,59 @@ let ctx = null, deck = null, pronto = false;
  */
 let ligando = null;
 
+/** Versão do build. Sem isto não dá pra saber se o celular pegou cache. */
+export const VERSAO = '2026-09-12.3';
+
+/**
+ * Fase atual de ligar(). Vai pro diagnóstico.
+ * Quando algo TRAVA (em vez de quebrar) não há stack, não há erro e não há
+ * log — a última fase concluída é a única pista de onde parou.
+ */
+let fase = 'nao comecou';
+const marcar = (f) => { fase = f; $('dica').textContent = f; };
+
+/** Prazo em tudo: travar é pior que falhar, porque não deixa rastro. */
+function comPrazo(p, ms, oQue) {
+  let t;
+  return Promise.race([
+    Promise.resolve(p).finally(() => clearTimeout(t)),
+    new Promise((_, rej) => { t = setTimeout(() => rej(new Error(`${oQue} travou (${ms}ms)`)), ms); }),
+  ]);
+}
+
 async function ligar() {
   if (pronto) return;
   if (ligando) return ligando;          // chamadas concorrentes esperam a mesma
   ligando = (async () => {
     try {
-      $('dica').textContent = 'ligando o áudio…';
+      marcar('criando AudioContext');
 
       // resume() PRIMEIRO, ainda dentro do gesto. Se vier depois de um await
       // (addModule leva centenas de ms), a ativacao do toque ja expirou e o
       // celular recusa em silencio. No desktop passava; no celular nao.
       ctx = new AudioContext({ latencyHint: 'interactive' });
-      const p = ctx.resume();
+      const p = ctx.resume().catch(() => {});
 
-      $('dica').textContent = 'carregando o motor…';
-      await ctx.audioWorklet.addModule(
-        new URL('../audio/worklets/turntable-reader.js', import.meta.url));
-      await p;
+      marcar('carregando o worklet');
+      // addModule tambem ganha prazo: no iOS ha relato de ele nunca resolver
+      // com o contexto suspenso, e ai o app inteiro fica parado aqui.
+      await comPrazo(
+        ctx.audioWorklet.addModule(new URL('../audio/worklets/turntable-reader.js', import.meta.url)),
+        6000, 'addModule');
 
+      marcar('retomando o contexto');
+      await comPrazo(p, 1500, 'resume').catch(() => {});
+
+      marcar('montando o grafo');
       const master = ctx.createGain();
       master.gain.value = 0.85;
       master.connect(ctx.destination);
 
-      $('dica').textContent = 'preparando o deck…';
-      deck = await new Deck('A', ctx, { destination: master }).init();
+      marcar('criando o deck');
+      deck = await comPrazo(new Deck('A', ctx, { destination: master }).init(), 9000, 'Deck.init');
       ligarEventos();
       pronto = true;
+      fase = 'pronto';
 
       $('e-keylock').innerHTML = `keylock <b>${deck.temKeylock ? 'ok' : 'indisponível'}</b>`;
       $('e-estado').textContent = ctx.state;
@@ -66,7 +93,8 @@ async function ligar() {
       // NUNCA falhar calado: sem isto o usuario toca e nao acontece nada
       pronto = false;
       ctx = null;
-      $('dica').innerHTML = `<span style="color:var(--bad)">áudio não ligou: ${e.name} — ${e.message}</span> · toque de novo`;
+      fase = 'FALHOU em: ' + fase;
+      $('dica').innerHTML = `<span style="color:var(--bad)">parou em "${fase}": ${e.message}</span> · toque de novo`;
       $('erro').hidden = false;
       $('erro').textContent = `falha ao ligar o áudio: ${e.name}: ${e.message}`;
       throw e;
@@ -467,6 +495,7 @@ async function carregarLista(fn) {
   }
 }
 carregarLista(() => trending({ genre: 'House', limit: 40 }));
+$('e-ver').textContent = VERSAO;
 
 // ─────────────────────────── diagnóstico ───────────────────────────
 // Sem console no celular e sem conseguir reproduzir o ambiente do usuário,
@@ -491,6 +520,8 @@ $('b-diag').onclick = async () => {
   const b = $('b-diag');
   b.textContent = 'checando…';
   const rel = {
+    versao: VERSAO,
+    fase,
     quando: new Date().toISOString(),
     ua: navigator.userAgent,
     tela: `${innerWidth}x${innerHeight} dpr${devicePixelRatio}`,
