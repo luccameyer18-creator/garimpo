@@ -122,3 +122,98 @@ export function proximoPasso(e) {
     apontar: [{ id: `kill-${tocando}-grave`, rotulo: 'corta o grave do ' + tocando },
               { id: `kill-${outro}-grave`, rotulo: 'devolve o grave do ' + outro }] };
 }
+
+/**
+ * Avisos ao vivo — o professor acompanhando a música tocar.
+ *
+ * Canal separado do passo a passo, e de propósito: o passo responde "o que eu
+ * faço agora pra mixar", o aviso responde "o que está acontecendo com o som
+ * neste instante". Quem está no meio de uma faixa não está executando passo
+ * nenhum, e mesmo assim precisa de alguém olhando.
+ *
+ * Cada aviso tem gravidade e freio próprio: repetir a mesma frase a cada 200 ms
+ * transforma o professor em chateação e ninguém mais lê.
+ *
+ * Devolve no máximo 2, ordenados por gravidade — mais que isso ninguém absorve
+ * no meio de uma mixagem.
+ */
+const ultimoAviso = new Map();
+
+export function avisos(e, agora = Date.now()) {
+  const fora = [];
+  const por = (id, seg, grav, texto, apontar = []) => {
+    if ((agora - (ultimoAviso.get(id) || 0)) < seg * 1000) return;
+    ultimoAviso.set(id, agora);
+    fora.push({ id, grav, texto, apontar });
+  };
+
+  // ── fim de faixa se aproximando ──
+  for (const d of ['A', 'B']) {
+    const dk = e[d];
+    if (!dk?.tocando || !dk.restante) continue;
+    if (dk.restante < 20) {
+      por(`fim-${d}`, 12, 3, `O deck ${d} acaba em ${Math.round(dk.restante)}s — a transição tem que começar AGORA.`);
+    } else if (dk.restante < 45) {
+      por(`fim-${d}`, 25, 2, `Faltam ${Math.round(dk.restante)}s no deck ${d}. Já dá pra preparar a próxima.`);
+    }
+  }
+
+  // ── clipping / limitador trabalhando ──
+  if (e.reducao > 6) {
+    por('limitador', 10, 3,
+      `O som está estourando: o limitador está segurando ${e.reducao.toFixed(0)} dB. Baixe o volume geral.`,
+      [{ id: 'master', rotulo: 'baixe aqui' }]);
+  } else if (e.reducao > 2) {
+    por('limitador-leve', 20, 1, `O limitador começou a trabalhar (${e.reducao.toFixed(1)} dB). Está no limite.`);
+  }
+
+  // ── desequilíbrio de volume entre os decks ──
+  if (e.A?.tocando && e.B?.tocando && e.nivelA > 0.003 && e.nivelB > 0.003) {
+    const dif = 20 * Math.log10(e.nivelA / e.nivelB);
+    if (Math.abs(dif) > 6) {
+      const alto = dif > 0 ? 'A' : 'B', baixo = dif > 0 ? 'B' : 'A';
+      por('volume', 18, 2,
+        `O deck ${alto} está ${Math.abs(dif).toFixed(0)} dB mais alto que o ${baixo} — a troca vai dar um degrau.`,
+        [{ id: `vol-${baixo}`, rotulo: `suba o ${baixo}` }]);
+    }
+  }
+
+  // ── dois graves abertos ao mesmo tempo ──
+  if (e.A?.tocando && e.B?.tocando && e.ambosAudiveis &&
+      (e.eq?.A?.grave ?? 0.5) > 0.3 && (e.eq?.B?.grave ?? 0.5) > 0.3) {
+    por('graves', 14, 3,
+      'Os dois graves estão abertos juntos — é isso que deixa o som embolado. Corte um deles.',
+      [{ id: 'kill-B-grave', rotulo: 'corte um' }]);
+  }
+
+  // ── fase descolando ──
+  if (e.fase && e.ambosAudiveis) {
+    const err = Math.abs(e.fase.emMs);
+    if (err > 45) {
+      por('fase', 8, 3, `As batidas descolaram ${err.toFixed(0)} ms. Empurre o jog do B.`,
+        [{ id: 'jog-B', rotulo: 'empurre aqui' }]);
+    } else if (err > 18) {
+      por('fase-leve', 14, 1, `Fase escorregando: ${err.toFixed(0)} ms. Dá pra corrigir no jog.`);
+    }
+  }
+
+  // ── falhas de áudio ──
+  if (e.glitches > 0) {
+    por('glitch', 45, 2,
+      `Houve ${e.glitches} falha(s) de áudio. Se repetir, feche abas pesadas — o navegador está sem folga.`);
+  }
+
+  // ── keylock caiu ──
+  for (const d of ['A', 'B']) {
+    if (e[d]?.keylockPedido && !e[d]?.keylockAtivo && e[d]?.motivoKeylock) {
+      por(`keylock-${d}`, 30, 1, `Keylock do ${d}: ${e[d].motivoKeylock}.`);
+    }
+  }
+
+  // ── elogio: reconhecer o acerto também ensina ──
+  if (e.fase && e.ambosAudiveis && Math.abs(e.fase.emTempos) < 0.012 && e.crossfader > 0.25 && e.crossfader < 0.75) {
+    por('bom', 30, 0, 'Encaixe travado e os dois no ar. É exatamente assim.');
+  }
+
+  return fora.sort((a, b) => b.grav - a.grav).slice(0, 2);
+}

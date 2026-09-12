@@ -225,6 +225,51 @@ function detectarTom(mono, sr) {
   };
 }
 
+// ─────────────────────────── volume ───────────────────────────
+
+/**
+ * Volume percebido da faixa, pra igualar o nivel entre musicas.
+ *
+ * Faixas do Audius vem com volumes MUITO diferentes — medi uma 7x mais baixa
+ * que a outra. Sem igualar, toda transicao vira um degrau de volume por melhor
+ * que esteja o encaixe.
+ *
+ * Nao e loudness ITU-R BS.1770 de verdade (faltam os filtros K e o gating),
+ * mas o essencial esta aqui: RMS sobre os trechos que TEM sinal, ignorando
+ * silencio. Silencio entrando na media faz faixa com intro longa parecer mais
+ * baixa do que e.
+ */
+function medirVolume(x, sr) {
+  const jan = Math.round(sr * 0.4);
+  const blocos = [];
+  let pico = 0;
+  for (let i = 0; i + jan < x.length; i += jan) {
+    let s = 0;
+    for (let k = 0; k < jan; k++) {
+      const v = x[i + k];
+      s += v * v;
+      const av = v < 0 ? -v : v;
+      if (av > pico) pico = av;
+    }
+    blocos.push(Math.sqrt(s / jan));
+  }
+  if (!blocos.length) return { rms: 0, pico: 0, lufsAprox: -70 };
+
+  // gating: descarta o que esta 20 dB abaixo do bloco mais alto
+  const max = Math.max(...blocos);
+  const piso = max * 0.1;
+  const uteis = blocos.filter((b) => b > piso);
+  const lista = uteis.length ? uteis : blocos;
+  let soma = 0;
+  for (const b of lista) soma += b * b;
+  const rms = Math.sqrt(soma / lista.length);
+  return {
+    rms,
+    pico,
+    lufsAprox: rms > 1e-6 ? 20 * Math.log10(rms) : -70,
+  };
+}
+
 // ─────────────────────────── entrada ───────────────────────────
 
 self.onmessage = (e) => {
@@ -243,10 +288,11 @@ self.onmessage = (e) => {
       ancora = acharAncora(onset, taxaQuadro, bpm);
     }
     const tom = detectarTom(x, sr);
+    const vol = medirVolume(x, sr);
 
     self.postMessage({
       id, ok: true, bpmBruto: bpm, confianca, ancora,
-      ...tom, ms: Math.round(performance.now() - t0),
+      ...tom, ...vol, ms: Math.round(performance.now() - t0),
     });
   } catch (err) {
     self.postMessage({ id, ok: false, erro: err.message });

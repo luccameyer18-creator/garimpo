@@ -5,13 +5,14 @@
  */
 import { Deck } from '../mix/deck.js';
 import { Mixer, erroDeFase } from '../mix/mixer.js';
-import { proximoPasso } from '../coach/guia.js';
+import { proximoPasso, avisos } from '../coach/guia.js';
+import { montarFila, resumo as resumoFila } from '../coach/fila.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
   keyCompatible, resolveStreamUrl,
 } from '../sources/audius.js';
 
-export const VERSAO = '2026-09-12.14';
+export const VERSAO = '2026-09-12.17';
 
 const $ = (id) => document.getElementById(id);
 /** Elemento que pode nao existir (diagnostico saiu da tela). */
@@ -28,6 +29,7 @@ let ctx = null, mixer = null, pronto = false;
 const decks = {};        // { A: Deck, B: Deck }
 const vistas = {};       // { A: {...elementos}, B: {...} }
 let medidor = null, bufMed = null, picoMaster = 0;
+let fila = [];   // sequencia sugerida do set
 
 // ─────────────────────────── ligar o áudio ───────────────────────────
 
@@ -219,7 +221,13 @@ function montarVista(id) {
   });
 
   d.addEventListener('analysis', (e) => {
-    const { faixa, bpm, camelot, tom } = e.detail;
+    const { faixa, bpm, camelot, tom, trimDb, volumeDb } = e.detail;
+    // GANHO AUTOMATICO: faixas do Audius vem com volumes muito diferentes — medi
+    // uma 7x mais baixa que a outra. Sem igualar, toda transicao vira degrau.
+    if (typeof trimDb === 'number' && mixer) {
+      mixer.canal(id).setTrim(trimDb);
+      v.efeito.dataset.vol = `${volumeDb} dBFS, trim ${trimDb >= 0 ? '+' : ''}${trimDb} dB`;
+    }
     v.bpmVal.textContent = faixa.bpm ?? bpm ?? '—';
     if (faixa.camelot || camelot) v.tom.innerHTML = `<b>${faixa.camelot || camelot}</b> ${faixa.key || tom}`;
     v.visorBpm.textContent = d.bpmEfetivo ? d.bpmEfetivo.toFixed(2) : '—';
@@ -453,6 +461,7 @@ function quadro() {
 }
 
 let ultimoProf = 0, ultimaFala = '', apontados = [];
+let avisosVivos = [], tAviso = 0;
 
 /**
  * Desenha o professor e ACENDE os controles que ele aponta.
@@ -477,13 +486,48 @@ function rodarProfessor() {
     } : null;
   }
 
+  // avisos ao vivo: canal separado do passo a passo. Quem esta no meio de uma
+  // faixa nao esta executando passo nenhum, e mesmo assim precisa de alguem
+  // olhando o som.
+  const estVivo = {
+    ...est,
+    reducao: mixer?.reducao ?? 0,
+    nivelA: mixer?.canal('A').nivel ?? 0,
+    nivelB: mixer?.canal('B').nivel ?? 0,
+    ambosAudiveis: est.A?.tocando && est.B?.tocando &&
+                   est.crossfader > 0.12 && est.crossfader < 0.88,
+    glitches: (decks.A?.transport.ultimoAnchor?.glitchCount || 0) +
+              (decks.B?.transport.ultimoAnchor?.glitchCount || 0),
+  };
+  for (const id of ['A', 'B']) {
+    if (estVivo[id] && decks[id]) {
+      estVivo[id].restante = decks[id].duration - decks[id].displayPosition;
+      estVivo[id].keylockPedido = decks[id].keylockPedido;
+      estVivo[id].keylockAtivo = decks[id].keylockAtivo;
+      estVivo[id].motivoKeylock = decks[id].transport?.motivoSemKeylock;
+    }
+  }
+  const novos = avisos(estVivo);
+  if (novos.length) {
+    avisosVivos = [...novos, ...avisosVivos].slice(0, 2);
+    tAviso = performance.now();
+  } else if (performance.now() - tAviso > 14000) {
+    avisosVivos = [];
+  }
+  const cx = $('avisos');
+  if (cx) {
+    cx.innerHTML = avisosVivos.map((av) =>
+      `<div class="aviso-vivo g${av.grav}">${av.texto}</div>`).join('');
+  }
+
   const p = proximoPasso(est);
   const chave = p.num + p.fala;
-  if (chave === ultimaFala) return;      // so redesenha quando muda
+  if (chave === ultimaFala) return;      // so redesenha a FALA quando ela muda
   ultimaFala = chave;
 
   $('prof-rosto').textContent = p.num;
-  $('prof-fala').innerHTML = p.fala + (p.porque ? `<small>${p.porque}</small>` : '');
+  $('prof-fala').innerHTML = p.fala + (p.porque ? `<small>${p.porque}</small>` : '') +
+    '<div class="avisos" id="avisos"></div>';
   $('prof').classList.toggle('azul', p.cor === 'azul');
 
   // apaga o que estava aceso
@@ -679,6 +723,8 @@ function repintarLista() {
 function atualizarCompat() {
   const base = referencia();
   $('b-compat').disabled = !base?.bpm;
+  $('b-fila').disabled = !base?.bpm;
+  if (fila.length) desenharFila();
   $('b-compat').textContent = base?.bpm
     ? `mixa com ${base.bpm} ${base.camelot || ''}` : 'carregue uma faixa';
 }
@@ -745,6 +791,55 @@ $('busca').oninput = (e) => {
   if (!q) return carregarLista(() => trending({ genre: genero.value, limit: 40 }));
   tBusca = setTimeout(() => carregarLista(() => search(q, { limit: 40 })), 350);
 };
+
+// ─────────────────────────── fila do set ───────────────────────────
+// Sistema proprio, separado do texto do professor: o topo diz o que FAZER
+// agora; a fila diz o que vem DEPOIS. Misturar os dois polui os dois.
+
+function desenharFila() {
+  const cx = $('fila-cx'), el = $('fila');
+  if (!fila.length) { cx.hidden = true; return; }
+  cx.hidden = false;
+  const livre = deckLivre();
+  $('fila-resumo').textContent = resumoFila(fila, referencia());
+
+  el.innerHTML = '';
+  fila.forEach((t, i) => {
+    const d = document.createElement('div');
+    d.className = 'fila-item' + (i === 0 ? ' proxima' : '');
+    // a primeira vai pro deck livre; as seguintes alternam
+    const destino = i === 0 ? livre : (livre === 'A' ? (i % 2 ? 'B' : 'A') : (i % 2 ? 'A' : 'B'));
+    d.innerHTML = `<div class="ord">${i + 1}</div>
+      <div class="n"><div class="t"></div><div class="a"></div></div>
+      <button class="destino p${destino.toLowerCase()}">${destino}</button>`;
+    d.querySelector('.t').textContent = t.title;
+    d.querySelector('.a').textContent =
+      `${t.bpm} ${t.camelot || ''} · ${t.pitch >= 0 ? '+' : ''}${(t.pitch * 100).toFixed(1)}% · ${t.motivo}`;
+    d.querySelector('.destino').onclick = async () => {
+      try { await ligar(); } catch { return; }
+      await garantirRodando();
+      decks[destino].carregarAudius(t);
+      fila = fila.filter((x) => x.id !== t.id);
+      desenharFila();
+    };
+    el.appendChild(d);
+  });
+}
+
+$('b-fila').onclick = async () => {
+  const base = referencia();
+  if (!base?.bpm) return;
+  const b = $('b-fila');
+  b.textContent = 'montando…'; b.disabled = true;
+  try {
+    fila = await montarFila(base, { tamanho: 6, energia: 'subir' });
+    desenharFila();
+  } catch (e) {
+    $('fila-cx').hidden = false;
+    $('fila').innerHTML = `<div class="aviso">não consegui montar: ${e.message}</div>`;
+  } finally { b.textContent = 'montar sequência'; b.disabled = false; }
+};
+$('b-fila-fechar').onclick = () => { fila = []; $('fila-cx').hidden = true; };
 
 $('b-compat').onclick = () => {
   const base = referencia();

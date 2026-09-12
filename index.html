@@ -211,15 +211,23 @@
            display:flex; flex-direction:column; gap:10px; overflow:hidden; }
   .fase { width:100%; height:58px; background:var(--fundo-tela); border:1px solid var(--linha);
           border-radius:8px; display:block; }
-  .rot { font:9.5px ui-monospace,monospace; color:var(--fraco); text-align:center; margin-top:4px; }
+  .rot { font:9.5px ui-monospace,monospace; color:var(--fraco); text-align:center; margin-top:4px;
+         user-select:none; }
   .rot.viva { color:var(--ok); }
-  .tiras { display:grid; grid-template-columns:1fr 1fr; gap:9px; flex:1; min-height:0; }
-  .tira { display:flex; flex-direction:column; gap:6px; }
-  .tira h3 { margin:0; font:800 10px ui-monospace,monospace; text-align:center; letter-spacing:.1em; }
+  /* minmax(0,1fr), NAO 1fr. "1fr" e atalho de minmax(auto,1fr), e auto nao
+     encolhe abaixo da largura intrinseca do conteudo — input[type=range] tem
+     largura minima propria, entao a coluna B era empurrada pra fora e cortada.
+     Mesmo erro que eu ja tinha cometido na linha do .palco. */
+  .tiras { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:9px;
+           flex:1; min-height:0; }
+  .tira { display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .tira h3 { margin:0; font:800 10px ui-monospace,monospace; text-align:center; letter-spacing:.1em;
+             user-select:none; }
   .tira[data-d="A"] h3 { color:var(--a); } .tira[data-d="B"] h3 { color:var(--b); }
-  .knob { display:flex; align-items:center; gap:5px; }
-  .knob label { font:8.5px ui-monospace,monospace; color:var(--fraco); width:24px; flex:none; }
-  .knob input[type=range] { flex:1; min-width:0; height:15px; }
+  .knob { display:flex; align-items:center; gap:5px; min-width:0; }
+  .knob label { font:8.5px ui-monospace,monospace; color:var(--fraco); width:24px; flex:none;
+                user-select:none; }
+  .knob input[type=range] { flex:1 1 0; min-width:0; width:0; height:15px; }
   .knob .kill { padding:2px 5px; font-size:9px; border-radius:4px; flex:none; }
   .knob .kill.lig { background:var(--bad); border-color:var(--bad); color:#fff; box-shadow:0 0 9px rgba(255,96,96,.4); }
   .vu { height:4px; background:var(--fundo-tela); border-radius:2px; overflow:hidden; border:1px solid var(--linha); }
@@ -255,6 +263,34 @@
               background:linear-gradient(90deg,rgba(255,155,61,.08),transparent 60%); }
   .item.longe { opacity:.38; }
   .marca { font:9px ui-monospace,monospace; }
+  .fila-cx { flex:none; border:1px solid rgba(199,125,255,.35); border-radius:10px; padding:8px;
+             background:linear-gradient(180deg,rgba(199,125,255,.09),transparent); }
+  .fila-topo { display:flex; align-items:center; gap:7px; margin-bottom:6px; }
+  .fila-topo h2 { color:var(--lock); }
+  .fila-topo .ic { margin-left:auto; background:none; border:none; color:var(--fraco);
+                   cursor:pointer; width:20px; height:20px; border-radius:5px; box-shadow:none; }
+  .fila { display:flex; flex-direction:column; gap:4px; max-height:172px; overflow-y:auto; }
+  .fila-item { display:flex; gap:6px; align-items:center; padding:5px 6px; border-radius:6px;
+               background:rgba(255,255,255,.03); border:1px solid transparent; }
+  .fila-item:hover { border-color:var(--linha); }
+  .fila-item .ord { font:800 9px ui-monospace,monospace; color:var(--lock); width:12px; flex:none; }
+  .fila-item .n { min-width:0; flex:1; }
+  .fila-item .t { font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .fila-item .a { font-size:9px; color:var(--fraco); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .fila-item .destino { font:800 9px ui-monospace,monospace; padding:3px 6px; border-radius:5px; flex:none;
+                        border:1px solid var(--linha); cursor:pointer; }
+  .fila-item .destino.pa { color:var(--a); border-color:rgba(76,201,240,.5); }
+  .fila-item .destino.pb { color:var(--b); border-color:rgba(255,179,71,.5); }
+  .fila-item.proxima { border-color:var(--lock); background:rgba(199,125,255,.12); }
+
+  /* avisos ao vivo, embaixo da fala do professor */
+  .prof .avisos { display:flex; flex-direction:column; gap:2px; margin-top:3px; }
+  .prof .aviso-vivo { font:11px ui-monospace,monospace; }
+  .prof .aviso-vivo.g3 { color:var(--bad); }
+  .prof .aviso-vivo.g2 { color:var(--cue); }
+  .prof .aviso-vivo.g1 { color:var(--mut); }
+  .prof .aviso-vivo.g0 { color:var(--ok); }
+
   .creditos { font-size:9px; color:var(--fraco); line-height:1.4; flex:none; }
   .creditos a { color:var(--fraco); }
 
@@ -352,8 +388,19 @@
 
   <div class="col lib">
     <div class="lateral">
+      <div class="fila-cx" id="fila-cx" hidden>
+        <div class="fila-topo">
+          <h2 style="margin:0">próximas</h2>
+          <span class="rot" id="fila-resumo" style="margin:0"></span>
+          <button class="ic" id="b-fila-fechar" title="fechar">×</button>
+        </div>
+        <div class="fila" id="fila"></div>
+      </div>
       <h2>músicas</h2>
-      <button id="b-compat" disabled>combina com o que está tocando</button>
+      <div style="display:flex;gap:5px">
+        <button id="b-compat" disabled style="flex:1">combina agora</button>
+        <button id="b-fila" disabled title="monta a sequência do set">montar sequência</button>
+      </div>
       <select id="genero"></select>
       <input type="text" id="busca" placeholder="buscar por nome…">
       <div class="lista" id="lista"></div>

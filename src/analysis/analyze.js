@@ -105,7 +105,24 @@ export async function analisar(buffer, { genero = null, bpmConhecido = null, tim
 
   const bpm = resultado.bpmBruto ? snapBpm(resultado.bpmBruto, janelaSnap) : null;
 
+  /**
+   * Trim sugerido pra faixa chegar no alvo. -14 dBFS RMS e o ponto onde
+   * sobra espaco pro pico sem o limitador do master trabalhar o tempo todo.
+   * Limitado a +/-12 dB: alem disso e faixa quebrada, e amplificar ruido.
+   */
+  const ALVO_DB = -14;
+  let trimDb = 0;
+  if (resultado.lufsAprox > -60) {
+    trimDb = Math.max(-12, Math.min(12, ALVO_DB - resultado.lufsAprox));
+    // nao deixa o pico estourar depois do trim
+    const picoDepois = (resultado.pico || 0) * Math.pow(10, trimDb / 20);
+    if (picoDepois > 0.99) trimDb -= 20 * Math.log10(picoDepois / 0.99);
+  }
+
   return {
+    volumeDb: Math.round(resultado.lufsAprox * 10) / 10,
+    pico: Math.round((resultado.pico || 0) * 1000) / 1000,
+    trimDb: Math.round(trimDb * 10) / 10,
     bpm,
     bpmBruto: resultado.bpmBruto ? Math.round(resultado.bpmBruto * 100) / 100 : null,
     confianca: Math.round(resultado.confianca * 100) / 100,

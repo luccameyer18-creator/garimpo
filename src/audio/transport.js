@@ -294,7 +294,11 @@ export class Transport extends EventTarget {
     const p = Math.max(0, Math.min(pos, this.duration));
     this.map.push({ t0: t, p0: p, rate: this.playing ? this.nominalRate : 0 });
     this.reader.port.postMessage({ t: 'seg', frame: this.#frame(t), pos: p, rate: this.playing ? this.nominalRate : 0 });
-    if (this.tocando === 'lock') this.#agendarStretch(t, p, this.playing ? this.nominalRate : 0);
+    if (this.tocando === 'lock') {
+      const T = this.ctx.currentTime + this.horizonteStretch;
+      this.#agendarStretch(T, this.map.positionAt(T), this.playing ? this.nominalRate : 0);
+      if (this.playing) this.#soltarCao(T);   // se ficar mudo, volta pro vinil
+    }
   }
 
   setCuePoint(pos = this.position) { this.cuePoint = Math.max(0, Math.min(pos, this.duration)); }
@@ -324,7 +328,11 @@ export class Transport extends EventTarget {
     this.reader.port.postMessage({ t: 'rate', rate: taxa, nominal: this.nominalRate });
     const t = this.ctx.currentTime;
     this.map.push({ t0: t, p0: this.map.positionAt(t), rate: taxa });
-    if (this.tocando === 'lock') this.#agendarStretch(t + this.lookahead, null, taxa);
+    if (this.tocando === 'lock') {
+      const T = this.ctx.currentTime + this.horizonteStretch;
+      this.#agendarStretch(T, null, taxa);
+      if (this.playing) this.#soltarCao(T);
+    }
     this.#reavaliarKeylock();
     this.dispatchEvent(new CustomEvent('rate', { detail: { pitch: this.pitch, rate: this.nominalRate } }));
   }
@@ -438,8 +446,26 @@ export class Transport extends EventTarget {
     }, espera);
   }
 
+  /**
+   * Horizonte minimo pra agendar o stretch.
+   *
+   * O signalsmith tem latencia propria (40 ms aqui). Pedir um instante que ja
+   * esta dentro dessa janela e pedir o impossivel: ele nao tem como produzir
+   * aquele trecho a tempo, e sai SILENCIO — sem erro, sem aviso.
+   *
+   * Eu aplicava isso so na ENTRADA do keylock e esquecia do seek. Resultado:
+   * encaixar a fase com o keylock ligado matava o audio do deck. Achado
+   * fazendo uma transicao de verdade, nao num teste.
+   */
+  get horizonteStretch() {
+    return Math.max(this.lookahead, 2 * this.stretchLatency + 0.02);
+  }
+
   #agendarStretch(quando, pos, taxa) {
     if (!this.stretch) return;
+    // nunca agenda dentro da janela de latencia dele
+    const minimo = this.ctx.currentTime + this.horizonteStretch;
+    if (quando < minimo) { pos = this.map.positionAt(minimo); quando = minimo; }
     const p = pos ?? this.map.positionAt(quando);
     // não await: estamos no caminho crítico. A latência já foi medida no init.
     this.stretch.schedule({ output: quando, active: true, input: p, rate: taxa, semitones: 0 })
@@ -459,7 +485,11 @@ export class Transport extends EventTarget {
     if (pos !== null && pos !== undefined) msg.pos = pos;
     this.reader.port.postMessage(msg);
     this.reader.port.postMessage({ t: 'active', on: taxa !== 0 || this.playing });
-    if (this.tocando === 'lock') this.#agendarStretch(t, pos, taxa);
+    if (this.tocando === 'lock') {
+      const T = Math.max(t, this.ctx.currentTime + this.horizonteStretch);
+      this.#agendarStretch(T, this.map.positionAt(T), taxa);
+      if (taxa !== 0) this.#soltarCao(T);
+    }
   }
 
   // ─────────────────────────── prato / jog ───────────────────────────
