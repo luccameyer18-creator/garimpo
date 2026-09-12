@@ -219,12 +219,35 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
       } else {
         const cru = await pegar(f.url, signal);
         lote = preparar(cru);
-        // a busca por texto pega homônimo: "forró" traz "forlorn". O filtro da
-        // crate separa, e sem ele o acervo brasileiro viraria qualquer coisa.
-        if (f.filtro) lote = lote.filter((t) => f.filtro.test(`${t.title} ${t.artist} ${t.genre || ''}`));
       }
 
-      const novas = await guardar(lote, f.pilha || null);
+      /**
+       * O FILTRO ROTULA, não descarta — e essa distinção rendeu o dobro de
+       * acervo.
+       *
+       * O filtro existe porque a busca por texto pega homônimo: "forró" traz
+       * "forlorn", "axé" traz "Maze of the Axe". Mas eu estava usando ele pra
+       * JOGAR FORA, e medi o preço: numa busca por "brega", das 75 faixas
+       * utilizáveis o filtro descartava 50.
+       *
+       * Só que ele responde a uma pergunta de VITRINE — "isto pertence ao chip
+       * Brega funk?" — e não a uma pergunta de ACERVO. Pro montador de set,
+       * música compatível é música compatível, tenha vindo de onde tiver vindo.
+       *
+       * Então: tudo que serve num deck entra no acervo; o rótulo da pilha só é
+       * posto em quem passa no filtro. O chip continua limpo e o acervo cresce.
+       */
+      let novas = 0;
+      if (f.filtro && lote.length) {
+        const casam = [], resto = [];
+        for (const t of lote) {
+          (f.filtro.test(`${t.title} ${t.artist} ${t.genre || ''}`) ? casam : resto).push(t);
+        }
+        novas += await guardar(casam, f.pilha || null);
+        novas += await guardar(resto, null);
+      } else {
+        novas = await guardar(lote, f.pilha || null);
+      }
       total += novas;
       aoAndar({ total, novas, frente: f.nome, feito, de: frentes.length });
     } catch (e) {
