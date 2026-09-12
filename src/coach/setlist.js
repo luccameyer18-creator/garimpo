@@ -66,11 +66,13 @@ export const PILHAS = [
 /**
  * Junta candidatas de várias pilhas, já filtradas pelo que serve num deck.
  *
- * A faixa de BPM não é decoração: misturar 95 com 130 não é set alternado, é
- * duas festas. O que dá pra alternar de verdade é ritmo e gênero DENTRO de uma
- * faixa de andamento comum — que é como um DJ de pista trabalha.
+ * A faixa de BPM era 118–134, e era estreita demais: com três pilhas marcadas
+ * sobravam ~89 candidatas, e a corrente morria em 4 passos por falta de quem
+ * encaixasse. Agora o pote vai de 100 a 150 e quem estreita é a própria
+ * corrente, que só aceita ±4% por passo — ela não vai pular de 100 pra 150, vai
+ * caminhar. O pote largo só dá a ela pra onde caminhar.
  */
-export async function juntarCandidatas({ pilhas = null, bpmMin = 118, bpmMax = 134,
+export async function juntarCandidatas({ pilhas = null, bpmMin = 100, bpmMax = 150,
                                          durMin = 90, durMax = 420, signal } = {}) {
   const quero = pilhas?.length ? PILHAS.filter((p) => pilhas.includes(p.nome)) : PILHAS;
   const fora = [];
@@ -115,9 +117,42 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
   const pendentes = obrigatorias.filter((t) => t && t.id !== semente.id);
   const passo = energia === 'subir' ? 1.012 : energia === 'descer' ? 0.988 : 1;
 
-  const encaixa = (de, t) =>
-    !usadas.has(t.id) && t.bpm && Math.abs(t.bpm / de.bpm - 1) <= 0.04 &&
-    keyCompatible({ camelot: de.camelot }, { camelot: t.camelot }).ok;
+  /**
+   * ENCAIXE POR NÍVEIS, e é isto que impede o set de morrer no quarto passo.
+   *
+   * A regra era uma só: tom compatível E andamento dentro de ±4%. Com um pote
+   * pequeno isso fecha rápido — a corrente não achava ninguém e parava, então
+   * pedir 30 minutos devolvia 4 faixas. O usuário viu antes de mim.
+   *
+   * Um DJ de verdade não para quando não há a transição perfeita: ele faz uma
+   * transição mais difícil e resolve com o EQ. Então a corrente tenta em ordem:
+   *
+   *   0. tom compatível, ±4% de andamento — a transição que se faz dormindo
+   *   1. tom a até 2 passos na roda, ±4% — encosta, e o ouvido perdoa
+   *   2. qualquer tom, ±4% — casa só pelo andamento; corta os médios e vai
+   *   3. qualquer tom, ±7% — o pitch estica mais do que se gostaria
+   *
+   * Cada faixa guarda em `nivel` como foi escolhida, pra que a interface possa
+   * avisar "esta entra pelo andamento, o tom não bate" em vez de fingir que
+   * todas são iguais.
+   */
+  const NIVEIS = [
+    { bpm: 0.04, roda: 0 },
+    { bpm: 0.04, roda: 2 },
+    { bpm: 0.04, roda: 99 },
+    { bpm: 0.07, roda: 99 },
+  ];
+
+  const encaixaNivel = (de, t, n) => {
+    if (usadas.has(t.id) || !t.bpm) return false;
+    const lv = NIVEIS[n];
+    if (Math.abs(t.bpm / de.bpm - 1) > lv.bpm) return false;
+    if (lv.roda === 0) return keyCompatible({ camelot: de.camelot }, { camelot: t.camelot }).ok;
+    if (lv.roda >= 99) return true;
+    return distanciaCamelot(de.camelot, t.camelot) <= lv.roda;
+  };
+
+  const encaixa = (de, t) => encaixaNivel(de, t, 0);
 
   /**
    * Teto de duração: o set pode esticar pra encaixar uma faixa que você
@@ -138,9 +173,14 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
 
     // 2. senão, a melhor candidata livre — e se ainda há obrigatória pendente,
     //    prefere a que APROXIMA o BPM da próxima obrigatória: é a faixa-ponte
+    let nivelUsado = 0;
     if (!esc) {
-      const cands = candidatas.filter((t) => encaixa(atual, t));
-      if (!cands.length) break;
+      let cands = [];
+      for (nivelUsado = 0; nivelUsado < NIVEIS.length; nivelUsado++) {
+        cands = candidatas.filter((t) => encaixaNivel(atual, t, nivelUsado));
+        if (cands.length) break;
+      }
+      if (!cands.length) break;   // acabou mesmo: nem afrouxando tem candidata
       const alvo = pendentes.length
         ? (atual.bpm + pendentes[0].bpm) / 2     // caminha na direção dela
         : atual.bpm * passo;
@@ -184,9 +224,12 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
       esc = cands[0];
     }
 
+    const harm = keyCompatible({ camelot: atual.camelot }, { camelot: esc.camelot });
     fila.push({ ...esc, deOndeVem: atual.title,
       obrigatoria: obrigatorias.some((t) => t.id === esc.id),
-      motivo: keyCompatible({ camelot: atual.camelot }, { camelot: esc.camelot }).reason,
+      nivel: nivelUsado,
+      harmonicamenteOk: harm.ok,
+      motivo: harm.reason,
       pitch: esc.bpm / atual.bpm - 1 });
     usadas.add(esc.id);
     dur += esc.duration * 0.8;
@@ -277,5 +320,7 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
 export function resumoSet(s) {
   if (!s?.fila?.length) return 'sem set';
   const de = s.fila[0].bpm, ate = s.fila[s.fila.length - 1].bpm;
-  return `${s.fila.length} faixas · ${s.generos} gêneros · ${de} → ${ate} BPM · ~${Math.round(s.minutos)} min`;
+  const dificeis = s.fila.filter((t) => (t.nivel ?? 0) >= 2).length;
+  return `${s.fila.length} faixas · ${s.generos} gêneros · ${de} → ${ate} BPM · ~${Math.round(s.minutos)} min`
+       + (dificeis ? ` · ${dificeis} só pelo andamento` : '');
 }

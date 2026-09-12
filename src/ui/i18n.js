@@ -16,6 +16,7 @@
  */
 
 const PT = {
+  'fila.soAndamento': 'casa só pelo andamento — corte os médios na entrada',
   'mix.eco': 'ECO',
   'mix.eco.div': 'eco em {v} tempo — toque pra trocar',
   'fx.loop': 'LOOP',
@@ -166,6 +167,7 @@ const PT = {
 };
 
 const EN = {
+  'fila.soAndamento': 'tempo match only — cut the mids on the way in',
   'mix.eco': 'ECHO',
   'mix.eco.div': 'echo at {v} beat — tap to change',
   'fx.loop': 'LOOP',
@@ -315,6 +317,7 @@ const EN = {
 };
 
 const ES = {
+  'fila.soAndamento': 'coincide solo en tempo — cortá los medios al entrar',
   'mix.eco': 'ECO',
   'mix.eco.div': 'eco en {v} tiempo — tocá para cambiar',
   'fx.loop': 'LOOP',

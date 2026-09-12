@@ -1082,7 +1082,9 @@ function desenharFila() {
   $('fila-resumo').textContent = resumoFila(fila, referencia());
 
   el.innerHTML = '';
-  fila.forEach((t, i) => {
+  // `faixa`, nunca `t`: `t` é a função de tradução, e já me pegou uma vez aqui
+  // dentro — laço com variável `t` sombreia ela e o arquivo inteiro quebra.
+  fila.forEach((faixa, i) => {
     const d = document.createElement('div');
     d.className = 'fila-item' + (i === 0 ? ' proxima' : '');
     // a primeira vai pro deck livre; as seguintes alternam
@@ -1090,14 +1092,25 @@ function desenharFila() {
     d.innerHTML = `<div class="ord">${i + 1}</div>
       <div class="n"><div class="t"></div><div class="a"></div></div>
       <button class="destino p${destino.toLowerCase()}">${destino}</button>`;
-    d.querySelector('.t').textContent = t.title;
+    d.querySelector('.t').textContent = faixa.title;
+    /**
+     * Marca a transição DIFÍCIL em vez de fingir que todas são iguais.
+     *
+     * Quando a corrente não acha faixa de tom compatível ela afrouxa e casa só
+     * pelo andamento (ver setlist.js). Isso é legítimo — é o que um DJ faz —
+     * mas exige cortar os médios na entrada. Esconder seria deixar a pessoa
+     * errar sem saber por quê.
+     */
+    const dificil = (faixa.nivel ?? 0) >= 2;
+    d.classList.toggle('dificil', dificil);
     d.querySelector('.a').textContent =
-      `${t.bpm} ${t.camelot || ''} · ${t.pitch >= 0 ? '+' : ''}${(t.pitch * 100).toFixed(1)}% · ${t.motivo}`;
+      `${faixa.bpm} ${faixa.camelot || ''} · ${faixa.pitch >= 0 ? '+' : ''}` +
+      `${(faixa.pitch * 100).toFixed(1)}% · ${dificil ? t('fila.soAndamento') : faixa.motivo}`;
     d.querySelector('.destino').onclick = async () => {
       try { await ligar(); } catch { return; }
       await garantirRodando();
-      decks[destino].carregarAudius(t);
-      fila = fila.filter((x) => x.id !== t.id);
+      decks[destino].carregarAudius(faixa);
+      fila = fila.filter((x) => x.id !== faixa.id);
       desenharFila();
     };
     el.appendChild(d);
