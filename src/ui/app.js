@@ -404,14 +404,26 @@ async function carregarLista(fn) {
                       <div class="m">${t.bpm ?? '—'}<br>${t.camelot ?? ''}</div>`;
       el.querySelector('.t').textContent = t.title;
       el.querySelector('.a').textContent = t.artist;
-      // aquece no hover: resolve a URL e abre a conexao com o validator.
-      // Sem isso o clique paga resolve + DNS + TLS de um host novo (~2 s).
+      // aquece no hover (desktop) ou ao encostar (celular)
       let aquecida = false;
-      el.onpointerenter = () => { if (!aquecida) { aquecida = true; prefetch(t.id).catch(() => {}); } };
-      el.onclick = async () => {
-        try { await ligar(); } catch { return; }   // ligar() ja mostrou o erro
+      const aquecer = () => { if (!aquecida) { aquecida = true; prefetch(t.id).catch(() => {}); } };
+      el.onpointerenter = aquecer;
+
+      // No celular a lista rola. Se o dedo escorrega alguns pixels, o Chrome
+      // trata o gesto como scroll e CANCELA o click — o toque parece não fazer
+      // nada. Então aceitamos por pointerup com tolerância de 12 px.
+      let px = 0, py = 0, pid = null;
+      el.addEventListener('pointerdown', (ev) => {
+        px = ev.clientX; py = ev.clientY; pid = ev.pointerId; aquecer();
+      });
+      el.addEventListener('pointerup', async (ev) => {
+        if (ev.pointerId !== pid) return;
+        if (Math.hypot(ev.clientX - px, ev.clientY - py) > 12) return;  // foi scroll
+        pid = null;
+        el.style.borderColor = 'var(--acc)';          // confirma o toque na hora
+        try { await ligar(); } catch { return; }      // ligar() já mostrou o erro
         deck.carregarAudius(t);
-      };
+      });
       lista.appendChild(el);
     }
     // as tres primeiras ja aquecem sozinhas: sao as mais provaveis de clicar
@@ -421,3 +433,74 @@ async function carregarLista(fn) {
   }
 }
 carregarLista(() => trending({ genre: 'House', limit: 40 }));
+
+// ─────────────────────────── diagnóstico ───────────────────────────
+// Sem console no celular e sem conseguir reproduzir o ambiente do usuário,
+// esta é a única forma de saber o que aconteceu de verdade em vez de supor.
+
+const problemas = [];
+addEventListener('error', (e) => problemas.push('error: ' + e.message));
+addEventListener('unhandledrejection', (e) =>
+  problemas.push('rejeição: ' + String(e.reason?.message || e.reason)));
+
+const DP = 'https://discoveryprovider.audius.co/v1';
+
+async function sondar(nome, url, opts) {
+  const t0 = performance.now();
+  try {
+    const r = await fetch(url, opts);
+    return `${nome}: ${r.status}${r.redirected ? ' REDIR' : ''} em ${Math.round(performance.now() - t0)}ms`;
+  } catch (e) { return `${nome}: FALHOU ${e.name} — ${e.message}`; }
+}
+
+$('b-diag').onclick = async () => {
+  const b = $('b-diag');
+  b.textContent = 'checando…';
+  const rel = {
+    quando: new Date().toISOString(),
+    ua: navigator.userAgent,
+    tela: `${innerWidth}x${innerHeight} dpr${devicePixelRatio}`,
+    rede: {
+      tipo: navigator.connection?.effectiveType,
+      downlink: navigator.connection?.downlink,
+      rtt: navigator.connection?.rtt,
+      economiaDeDados: navigator.connection?.saveData,
+    },
+    audio: ctx
+      ? { estado: ctx.state, sampleRate: ctx.sampleRate,
+          baseLatency: ctx.baseLatency, outputLatency: ctx.outputLatency }
+      : 'NUNCA LIGOU',
+    deck: deck
+      ? { pronto, temKeylock: deck.temKeylock, estado: deck.estado,
+          faixa: deck.faixa?.title, duracao: deck.duration, erro: deck.erro }
+      : 'NAO EXISTE',
+    passosDaUltimaCarga: deck?.passos ?? [],
+    faixasNaLista: document.querySelectorAll('#lista .item').length,
+    problemas: problemas.slice(-8),
+    sondas: [],
+  };
+
+  rel.sondas.push(await sondar('metadata', `${DP}/tracks/trending?genre=House&limit=1&app_name=garimpo`));
+  try {
+    const j = await (await fetch(`${DP}/tracks/trending?genre=House&limit=1&app_name=garimpo`)).json();
+    const id = j.data?.[0]?.id;
+    if (id) {
+      const u = (await (await fetch(`${DP}/tracks/${id}/stream?app_name=garimpo&no_redirect=true`)).json()).data;
+      rel.sondas.push('validator sorteado: ' + new URL(u).host);
+      rel.sondas.push(await sondar('stream 2B', u, { headers: { Range: 'bytes=0-1' } }));
+      rel.sondas.push(await sondar('stream 64KB', u, { headers: { Range: 'bytes=0-65535' } }));
+    }
+  } catch (e) { rel.sondas.push('sonda de stream FALHOU: ' + e.message); }
+
+  const txt = JSON.stringify(rel, null, 1);
+  try {
+    await navigator.clipboard.writeText(txt);
+    b.textContent = 'copiado — cole no chat';
+  } catch {
+    $('erro').hidden = false;
+    $('erro').style.whiteSpace = 'pre-wrap';
+    $('erro').textContent = txt;
+    b.textContent = 'não copiou — está na tela';
+  }
+  setTimeout(() => { b.textContent = 'diagnóstico'; }, 8000);
+};
