@@ -103,6 +103,7 @@ export class Transport extends EventTarget {
       this.lockGain.connect(destination);
     }
     this._cao = null;
+    this.caoDerrubou = false;
 
     // estado
     this.duration = 0;
@@ -218,6 +219,7 @@ export class Transport extends EventTarget {
 
     this.map = new TimeMap({ time: this.ctx.currentTime, pos: 0, rate: 0 });
     this.cuePoint = 0;
+    this.caoDerrubou = false;   // faixa nova, chance nova
     this.dispatchEvent(new CustomEvent('loaded', { detail: { duration: this.duration } }));
   }
 
@@ -328,9 +330,22 @@ export class Transport extends EventTarget {
   }
 
   /** Fora de 0.70x–1.45x o phase vocoder borra; nessa faixa o keylock se desliga. */
-  get keylockPossivel() {
-    return !!this.stretch && !this.tocandoPrato &&
-           this.nominalRate >= AUDIO.keylockMin && this.nominalRate <= AUDIO.keylockMax;
+  get keylockPossivel() { return !this.motivoSemKeylock; }
+
+  /**
+   * POR QUE o keylock nao esta ativo, ou null se estiver tudo bem.
+   * Antes a UI assumia que o unico motivo era a janela de qualidade, e mostrava
+   * "suspenso fora de 0.70x-1.45x" mesmo com o pitch em +0.87% — mentira que o
+   * usuario pegou na hora. Um motivo errado e pior que nenhum.
+   */
+  get motivoSemKeylock() {
+    if (!this.stretch) return 'o motor de keylock não carregou';
+    if (this.caoDerrubou) return 'desligado sozinho: o motor não produziu áudio';
+    if (this.tocandoPrato) return 'suspenso enquanto você segura o prato';
+    if (this.nominalRate < AUDIO.keylockMin || this.nominalRate > AUDIO.keylockMax) {
+      return `fora da faixa de qualidade (${AUDIO.keylockMin}×–${AUDIO.keylockMax}×)`;
+    }
+    return null;
   }
 
   setKeylock(ligado) {
@@ -398,17 +413,28 @@ export class Transport extends EventTarget {
     const espera = Math.max(0, (T - this.ctx.currentTime) * 1000) + 400;
     this._cao = setTimeout(() => {
       if (this.tocando !== 'lock' || !this.playing) return;
-      this.lockAnalyser.getFloatTimeDomainData(this._buf);
-      let soma = 0;
-      for (let i = 0; i < this._buf.length; i++) soma += this._buf[i] * this._buf[i];
-      const rms = Math.sqrt(soma / this._buf.length);
-      if (rms < 1e-4) {
+      const ler = () => {
+        this.lockAnalyser.getFloatTimeDomainData(this._buf);
+        let s = 0;
+        for (let i = 0; i < this._buf.length; i++) s += this._buf[i] * this._buf[i];
+        return Math.sqrt(s / this._buf.length);
+      };
+      // DUAS leituras separadas por 250 ms: uma so pode cair num vale do sinal
+      // (silencio entre batidas, breakdown) e condenar o keylock por engano
+      const a1 = ler();
+      if (a1 >= 1e-4) return;
+      setTimeout(() => {
+        if (this.tocando !== 'lock' || !this.playing) return;
+        const a2 = ler();
+        if (a2 >= 1e-4) return;
+        this.caoDerrubou = true;
         this.#trocarMotor('vinyl');
-        this.keylockPedido = false;
+        // NAO zera keylockPedido: o usuario pediu, e ao trocar de faixa ou
+        // recarregar a gente tenta de novo em vez de desistir pra sempre
         this.dispatchEvent(new CustomEvent('keylockFalhou', {
-          detail: { rms, motivo: 'o stretch não produziu áudio; voltei pro vinil' },
+          detail: { rms: a2, motivo: 'o motor de keylock ficou mudo; voltei pro vinil pra você não perder o som' },
         }));
-      }
+      }, 250);
     }, espera);
   }
 

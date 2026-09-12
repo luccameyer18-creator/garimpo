@@ -34,7 +34,7 @@ function nivelMaster() {
 let ligando = null;
 
 /** Versão do build. Sem isto não dá pra saber se o celular pegou cache. */
-export const VERSAO = '2026-09-12.9';
+export const VERSAO = '2026-09-12.10';
 
 /**
  * Fase atual de ligar(). Vai pro diagnóstico.
@@ -232,10 +232,10 @@ function ligarEventos() {
     const { pedido, ativo } = e.detail;
     $('b-keylock').classList.toggle('lig', ativo);
     $('b-keylock').classList.toggle('lock', ativo);
-    // pedido mas não ativo = fora da janela de qualidade 0.70–1.45
     $('b-keylock').style.opacity = pedido && !ativo ? 0.55 : 1;
+    // o motivo vem do transporte: ele sabe qual e, a UI nao tem que adivinhar
     $('b-keylock').title = pedido && !ativo
-      ? 'keylock suspenso: fora da faixa de qualidade (0.70x–1.45x)'
+      ? 'keylock ' + (deck.transport?.motivoSemKeylock || 'indisponível')
       : 'trava o tom ao mudar o andamento';
     mostrarEfeitoDoTom();
   });
@@ -260,7 +260,7 @@ function ligarEventos() {
   deck.addEventListener('keylockFalhou', (e) => {
     caoDeGuarda.push({ quando: new Date().toISOString().slice(11,19), ...e.detail });
     $('erro').hidden = false;
-    $('erro').textContent = `keylock desligado sozinho: ${e.detail.motivo}`;
+    $('erro').innerHTML = `${e.detail.motivo}. <span style="color:var(--mut)">A música continua tocando, só com o tom acompanhando o andamento. Carregue outra faixa pra tentar de novo.</span>`;
     $('e-keylock').innerHTML = 'keylock <b style="color:var(--bad)">falhou</b>';
     setTimeout(() => { $('erro').hidden = true; }, 6000);
   });
@@ -287,8 +287,9 @@ function mostrarEfeitoDoTom() {
     el.innerHTML = `<span style="color:var(--lock)">tom travado</span> ` +
       `<span style="color:var(--mut)">(sem keylock subiria ${sinal}${abs} semitom)</span>`;
   } else if (deck.keylockPedido) {
-    el.innerHTML = `<span style="color:var(--quente)">keylock suspenso fora de 0.70×–1.45×</span> ` +
-      `<span style="color:var(--mut)">tom ${sinal}${abs} semitom</span>`;
+    const motivo = deck.transport?.motivoSemKeylock || 'indisponível';
+    el.innerHTML = `<span style="color:var(--quente)">keylock ${motivo}</span> ` +
+      `<span style="color:var(--mut)">— tom ${sinal}${abs} semitom</span>`;
   } else {
     el.innerHTML = `<span style="color:var(--quente)">tom ${sinal}${abs} semitom</span> ` +
       `<span style="color:var(--mut)">— ligue KEY LOCK pra travar</span>`;
