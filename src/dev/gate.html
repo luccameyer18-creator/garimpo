@@ -196,6 +196,83 @@ try {
       else bad(`posicao final ${ultimo.pos.toFixed(4)}s, esperado ~2.0s`);
     }
   }
+  // ─────────────── 7 · Transport: a troca keylock<->vinil ───────────────
+  head('7 · Transport — handoff keylock↔vinil sem buraco e sem salto');
+  {
+    const { Transport } = await import('/src/audio/transport.js');
+    const oc = new OfflineAudioContext(2, SR * 2, SR);
+    await oc.audioWorklet.addModule(WORKLET);
+
+    const saida = oc.createGain();
+    saida.connect(oc.destination);
+    const tr = await Transport.create(oc, { destination: saida });
+    if (!tr.stretch) { bad('signalsmith nao carregou — sem keylock'); }
+    else {
+      inf(`latencia do signalsmith medida no init: ${(tr.stretchLatency * 1e3).toFixed(1)} ms`);
+
+      const buf = oc.createBuffer(2, SR * 3, SR);
+      for (let c = 0; c < 2; c++) buf.getChannelData(c).set(seno(440, 3));
+      await tr.load(buf);
+
+      tr.setPitchRange(0.16);
+      tr.setPitch(0.08);            // nominalRate = 1.08
+      tr.play({ at: 0.02 });
+      tr.setKeylock(true);          // agenda o handoff em ~max(0.15, 2L)
+      const rend = await oc.startRendering();
+
+      const d = rend.getChannelData(0);
+      const fatia = (de, ate) => {
+        const b = oc.createBuffer(1, Math.floor((ate - de) * SR), SR);
+        b.getChannelData(0).set(d.subarray(Math.floor(de * SR), Math.floor(ate * SR)));
+        return b;
+      };
+
+      // NAO medir o trecho ANTES do handoff dentro deste mesmo render: o
+      // postMessage do play() chega no thread de audio ~65 ms depois do inicio
+      // da renderizacao offline, entao qualquer janela precoce pega silencio e
+      // a medicao mente (ja me enganou: deu 438 Hz com rms 0.264 em vez de
+      // 0.3536). O controle de vinil vai num render SEPARADO, sem keylock.
+      const ocV = new OfflineAudioContext(2, SR * 2, SR);
+      await ocV.audioWorklet.addModule(WORKLET);
+      const gV = ocV.createGain(); gV.connect(ocV.destination);
+      const trV = await Transport.create(ocV, { destination: gV, comKeylock: false });
+      const bufV = ocV.createBuffer(2, SR * 3, SR);
+      for (let c = 0; c < 2; c++) bufV.getChannelData(c).set(seno(440, 3));
+      await trV.load(bufV);
+      trV.setPitchRange(0.16); trV.setPitch(0.08); trV.play({ at: 0.02 });
+      const rendV = await ocV.startRendering();
+      const semLock = fundamental(rendV, { lo: 380, hi: 560 });
+      const depois = fundamental(fatia(0.60, 1.60), { lo: 380, hi: 560 });
+      inf(`mesmo pitch, dois renders: sem keylock ${semLock.hz.toFixed(1)} Hz | com keylock ${depois.hz.toFixed(1)} Hz`);
+
+      if (Math.abs(semLock.hz - 475.2) < 12) ok(`sem keylock o tom sobe pra ${semLock.hz.toFixed(1)} Hz, como vinil`);
+      else bad(`sem keylock deu ${semLock.hz.toFixed(1)} Hz, esperado ~475`);
+
+      if (Math.abs(depois.hz - 440) < 15) ok(`com keylock segurou em ${depois.hz.toFixed(1)} Hz — ${Math.abs(semLock.hz - depois.hz).toFixed(0)} Hz de diferenca entre os dois modos`);
+      else bad(`com keylock deu ${depois.hz.toFixed(1)} Hz, esperado ~440`);
+      trV.dispose();
+
+      // buraco de silencio na troca? janela deslizante de 10 ms
+      let pior = Infinity, quando = 0;
+      const jan = Math.floor(0.010 * SR);
+      for (let i = Math.floor(0.05 * SR); i < Math.floor(1.2 * SR) - jan; i += 64) {
+        let r = 0; for (let k = 0; k < jan; k++) r += d[i + k] * d[i + k];
+        r = Math.sqrt(r / jan);
+        if (r < pior) { pior = r; quando = i / SR; }
+      }
+      inf(`menor rms em janela de 10 ms entre 0.05s e 1.2s: ${pior.toFixed(4)} em ${quando.toFixed(3)}s`);
+      if (pior > 0.05) ok('nenhum buraco de silencio na troca');
+      else bad(`buraco de silencio (rms ${pior.toFixed(4)}) em ${quando.toFixed(3)}s`);
+
+      // a posicao logica nao pode saltar na troca
+      const p1 = tr.map.positionAt(0.14), p2 = tr.map.positionAt(0.16);
+      const esperado = 0.02 * 1.08;
+      if (Math.abs((p2 - p1) - esperado) < 0.003) ok(`posicao logica continua na troca (avancou ${((p2 - p1) * 1e3).toFixed(1)} ms de entrada em 20 ms de saida)`);
+      else bad(`posicao saltou na troca: ${((p2 - p1) * 1e3).toFixed(1)} ms, esperado ${(esperado * 1e3).toFixed(1)} ms`);
+
+      tr.dispose();
+    }
+  }
 } catch (e) {
   bad('excecao: ' + e.message);
   put(String(e.stack).slice(0, 400), 'mut');
