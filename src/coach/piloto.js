@@ -39,8 +39,18 @@ export class Piloto extends EventTarget {
     Object.assign(this, { decks, mixer, encaixar, sincronizar, carregar });
     this.ativo = false;
     this.parar = false;
+    this.pularAgora = false;
     this.passo = '';
   }
+
+  /**
+   * Pula a espera e faz a transição já.
+   *
+   * O piloto espera a quebra da faixa no ar pra sair no lugar certo, e essa
+   * espera pode passar de um minuto. Quem já ouviu aquela faixa não quer
+   * esperar — e não ter como pular era o que fazia o set parecer travado.
+   */
+  pular() { if (this.ativo) this.pularAgora = true; }
 
   #diz(passo, extra = {}) {
     this.passo = passo;
@@ -83,10 +93,11 @@ export class Piloto extends EventTarget {
     if (canal.eq.morto(banda) !== ligado) canal.setKill(banda, ligado);
   }
 
-  async #dorme(ms) {
+  async #dorme(ms, { pulavel = false } = {}) {
     const fim = performance.now() + ms;
     while (performance.now() < fim) {
       if (this.parar) return false;
+      if (pulavel && this.pularAgora) return true;      // corta a espera, segue o roteiro
       await espera(Math.min(200, fim - performance.now()));
     }
     return true;
@@ -150,6 +161,7 @@ export class Piloto extends EventTarget {
     try {
       this.#diz('carregando', { faixa: fila[0].title });
       if (!await this.carregar('A', fila[0])) throw new Error('a primeira faixa não carregou');
+      this.dispatchEvent(new CustomEvent('tocou', { detail: { faixa: fila[0] } }));
       d.A.seek(this.#entrada(d.A));
       this.mixer.setCrossfader(0);
       d.A.play();
@@ -162,13 +174,26 @@ export class Piloto extends EventTarget {
         this.#diz('carregando', { deck: entra, faixa: fila[i].title, resta: fila.length - i });
         if (!await this.carregar(entra, fila[i])) { this.#diz('pulou', { faixa: fila[i].title }); continue; }
 
-        // espera chegar perto da quebra da faixa no ar
+        /**
+         * Espera chegar perto da quebra da faixa no ar.
+         *
+         * Esta espera pode ser longa — medi 79 s numa faixa de 307 s — e
+         * enquanto ela durava a tela continuava dizendo "carregando", que era
+         * mentira: já tinha carregado, ele estava esperando a hora certa. Agora
+         * ele diz o que está esperando, e conta os segundos.
+         */
         const q = this.#saida(d[noAr]);
-        if (q) {
-          const falta = (q.t - d[noAr].displayPosition - 16) * 1000;
-          if (falta > 0 && !await this.#dorme(Math.min(falta, 120000))) return;
+        if (q && !this.pularAgora) {
+          const ate = performance.now() + Math.min((q.t - d[noAr].displayPosition - 16) * 1000, 120000);
+          while (performance.now() < ate && !this.pularAgora) {
+            const falta = Math.round((ate - performance.now()) / 1000);
+            this.#diz('esperando', { deck: noAr, tipo: q.tipo, seg: falta });
+            if (!await this.#dorme(Math.min(2000, ate - performance.now()), { pulavel: true })) return;
+          }
         }
+        this.pularAgora = false;
         if (!await this.transicao(noAr, entra, { segundos })) return;
+        this.dispatchEvent(new CustomEvent('tocou', { detail: { faixa: fila[i] } }));
         noAr = entra;
         this.#diz('transição pronta', { noAr, resta: fila.length - i - 1 });
       }

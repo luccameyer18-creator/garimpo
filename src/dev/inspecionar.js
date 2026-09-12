@@ -22,11 +22,21 @@ export const CONTROLES = [
      '.bpm-val', '.pos', '.faixa-sel', '.auto'].map((c) => `#deck${d} ${c}`)),
   '#xf', '#master', '#fase', '#lista', '#b-compat', '#busca',
   '#prof-plano', '#b-ajuda', '#b-diag', '#b-arquivo',
-  '#b-encaixar', '#crates', '#saida-fone', '#b-piloto', '#pref-min', '#pref-energia',
+  '#b-encaixar', '#crates', '#saida-fone', '#b-piloto', '#pref-min', '#pref-energia', '#b-prefs', '#idioma',
   ...['A', 'B'].flatMap((d) => [`#fone-${d}`, `#vol-${d}`, `#fino-menos-${d}`, `#fino-mais-${d}`]),
   ...['A', 'B'].flatMap((d) =>
     ['grave', 'medio', 'agudo'].flatMap((b) => [`#eq-${d}-${b}`, `#kill-${d}-${b}`])),
 ];
+
+/** Algum ancestral rola e consegue trazer este elemento pra vista? */
+function emContainerRolavel(el) {
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const o = getComputedStyle(p);
+    const rola = /(auto|scroll)/.test(o.overflowY) || /(auto|scroll)/.test(o.overflow);
+    if (rola && p.scrollHeight > p.clientHeight + 1) return true;
+  }
+  return false;
+}
 
 function avaliar(sel, rolagemProposital) {
   const el = document.querySelector(sel);
@@ -46,8 +56,15 @@ function avaliar(sel, rolagemProposital) {
   const limite = rolagemProposital ? document.documentElement.scrollHeight : innerHeight;
   const topo = rolagemProposital ? r.top + scrollY : r.top;
   const base = rolagemProposital ? r.bottom + scrollY : r.bottom;
-  if (base > limite + 1) return { sel, problema: 'cortado embaixo', fora: Math.round(base - limite) };
-  if (topo < -1) return { sel, problema: 'cortado em cima', fora: Math.round(-topo) };
+  // fora da janela mas DENTRO de um painel que rola = alcançável, não cortado.
+  // Sem isto, dar overflow-y:auto numa coluna fazia o inspetor acusar tudo que
+  // estivesse abaixo da dobra dela — inclusive o que o usuário alcança rolando.
+  if (!emContainerRolavel(el) && base > limite + 1) {
+    return { sel, problema: 'cortado embaixo', fora: Math.round(base - limite) };
+  }
+  if (!emContainerRolavel(el) && topo < -1) {
+    return { sel, problema: 'cortado em cima', fora: Math.round(-topo) };
+  }
   if (r.right > innerWidth + 1) return { sel, problema: 'cortado à direita', fora: Math.round(r.right - innerWidth) };
   if (r.left < -1) return { sel, problema: 'cortado à esquerda', fora: Math.round(-r.left) };
 

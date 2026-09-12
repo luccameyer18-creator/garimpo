@@ -47,13 +47,45 @@ class Canal extends EventTarget {
     this.cue.gain.value = 0;           // fora até você pedir
     this.filtro.connect(this.cue);
 
+    /**
+     * ECO — atraso realimentado, sincronizado ao andamento.
+     *
+     * É ENVIO e não inserção: o som seco continua passando inteiro e o eco soma
+     * por cima. A diferença importa na hora que se usa — no "echo out" você
+     * quer a faixa sair e o rastro ficar, e isso só funciona se o rastro tiver
+     * vida própria depois que o seco some.
+     *
+     * O atraso sai DEPOIS do fader, de propósito: assim, quando você fecha o
+     * fader, o que já entrou no eco continua ecoando. É exatamente esse o
+     * truque, e com o envio pré-fader ele não existiria.
+     *
+     * O tempo do atraso é meio tempo da música — a semicolcheia pontuada que
+     * todo DJ usa. Quem define é `setEcoTempo`, chamado quando o BPM muda.
+     */
+    this.ecoEnvio = ctx.createGain();
+    this.ecoEnvio.gain.value = 0;
+    this.ecoAtraso = ctx.createDelay(2);
+    this.ecoAtraso.delayTime.value = 0.25;
+    this.ecoRealim = ctx.createGain();
+    this.ecoRealim.gain.value = 0.42;      // ~5 repetições audíveis; acima de 0.6 vira uivo
+    // corta o agudo a cada volta: eco que não escurece soa digital e cansa
+    this.ecoTom = ctx.createBiquadFilter();
+    this.ecoTom.type = 'lowpass';
+    this.ecoTom.frequency.value = 3200;
+    this.ecoTom.Q.value = -3.0103;         // Butterworth (Q em dB aqui, ver eq3.js)
+
+    this.fader.connect(this.ecoEnvio);
+    this.ecoEnvio.connect(this.ecoAtraso);
+    this.ecoAtraso.connect(this.ecoTom).connect(this.ecoRealim).connect(this.ecoAtraso);
+    this.ecoAtraso.connect(this.xf);
+
     // medidor pós-EQ, pré-fader
     this.medidor = ctx.createAnalyser();
     this.medidor.fftSize = 256;
     this._buf = new Float32Array(this.medidor.fftSize);
     this.filtro.connect(this.medidor);
 
-    this.valores = { trim: 0, fader: 1 };
+    this.valores = { trim: 0, fader: 1, eco: 0, ecoDivisao: 0.5 };
     this.setFader(1);
   }
 
@@ -74,6 +106,31 @@ class Canal extends EventTarget {
 
   /** Liga/desliga este canal na pré-escuta. */
   setCue(on) { this.cueLigado = !!on; this.#rampa(this.cue.gain, on ? 1 : 0); }
+
+  /**
+   * Quanto eco, 0..1. A rampa é a de sempre (12 ms): entrar de uma vez estala.
+   */
+  setEco(v01) {
+    this.valores.eco = v01;
+    this.#rampa(this.ecoEnvio.gain, Math.max(0, Math.min(1, v01)) * 0.85);
+  }
+
+  /**
+   * Casa o atraso com o andamento. `divisao` em tempos: 0.5 = meio tempo,
+   * 1 = um tempo, 0.25 = um quarto.
+   *
+   * Sem isto o eco briga com a batida em vez de andar junto — e eco fora de
+   * tempo é a diferença entre "efeito" e "erro".
+   */
+  setEcoTempo(bpm, divisao = 0.5) {
+    if (!bpm) return;
+    const seg = Math.max(0.02, Math.min(2, (60 / bpm) * divisao));
+    this.valores.ecoDivisao = divisao;
+    // rampa longa: mudar delayTime rápido muda o TOM do que já está na linha
+    const t = this.ctx.currentTime;
+    try { this.ecoAtraso.delayTime.cancelScheduledValues(t); } catch {}
+    this.ecoAtraso.delayTime.setTargetAtTime(seg, t, 0.08);
+  }
 
   setEq(banda, v) { this.eq.set(banda, v); }
   setKill(banda, on) { this.eq.setKill(banda, on); }
@@ -191,6 +248,9 @@ export class Mixer extends EventTarget {
 
   /** Liga o canal na pré-escuta. Vários canais ao mesmo tempo somam, como no hardware. */
   setCue(id, on) { this.canais[id]?.setCue(on); }
+
+  setEco(id, v) { this.canais[id]?.setEco(v); }
+  setEcoTempo(id, bpm, divisao) { this.canais[id]?.setEcoTempo(bpm, divisao); }
   get cueAtivos() { return Object.keys(this.canais).filter((k) => this.canais[k].cueLigado); }
   setCueVolume(v) {
     const t = this.ctx.currentTime;

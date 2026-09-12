@@ -9,7 +9,7 @@ import { Mixer, erroDeFase } from '../mix/mixer.js';
 import { plano, autoajuste } from '../coach/guia.js';
 import { montarFila, resumo as resumoFila } from '../coach/fila.js';
 import { momentos, proximoMomento, faltaPara } from '../coach/momentos.js';
-import { juntarCandidatas, montarSet, resumoSet } from '../coach/setlist.js';
+import { juntarCandidatas, montarSet, resumoSet, PILHAS as PILHAS_SET } from '../coach/setlist.js';
 import { Piloto } from '../coach/piloto.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
@@ -151,6 +151,7 @@ function montarVista(id) {
     bpmVal: q('.bpm-val'), tom: q('.tom'), onda: q('.onda'), mini: q('.mini'),
     jog: q('.jog'), marcaJog: q('.marca-jog'), anelJog: q('.anel-jog'),
     finos: [...no.querySelectorAll('.fino')], auto: q('.auto'),
+    loops: [...no.querySelectorAll('.lp')], loopSair: q('.lp-sair'),
     play: q('.play'), cue: q('.cue'), keylock: q('.keylock'), sync: q('.sync'),
     pos: q('.pos'), dur: q('.dur'), rest: q('.rest'), visorBpm: q('.visor .bpm'),
     efeito: q('.efeito'), erro: q('.erro'), passos: q('.passos'),
@@ -315,6 +316,7 @@ function montarVista(id) {
   ligarJog(id);
   ligarFinos(id);
   ligarAuto(id);
+  ligarLoops(id);
 }
 
 /** Mostra o que o keylock está fazendo agora — com pitch zero ele não faz nada. */
@@ -447,6 +449,39 @@ function ligarJog(id) {
   jog.addEventListener('pointerup', soltar);
   jog.addEventListener('pointercancel', soltar);
   jog.addEventListener('lostpointercapture', soltar);
+}
+
+/**
+ * Loop — o efeito que mais serve numa transição de verdade.
+ *
+ * Segura a faixa que está saindo numa frase de 4, 8 ou 16 tempos enquanto a
+ * outra entra, e você deixa de depender de a música ter comprimento suficiente.
+ * É também o único efeito que não colore o som: não some nada, não distorce
+ * nada, só repete — por isso é o primeiro a existir aqui.
+ *
+ * Tocar no botão que já está aceso sai do loop. Tocar em outro tamanho troca o
+ * tamanho sem sair, que é como se faz "fechando" um loop de 8 pra 4 pra 2
+ * quando a transição está no ponto.
+ */
+function ligarLoops(id) {
+  const d = decks[id], v = vistas[id];
+  const pintar = () => {
+    for (const b of v.loops) b.classList.toggle('lig', d.loopTempos === Number(b.dataset.tempos));
+    v.loopSair.classList.toggle('pode', !!d.loopTempos);
+  };
+  for (const b of v.loops) {
+    b.onclick = () => {
+      const n = Number(b.dataset.tempos);
+      if (d.loopTempos === n) { d.clearLoop(); }
+      else if (!d.loopDeTempos(n)) {
+        qd('dica').textContent = t('fx.semGrade');
+        return;
+      }
+      pintar();
+    };
+  }
+  v.loopSair.onclick = () => { d.clearLoop(); pintar(); };
+  d.addEventListener('loaded', () => { d.clearLoop(); pintar(); });
 }
 
 /** 1 volta no anel vale isto de áudio. Baixo de proposito: é o ajuste fino. */
@@ -887,6 +922,7 @@ function repintarLista() {
   for (const el of document.querySelectorAll('#lista .item')) {
     const t = el.__faixa;
     if (!t) continue;
+    el.__pintarEstrela?.();
     const v = avaliar(t);
     el.classList.remove('otima', 'boa', 'longe');
     const m = el.querySelector('.marca');
@@ -912,31 +948,47 @@ async function carregarLista(fn) {
   const lista = $('lista');
   lista.innerHTML = '<div style="color:var(--mut);padding:8px">buscando…</div>';
   try {
-    const faixas = (await fn()).filter((t) => !t.isLongMix);
+    // `faixa`, nao `t`: `t` e a funcao de traducao, e uma variavel de laco com
+    // esse nome sombreava ela dentro do laco. A lista parava de carregar com
+    // "t is not a function" — e so parou depois que a estrela passou a chamar
+    // t() ali dentro, entao o bug nasceu longe da causa.
+    const faixas = (await fn()).filter((x) => !x.isLongMix);
     lista.innerHTML = '';
     if (!faixas.length) { lista.innerHTML = '<div style="color:var(--mut);padding:8px">nada aqui</div>'; return; }
-    for (const t of faixas) {
+    for (const faixa of faixas) {
       const el = document.createElement('div');
       el.className = 'item';
       el.innerHTML = `<div class="n"><div class="t"></div><div class="a"></div><div class="a marca"></div></div>
-        <div class="m">${t.bpm ?? '—'}<br>${t.camelot ?? ''}</div>
+        <div class="m">${faixa.bpm ?? '—'}<br>${faixa.camelot ?? ''}</div>
+        <button class="fixar" title="">★</button>
         <div class="carregar"><button class="pa">A</button><button class="pb">B</button></div>`;
-      el.querySelector('.t').textContent = t.title;
-      el.querySelector('.a').textContent = t.artist;
-      el.__faixa = t;
+      el.querySelector('.t').textContent = faixa.title;
+      el.querySelector('.a').textContent = faixa.artist;
+      el.__faixa = faixa;
 
       let aquecida = false;
-      const aquecer = () => { if (!aquecida) { aquecida = true; prefetch(t.id).catch(() => {}); } };
+      const aquecer = () => { if (!aquecida) { aquecida = true; prefetch(faixa.id).catch(() => {}); } };
       el.onpointerenter = aquecer;
       el.addEventListener('pointerdown', aquecer);
 
       const por = async (id) => {
         try { await ligar(); } catch { return; }
         await garantirRodando();
-        decks[id].carregarAudius(t);
+        decks[id].carregarAudius(faixa);
       };
       el.querySelector('.pa').onclick = (e) => { e.stopPropagation(); por('A'); };
       el.querySelector('.pb').onclick = (e) => { e.stopPropagation(); por('B'); };
+
+      // estrela: marca a faixa como obrigatória no set do professor
+      const estrela = el.querySelector('.fixar');
+      const pintarEstrela = () => {
+        const on = fixas.some((f) => f.id === faixa.id);
+        estrela.classList.toggle('lig', on);
+        estrela.title = t(on ? 'pref.fixar.tirar' : 'pref.fixar.por');
+      };
+      estrela.onclick = (e) => { e.stopPropagation(); alternarFixa(faixa); pintarEstrela(); };
+      el.__pintarEstrela = pintarEstrela;
+      pintarEstrela();
 
       // toque no corpo do item = deck livre. Tolerância de 12 px porque a lista
       // rola e o Chrome cancela o click se o dedo escorrega.
@@ -952,7 +1004,7 @@ async function carregarLista(fn) {
       lista.appendChild(el);
     }
     repintarLista();
-    faixas.slice(0, 3).forEach((t) => prefetch(t.id).catch(() => {}));
+    faixas.slice(0, 3).forEach((x) => prefetch(x.id).catch(() => {}));
   } catch (e) {
     lista.innerHTML = `<div class="aviso">Audius indisponível: ${e.message}</div>`;
   }
@@ -969,26 +1021,40 @@ async function carregarLista(fn) {
  * BUSCA DE TEXTO, porque o Audius nao tem genero pra funk carioca, pagode nem
  * reggaeton. A diferenca fica escondida atras do chip, que e onde ela pertence.
  */
+/**
+ * Cada pilha tem uma CHAVE única e um rótulo.
+ *
+ * Eram identificadas pelo rótulo, e "Funk" existe duas vezes: o gênero
+ * eletrônico do Audius e a crate de funk brasileiro. Os dois chips acendiam
+ * juntos e o clique sempre carregava o primeiro. Chave prefixada pelo grupo
+ * resolve, e o rótulo continua sendo só "Funk" na tela, que é como se fala.
+ */
 const PILHAS = [
-  { grupo: 'app.grupo.eletronico', itens: GENRES.map((g) => ({ nome: g, carregar: () => trending({ genre: g, limit: 40 }) })) },
-  { grupo: 'app.grupo.brasil',   itens: CRATES.filter((c) => c.reg === 'BR')
-      .map((c) => ({ nome: c.nome, carregar: () => crateBr(c.nome, { limite: 40 }) })) },
-  { grupo: 'app.grupo.latino',   itens: CRATES.filter((c) => c.reg === 'LAT')
-      .map((c) => ({ nome: c.nome, carregar: () => crateBr(c.nome, { limite: 40 }) })) },
+  { grupo: 'app.grupo.eletronico',
+    itens: GENRES.map((g) => ({ chave: 'gen:' + g, nome: g,
+      carregar: () => trending({ genre: g, limit: 40 }) })) },
+  { grupo: 'app.grupo.brasil',
+    itens: CRATES.filter((c) => c.reg === 'BR')
+      .map((c) => ({ chave: 'br:' + c.nome, nome: c.nome,
+        carregar: () => crateBr(c.nome, { limite: 40 }) })) },
+  { grupo: 'app.grupo.latino',
+    itens: CRATES.filter((c) => c.reg === 'LAT')
+      .map((c) => ({ chave: 'lat:' + c.nome, nome: c.nome,
+        carregar: () => crateBr(c.nome, { limite: 40 }) })) },
 ];
 
-let pilhaAtual = 'House';
-const carregarPilha = (nome) => {
-  const it = PILHAS.flatMap((p) => p.itens).find((x) => x.nome === nome);
+let pilhaAtual = 'gen:House';
+const carregarPilha = (chave) => {
+  const it = PILHAS.flatMap((p) => p.itens).find((x) => x.chave === chave);
   if (!it) return;
-  pilhaAtual = nome;
-  for (const b of $('crates').querySelectorAll('button')) b.classList.toggle('lig', b.dataset.pilha === nome);
+  pilhaAtual = chave;
+  for (const b of $('crates').querySelectorAll('button')) b.classList.toggle('lig', b.dataset.pilha === chave);
   carregarLista(it.carregar);
 };
 
 $('crates').innerHTML = PILHAS.map((p) =>
   `<div class="grupo-chips"><span class="rot-chips" data-i18n="${p.grupo}">${t(p.grupo)}</span>` +
-  p.itens.map((i) => `<button data-pilha="${i.nome}">${i.nome}</button>`).join('') +
+  p.itens.map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('') +
   '</div>').join('');
 $('crates').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-pilha]');
@@ -1277,8 +1343,10 @@ function garantirPiloto() {
     },
   });
   piloto.addEventListener('passo', (e) => {
-    const { passo, faixa, resta, motivo, erro } = e.detail;
+    const { passo, faixa, resta, motivo, erro, seg, tipo, deck } = e.detail;
     $('piloto-nota').textContent = erro ? `piloto parou: ${erro}`
+      : passo === 'esperando'
+        ? t(tipo === 'quebra' ? 'piloto.esperaQuebra' : 'piloto.esperaFrase', { s: seg, d: deck })
       : motivo ? `piloto ${passo} — ${motivo}`
       : faixa ? `${passo}: ${faixa}${resta != null ? ` · faltam ${resta}` : ''}`
       : passo;
@@ -1286,12 +1354,14 @@ function garantirPiloto() {
     if (passo === 'fim do set' || passo === 'parado' || erro) pararPiloto();
   });
   piloto.addEventListener('crossfader', (e) => { $('xf').value = e.detail.x; });
+  piloto.addEventListener('tocou', (e) => registrarTocada(e.detail.faixa));
   return piloto;
 }
 
 function pararPiloto() {
   $('b-piloto').classList.remove('lig');
   $('b-piloto').textContent = t('app.piloto');
+  $('b-pular').hidden = true;
   piloto?.assumirControle?.();
 }
 
@@ -1300,21 +1370,31 @@ $('b-piloto').onclick = async () => {
   await garantirRodando();
   const b = $('b-piloto');
   b.classList.add('lig'); b.textContent = t('app.piloto.parar');
+  $('b-pular').hidden = false;
   $('piloto-nota').style.color = 'var(--neon)';
   $('piloto-nota').textContent = 'garimpando faixas…';
   try {
-    const cands = await juntarCandidatas({});
-    if (!cands.length) throw new Error('não achei faixas com BPM e tom');
+    const cands = await juntarCandidatas({ pilhas: pilhasEscolhidas() });
+    if (!cands.length && !fixas.length) throw new Error(t('pref.semFaixas'));
     const s = montarSet(cands, {
       minutos: Number($('pref-min').value),
       energia: $('pref-energia').value,
-      semente: referencia()?.bpm ? referencia() : null,
+      obrigatorias: fixas,
+      recentes: jaTocadas,
+      // com faixas escolhidas, quem abre o set é a primeira delas, não o deck
+      semente: fixas.length ? null : (referencia()?.bpm ? referencia() : null),
     });
-    if (s.fila.length < 2) throw new Error('não consegui encadear faixas suficientes');
+    if (s.fila.length < 2) throw new Error(t('pref.poucas'));
     fila = s.fila;
     desenharFila();
-    $('fila-resumo').textContent = resumoSet(s);
-    $('piloto-nota').textContent = resumoSet(s);
+    const resumo = resumoSet(s) + (s.naoCoube?.length
+      ? ' · ' + t('pref.naoCoube', { n: s.naoCoube.length }) : '');
+    $('fila-resumo').textContent = resumo;
+    $('piloto-nota').textContent = resumo;
+    if (s.naoCoube?.length) {
+      $('piloto-nota').style.color = 'var(--cue)';
+      $('piloto-nota').title = s.naoCoube.map((x) => `${x.title}: ${x.porque}`).join('\n');
+    }
     await garantirPiloto().tocar(s.fila);
   } catch (e) {
     $('piloto-nota').textContent = 'piloto: ' + e.message;
@@ -1371,3 +1451,262 @@ window.addEventListener('idioma', () => {
 
 document.documentElement.lang = idioma() === 'pt' ? 'pt-BR' : idioma();
 traduzirDOM();
+
+
+// ──────────────── o que o professor vai tocar ────────────────
+
+/**
+ * Duas escolhas, e elas respondem a coisas diferentes.
+ *
+ * GÊNEROS limitam o pote de onde ele garimpa. Marcar só Disco e House faz um
+ * set de pista clássico; marcar Funk BR e Brega faz outro. Nenhum marcado seria
+ * um pote vazio, então "nenhum" significa "todos" — é o que a pessoa quer dizer
+ * quando desmarca tudo e aperta play.
+ *
+ * FAIXAS FIXAS são as músicas que ele TEM que tocar. Não entram empilhadas no
+ * começo: o montador encaixa cada uma no ponto em que ela cabe de tom e
+ * andamento, e usa faixas de ligação pra chegar nelas. A que não couber em
+ * lugar nenhum é reportada com o motivo, em vez de ser enfiada no meio.
+ *
+ * As duas ficam no localStorage, porque quem escolheu 8 gêneros não quer
+ * escolher de novo amanhã.
+ */
+let fixas = [];
+try { fixas = JSON.parse(localStorage.getItem('garimpo.fixas') || '[]'); } catch {}
+
+function guardarFixas() {
+  try { localStorage.setItem('garimpo.fixas', JSON.stringify(fixas)); } catch {}
+}
+
+function alternarFixa(faixa) {
+  const i = fixas.findIndex((f) => f.id === faixa.id);
+  if (i >= 0) fixas.splice(i, 1);
+  else if (faixa.bpm && faixa.camelot) fixas.push(faixa);
+  else { $('piloto-nota').textContent = t('pref.semDados'); return; }
+  guardarFixas();
+  desenharFixas();
+}
+
+function desenharFixas() {
+  const cx = $('fixas');
+  if (!cx) return;
+  cx.innerHTML = fixas.length
+    ? fixas.map((f, i) =>
+        `<div class="fixa" data-i="${i}"><b>${i + 1}</b> ${f.title.slice(0, 26)}` +
+        `<span style="opacity:.7"> ${f.bpm} ${f.camelot}</span>` +
+        `<button class="x" title="${t('pref.fixar.tirar')}">×</button></div>`).join('')
+    : `<div class="vazio">${t('pref.fixas.vazio')}</div>`;
+  for (const el of cx.querySelectorAll('.fixa .x')) {
+    el.onclick = () => {
+      fixas.splice(Number(el.parentElement.dataset.i), 1);
+      guardarFixas(); desenharFixas(); repintarLista();
+    };
+  }
+  $('b-prefs').classList.toggle('lig', fixas.length > 0 || pilhasEscolhidas() !== null);
+}
+
+let pilhasLig = null;
+try {
+  const g = JSON.parse(localStorage.getItem('garimpo.pilhas') || 'null');
+  if (Array.isArray(g)) pilhasLig = new Set(g);
+} catch {}
+
+/** null = todas. Desmarcar tudo também significa todas: pote vazio não é escolha. */
+function pilhasEscolhidas() {
+  if (!pilhasLig || !pilhasLig.size || pilhasLig.size === PILHAS_SET.length) return null;
+  return [...pilhasLig];
+}
+
+function desenharPilhas() {
+  const cx = $('pilhas');
+  cx.innerHTML = PILHAS_SET.map((p) =>
+    `<button data-p="${p.nome}" class="${!pilhasLig || pilhasLig.has(p.nome) ? 'lig' : ''}">${p.nome}</button>`).join('');
+  for (const b of cx.children) {
+    b.onclick = () => {
+      if (!pilhasLig) pilhasLig = new Set(PILHAS_SET.map((x) => x.nome));
+      const n = b.dataset.p;
+      pilhasLig.has(n) ? pilhasLig.delete(n) : pilhasLig.add(n);
+      try { localStorage.setItem('garimpo.pilhas', JSON.stringify([...pilhasLig])); } catch {}
+      desenharPilhas(); desenharFixas();
+    };
+  }
+}
+
+$('b-prefs').onclick = () => {
+  const p = $('prefs');
+  p.hidden = !p.hidden;
+  if (!p.hidden) { desenharPilhas(); desenharFixas(); }
+};
+$('b-pilhas-todos').onclick = () => {
+  pilhasLig = null;
+  try { localStorage.removeItem('garimpo.pilhas'); } catch {}
+  desenharPilhas(); desenharFixas();
+};
+$('b-pilhas-nenhum').onclick = () => {
+  pilhasLig = new Set();
+  try { localStorage.setItem('garimpo.pilhas', '[]'); } catch {}
+  desenharPilhas(); desenharFixas();
+};
+desenharPilhas();
+desenharFixas();
+window.addEventListener('idioma', () => { desenharPilhas(); desenharFixas(); repintarLista(); });
+
+
+// ──────────── memória do que já tocou, e o botão de pular ────────────
+
+/**
+ * As últimas faixas tocadas, pra que dois sets seguidos não sejam o mesmo set.
+ *
+ * O montador é guloso e era determinístico: mesmo pote, mesma corrente, sempre.
+ * Quem apertou play três vezes ouviu as mesmas duas faixas três vezes. Agora o
+ * montador recebe esta lista e cobra caro por repetir — caro, não proibido: num
+ * catálogo pequeno, proibir esvaziaria o pote e o set morreria no terceiro
+ * passo.
+ *
+ * 60 é a memória: grande o bastante pra cobrir dois sets inteiros, pequena o
+ * bastante pra não travar um catálogo de ~90 candidatas.
+ */
+const MEMORIA = 60;
+let jaTocadas = [];
+try { jaTocadas = JSON.parse(localStorage.getItem('garimpo.tocadas') || '[]'); } catch {}
+
+function registrarTocada(faixa) {
+  if (!faixa?.id) return;
+  jaTocadas = [faixa.id, ...jaTocadas.filter((x) => x !== faixa.id)].slice(0, MEMORIA);
+  try { localStorage.setItem('garimpo.tocadas', JSON.stringify(jaTocadas)); } catch {}
+}
+
+$('b-esquecer').onclick = () => {
+  jaTocadas = [];
+  try { localStorage.removeItem('garimpo.tocadas'); } catch {}
+  $('piloto-nota').textContent = t('pref.esqueceu');
+  $('piloto-nota').style.color = 'var(--mut)';
+};
+
+$('b-pular').onclick = () => {
+  if (!piloto?.ativo) return;
+  piloto.pular();
+  $('piloto-nota').textContent = t('piloto.pulando');
+  $('piloto-nota').style.color = 'var(--cue)';
+};
+
+// ──────────────────────── sugestões ────────────────────────
+
+/**
+ * Caixa de sugestões — pra quem recebeu o link e quer pedir alguma coisa.
+ *
+ * Fica NO APARELHO de quem escreveu, e só sai de lá se a pessoa apertar enviar:
+ * aí abre a folha de compartilhamento do sistema (WhatsApp, e-mail, o que
+ * tiver) com o texto pronto. Não existe servidor aqui, e inventar um endereço
+ * de destino fixo seria mandar a mensagem de alguém pra um lugar que ela não
+ * escolheu — então quem escolhe é ela, sempre.
+ *
+ * Onde não há `navigator.share` (desktop), cai pra copiar pra área de
+ * transferência, que resolve o mesmo problema com um passo a mais.
+ */
+let sugestoes = [];
+try { sugestoes = JSON.parse(localStorage.getItem('garimpo.sugestoes') || '[]'); } catch {}
+
+function guardarSugestoes() {
+  try { localStorage.setItem('garimpo.sugestoes', JSON.stringify(sugestoes.slice(0, 50))); } catch {}
+}
+
+function desenharSugestoes() {
+  const cx = $('sug-lista');
+  cx.innerHTML = sugestoes.length
+    ? sugestoes.map((g, i) =>
+        `<div class="sug-item" data-i="${i}"><span class="quando">${g.quando}</span>` +
+        `<span>${g.texto.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</span>` +
+        `<button class="x">×</button></div>`).join('')
+    : `<div class="sug-item" style="opacity:.6">${t('sug.vazio')}</div>`;
+  for (const b of cx.querySelectorAll('.x')) {
+    b.onclick = () => {
+      sugestoes.splice(Number(b.parentElement.dataset.i), 1);
+      guardarSugestoes(); desenharSugestoes();
+    };
+  }
+}
+
+function textoDaSugestao() {
+  const txt = $('sug-texto').value.trim();
+  if (!txt) return null;
+  const nome = $('sug-nome').value.trim();
+  return `Garimpo — sugestão${nome ? ` de ${nome}` : ''}:\n\n${txt}`;
+}
+
+$('b-sugerir').onclick = () => { desenharSugestoes(); $('sugestoes').showModal(); };
+$('fechar-sugestoes').onclick = () => $('sugestoes').close();
+
+$('b-sug-enviar').onclick = async () => {
+  const txt = textoDaSugestao();
+  if (!txt) { $('sug-nota').textContent = t('sug.escreva'); return; }
+  sugestoes.unshift({ texto: $('sug-texto').value.trim(), quando: new Date().toLocaleDateString() });
+  guardarSugestoes(); desenharSugestoes();
+  try {
+    if (navigator.share) { await navigator.share({ text: txt }); $('sug-nota').textContent = t('sug.enviada'); }
+    else { await navigator.clipboard.writeText(txt); $('sug-nota').textContent = t('sug.copiada'); }
+    $('sug-texto').value = '';
+  } catch {
+    // a pessoa cancelou a folha de compartilhamento: a sugestão fica guardada
+    $('sug-nota').textContent = t('sug.guardou');
+  }
+  $('sug-nota').style.color = 'var(--ok)';
+};
+
+$('b-sug-copiar').onclick = async () => {
+  const txt = textoDaSugestao();
+  if (!txt) { $('sug-nota').textContent = t('sug.escreva'); return; }
+  try { await navigator.clipboard.writeText(txt); $('sug-nota').textContent = t('sug.copiada'); }
+  catch { $('sug-nota').textContent = t('sug.semCopia'); }
+  $('sug-nota').style.color = 'var(--ok)';
+};
+
+
+// ─────────────────────────── eco ───────────────────────────
+
+/**
+ * ECO — o knob e a divisão de tempo.
+ *
+ * A divisão alterna entre ½ tempo, 1 tempo e ¼ de tempo, que cobrem o que se
+ * usa de verdade: ½ é o eco padrão de transição, 1 deixa o rastro largo pra
+ * finais, ¼ fecha e vira efeito de tensão.
+ *
+ * O tempo do atraso é recalculado quando o BPM efetivo muda — se ficasse fixo,
+ * um SYNC que muda o andamento deixaria o eco fora de tempo, e é isso que faz
+ * um eco soar como defeito.
+ */
+const DIVISOES = [
+  { d: 0.5, rot: '½' },
+  { d: 1, rot: '1' },
+  { d: 0.25, rot: '¼' },
+];
+const ecoDiv = { A: 0, B: 0 };
+
+for (const id of ['A', 'B']) {
+  const sl = $('eco-' + id), bt = $('eco-div-' + id);
+  if (!sl || !bt) continue;
+  sl.oninput = () => {
+    mixer?.setEco(id, Number(sl.value));
+    sincronizarEco(id);
+  };
+  const pintar = () => {
+    bt.textContent = DIVISOES[ecoDiv[id]].rot;
+    bt.title = t('mix.eco.div', { v: DIVISOES[ecoDiv[id]].rot });
+  };
+  bt.onclick = () => { ecoDiv[id] = (ecoDiv[id] + 1) % DIVISOES.length; pintar(); sincronizarEco(id); };
+  pintar();
+}
+
+function sincronizarEco(id) {
+  const bpm = decks[id]?.bpmEfetivo;
+  if (bpm && mixer) mixer.setEcoTempo(id, bpm, DIVISOES[ecoDiv[id]].d);
+}
+
+/** O eco acompanha o andamento: SYNC e pitch mudam o BPM, o atraso segue. */
+setInterval(() => { for (const id of ['A', 'B']) sincronizarEco(id); }, 900);
+window.addEventListener('idioma', () => {
+  for (const id of ['A', 'B']) {
+    const bt = $('eco-div-' + id);
+    if (bt) bt.title = t('mix.eco.div', { v: DIVISOES[ecoDiv[id]].rot });
+  }
+});

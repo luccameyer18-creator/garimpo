@@ -231,6 +231,50 @@
   #b-piloto.lig { background:linear-gradient(180deg,#ffa2e6,var(--neon)); border-color:var(--neon);
                   color:#2b0420; box-shadow:0 0 16px rgba(255,78,205,.5); }
   #piloto-nota { font-size:9.5px; min-height:12px; }
+  #b-prefs, #b-pular { flex:none; padding:3px 7px; font-size:11px; }
+  #b-pular { border-color:var(--cue); color:var(--cue); }
+  #b-sugerir { font:700 9.5px ui-monospace,monospace; padding:6px; }
+
+  #sugestoes textarea { width:100%; box-sizing:border-box; background:var(--fundo-tela);
+                        color:var(--fg); border:1px solid var(--linha); border-radius:8px;
+                        padding:9px; font:12px/1.45 inherit; resize:vertical; }
+  #sugestoes .sug-quem { margin-top:7px; }
+  #sugestoes .sug-quem input { width:100%; box-sizing:border-box; }
+  .sug-acoes { display:flex; gap:6px; margin-top:9px; }
+  .sug-acoes button { flex:1; padding:10px; font-size:12px; }
+  #b-sug-enviar { border-color:var(--ok); color:var(--ok); }
+  .sug-lista { display:flex; flex-direction:column; gap:5px; max-height:190px; overflow-y:auto;
+               margin-top:5px; }
+  .sug-item { background:rgba(255,255,255,.04); border-radius:7px; padding:7px 9px;
+              font:11.5px/1.4 inherit; color:var(--mut); display:flex; gap:7px; align-items:flex-start; }
+  .sug-item .quando { color:var(--fraco); font:9px ui-monospace,monospace; flex:none; }
+  .sug-item .x { margin-left:auto; flex:none; padding:1px 6px; font-size:11px; border-radius:5px; }
+  #b-prefs.lig { border-color:var(--neon); color:var(--neon); }
+
+  /* painel de escolha: quais generos ele pode usar, e quais faixas ele TEM que
+     tocar. Fica fechado por padrao — quem so quer apertar play nao precisa ver. */
+  .prefs { border:1px solid var(--linha); border-radius:8px; padding:7px;
+           display:flex; flex-direction:column; gap:5px; background:rgba(0,0,0,.22); }
+  .prefs .rot-chips { width:auto; margin:0; }
+  .pilhas { display:flex; flex-wrap:wrap; gap:4px; max-height:88px; overflow-y:auto; }
+  .pilhas button { padding:3px 7px; font:700 9.5px ui-monospace,monospace; border-radius:20px;
+                   opacity:.42; }
+  .pilhas button.lig { opacity:1; border-color:var(--ok); color:var(--ok);
+                       box-shadow:0 0 9px rgba(46,230,168,.3); }
+  .prefs-linha { display:flex; gap:4px; }
+  .prefs-linha button { flex:1; padding:3px 6px; font:700 9px ui-monospace,monospace; }
+  .fixas { display:flex; flex-direction:column; gap:3px; max-height:110px; overflow-y:auto; }
+  .fixa { display:flex; align-items:center; gap:5px; font:9.5px ui-monospace,monospace;
+          color:var(--mut); background:rgba(255,78,205,.08); border-radius:5px; padding:3px 5px; }
+  .fixa b { color:var(--neon); font-weight:700; }
+  .fixa .x { margin-left:auto; flex:none; padding:1px 5px; font-size:10px; border-radius:4px; }
+  .fixas .vazio { color:var(--fraco); font-size:9px; padding:2px 4px; }
+
+  /* estrela na lista: marca a faixa como obrigatoria no set do professor */
+  .item .fixar { flex:none; padding:5px 6px; font-size:12px; border-radius:6px;
+                 color:var(--fraco); line-height:1; }
+  .item .fixar.lig { color:var(--neon); border-color:var(--neon);
+                     box-shadow:0 0 9px rgba(255,78,205,.35); }
 
   .crates { display:flex; flex-direction:column; gap:3px; max-height:132px; overflow-y:auto;
             padding-right:2px; flex:none; }
@@ -289,6 +333,16 @@
   #lista[data-rotulo]::after, #lista[data-rotulo]::before { bottom:auto; top:6px; }
   #lista[data-rotulo]::before { top:-4px; border-top-color:transparent; border-bottom-color:var(--ok); }
 
+  /* loop: o efeito que mais serve numa transicao — segura a faixa que esta
+     saindo numa frase enquanto a outra entra */
+  .loops { display:flex; align-items:center; gap:4px; flex:none; }
+  .rot-loop { font:800 8px ui-monospace,monospace; letter-spacing:.14em; color:var(--fraco); flex:none; }
+  .loops button { padding:4px 7px; font:700 9.5px ui-monospace,monospace; border-radius:5px; flex:none; }
+  .loops .lp.lig { background:linear-gradient(180deg,#ffd089,var(--cue)); border-color:var(--cue);
+                   color:#2b1603; box-shadow:0 0 12px rgba(255,179,71,.45); }
+  .loops .lp-sair { margin-left:auto; opacity:.55; }
+  .loops .lp-sair.pode { opacity:1; border-color:var(--cue); color:var(--cue); }
+
   .tempo { font:10px ui-monospace,monospace; color:var(--mut); display:flex; gap:9px; flex-wrap:wrap; }
   .tempo b { color:var(--fg); }
   .efeito { font:9.5px ui-monospace,monospace; line-height:1.35; min-height:13px; }
@@ -332,15 +386,23 @@
   .xf { width:100%; }
 
   /* ───────── biblioteca ───────── */
+  /* overflow AUTO, nao hidden. Com hidden, abrir o painel de preferencias
+     somava ~180px de conteudo e empurrava a busca e o botao de arquivo pra
+     FORA da caixa — sumiam de vez, sem jeito de alcancar. Medido: a lista
+     colapsava pra 266x0 e tres controles ficavam cortados. */
   .lateral { border:1px solid var(--linha); border-radius:var(--r); padding:11px; min-height:0;
              background:linear-gradient(180deg,#1b1430,#110c1e);
-             display:flex; flex-direction:column; gap:8px; overflow:hidden; }
+             display:flex; flex-direction:column; gap:8px; overflow-y:auto; overflow-x:hidden;
+             scrollbar-width:thin; }
   .lateral h2 { margin:0; font-size:10px; letter-spacing:.08em; color:var(--fraco);
                 text-transform:uppercase; font-weight:800; }
   select, input[type=text] { width:100%; background:var(--fundo-tela); color:var(--fg);
            border:1px solid var(--linha); border-radius:8px; padding:8px; font:inherit; font-size:12px; }
-  .lista { flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:4px;
-           scrollbar-width:thin; }
+  /* min-height de verdade: `min-height:0` deixava a lista encolher ate sumir
+     quando algo acima dela crescia. Uma lista de musicas com 0px nao e uma
+     lista, e o usuario nao tem como saber que ela existe. */
+  .lista { flex:1 1 auto; min-height:150px; overflow-y:auto; display:flex; flex-direction:column;
+           gap:4px; scrollbar-width:thin; }
   .item { display:flex; gap:7px; align-items:center; padding:7px; border-radius:8px;
           border:1px solid transparent; position:relative; }
   .item:hover { background:var(--sup); border-color:var(--linha); }
@@ -485,6 +547,7 @@
           <div class="knob"><label data-i18n="mix.agudo">AGUDO</label><input type="range" id="eq-A-agudo" data-d="A" data-eq="agudo" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-A-agudo" data-d="A" data-kill="agudo">×</button></div>
           <div class="knob"><label data-i18n="mix.filtro">FILTRO</label><input type="range" id="fil-A" data-d="A" data-filtro min="-1" max="1" step="0.01" value="0"></div>
           <div class="knob"><label data-i18n="mix.vol">VOL</label><input type="range" id="vol-A" data-d="A" data-fader min="0" max="1" step="0.01" value="1"></div>
+          <div class="knob"><label data-i18n="mix.eco">ECO</label><input type="range" id="eco-A" data-d="A" data-eco min="0" max="1" step="0.01" value="0"><button class="kill eco-div" id="eco-div-A" data-d="A" title="">½</button></div>
           <button class="fone" id="fone-A" data-d="A" data-i18n="mix.fone" data-i18n-attr="title:mix.fone.dica" title="ouvir só este deck no fone">FONE</button>
           <div class="vu"><i id="vu-A"></i></div>
         </div>
@@ -495,6 +558,7 @@
           <div class="knob"><label data-i18n="mix.agudo">AGUDO</label><input type="range" id="eq-B-agudo" data-d="B" data-eq="agudo" min="0" max="1" step="0.01" value="0.5"><button class="kill" id="kill-B-agudo" data-d="B" data-kill="agudo">×</button></div>
           <div class="knob"><label data-i18n="mix.filtro">FILTRO</label><input type="range" id="fil-B" data-d="B" data-filtro min="-1" max="1" step="0.01" value="0"></div>
           <div class="knob"><label data-i18n="mix.vol">VOL</label><input type="range" id="vol-B" data-d="B" data-fader min="0" max="1" step="0.01" value="1"></div>
+          <div class="knob"><label data-i18n="mix.eco">ECO</label><input type="range" id="eco-B" data-d="B" data-eco min="0" max="1" step="0.01" value="0"><button class="kill eco-div" id="eco-div-B" data-d="B" title="">½</button></div>
           <button class="fone" id="fone-B" data-d="B" data-i18n="mix.fone" data-i18n-attr="title:mix.fone.dica" title="ouvir só este deck no fone">FONE</button>
           <div class="vu"><i id="vu-B"></i></div>
         </div>
@@ -540,7 +604,23 @@
           <option value="estavel" data-i18n="app.energia.estavel">estável</option>
           <option value="descer" data-i18n="app.energia.descer">descendo</option>
         </select>
+        <button id="b-pular" data-i18n-attr="title:piloto.pular.dica" title="pular pra próxima" hidden>⏭</button>
+        <button id="b-prefs" data-i18n-attr="title:pref.abrir" title="escolher o que ele vai tocar">⚙</button>
       </div>
+      <div class="prefs" id="prefs" hidden>
+        <div class="rot-chips" data-i18n="pref.generos">gêneros que ele pode usar</div>
+        <div class="pilhas" id="pilhas"></div>
+        <div class="prefs-linha">
+          <button id="b-pilhas-todos" data-i18n="pref.todos">todos</button>
+          <button id="b-pilhas-nenhum" data-i18n="pref.nenhum">nenhum</button>
+        </div>
+        <div class="rot-chips" data-i18n="pref.fixas">faixas que ele tem que tocar</div>
+        <div class="fixas" id="fixas"></div>
+        <div class="prefs-linha">
+          <button id="b-esquecer" data-i18n="pref.esquecer">esquecer o que já tocou</button>
+        </div>
+      </div>
+      <button id="b-sugerir" data-i18n="sug.abrir">deixar uma sugestão</button>
       <div class="rot" id="piloto-nota" style="margin:0"></div>
       <div class="crates" id="crates"></div>
       <input type="text" id="busca" placeholder="buscar por nome…" data-i18n-attr="placeholder:app.buscar">
@@ -551,6 +631,24 @@
     </div>
   </div>
 </div>
+
+<dialog id="sugestoes">
+  <h3 data-i18n="sug.titulo">O que você acha que falta?</h3>
+  <div class="sub" data-i18n="sug.sub">Escreva e toque em enviar. Abre o seu WhatsApp, e-mail ou o que você preferir — nada sai daqui sozinho.</div>
+  <textarea id="sug-texto" rows="5" data-i18n-attr="placeholder:sug.exemplo"
+            placeholder="ex: queria um botão de loop, ou um gênero que não tem aqui…"></textarea>
+  <div class="sug-quem">
+    <input type="text" id="sug-nome" data-i18n-attr="placeholder:sug.nome" placeholder="seu nome (opcional)">
+  </div>
+  <div class="sug-acoes">
+    <button id="b-sug-enviar" data-i18n="sug.enviar">enviar</button>
+    <button id="b-sug-copiar" data-i18n="sug.copiar">copiar</button>
+  </div>
+  <div class="rot" id="sug-nota" style="margin:6px 0 0"></div>
+  <div class="rot-chips" style="margin-top:12px" data-i18n="sug.guardadas">suas sugestões guardadas neste aparelho</div>
+  <div class="sug-lista" id="sug-lista"></div>
+  <button class="fechar" id="fechar-sugestoes" data-i18n="app.fechar">fechar</button>
+</dialog>
 
 <dialog id="ajuda">
   <h3>Como mixar, em 6 passos</h3>
@@ -619,6 +717,13 @@
         <div class="tempo">
           <span><b class="pos">0:00</b>/<span class="dur">0:00</span></span>
           <span><span data-i18n="deck.falta">falta</span> <b class="rest">0:00</b></span>
+        </div>
+        <div class="loops">
+          <span class="rot-loop" data-i18n="fx.loop">LOOP</span>
+          <button class="lp" data-tempos="4">4</button>
+          <button class="lp" data-tempos="8">8</button>
+          <button class="lp" data-tempos="16">16</button>
+          <button class="lp-sair" data-i18n="fx.sair">sair</button>
         </div>
         <div class="efeito"></div>
         <div class="aviso erro" hidden></div>

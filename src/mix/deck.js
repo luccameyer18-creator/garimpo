@@ -51,6 +51,7 @@ export class Deck extends EventTarget {
     this.faixa = null;
     this.picos = null;
     this.onset = null;
+    this.loopTempos = 0;
     this.estado = 'vazio';      // vazio | carregando | pronto | erro
     this.erro = null;
     this.progresso = 0;
@@ -304,6 +305,40 @@ export class Deck extends EventTarget {
   setScratchRate(r) { this.transport.setScratchRate(r); }
   touchEnd() { this.transport.touchEnd(); }
   setLoop(o) { this.transport.setLoop(o); }
-  clearLoop() { this.transport.clearLoop(); }
+  clearLoop() { this.loopTempos = 0; this.transport.clearLoop(); }
+
+  /**
+   * Loop de N TEMPOS a partir da próxima batida.
+   *
+   * O transporte fala em segundos, mas ninguém pede "um loop de 1,846 s" — se
+   * pede 4 tempos. A conversão exige a grade, e o começo tem que cair EM CIMA
+   * de uma batida: um loop que começa no meio do tempo transforma a música em
+   * outra coisa a cada volta.
+   *
+   * Começa na próxima batida e não na atual porque a atual já passou: emendar
+   * no passado obrigaria a saltar pra trás, e salto se ouve.
+   *
+   * @param {number} tempos 1, 2, 4, 8, 16, 32…
+   * @returns {boolean} false se a faixa não tem grade
+   */
+  loopDeTempos(tempos) {
+    const g = this.grid;
+    if (!g?.bpm || !tempos) return false;
+    const periodo = 60 / g.bpm;
+    const pos = this.position;
+    const n = Math.ceil((pos - g.ancora) / periodo + 0.02);   // próxima batida
+    const start = g.ancora + n * periodo;
+    this.loopTempos = tempos;
+    this.transport.setLoop({ start, end: start + tempos * periodo, on: true });
+    this.dispatchEvent(new CustomEvent('loop', { detail: { tempos, start, on: true } }));
+    return true;
+  }
+
+  /** Dobra ou divide o loop em curso, ancorado no mesmo começo. */
+  loopDobrar(fator) {
+    if (!this.loopTempos) return false;
+    const novo = Math.max(1, Math.min(32, this.loopTempos * fator));
+    return this.loopDeTempos(novo);
+  }
   get cuePoint() { return this.transport?.cuePoint ?? 0; }
 }
