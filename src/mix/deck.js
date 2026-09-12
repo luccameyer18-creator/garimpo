@@ -53,6 +53,8 @@ export class Deck extends EventTarget {
     this.erro = null;
     this.progresso = 0;
     this._abort = null;
+    this.passos = [];
+    this._t0 = 0;
   }
 
   async init() {
@@ -74,6 +76,12 @@ export class Deck extends EventTarget {
   get keylockAtivo() { return !!this.transport?.keylockAtivo; }
   get keylockPedido() { return !!this.transport?.keylockPedido; }
   get bpmEfetivo() { return this.faixa?.bpm ? this.faixa.bpm * this.nominalRate : null; }
+
+  /** Rastro de passos: sem console no celular, e a unica forma de saber onde travou. */
+  #passo(nome, detalhe) {
+    this.passos.push({ nome, detalhe, ms: Math.round(performance.now() - this._t0) });
+    this.dispatchEvent(new CustomEvent('passo', { detail: { nome, detalhe, passos: this.passos } }));
+  }
 
   #estado(e, extra = {}) {
     this.estado = e;
@@ -97,14 +105,29 @@ export class Deck extends EventTarget {
    */
   async carregarAudius(faixa) {
     return this.#carregar(faixa, async (sinal, aoProgredir) => {
-      // usa a URL ja aquecida no hover, se houver: economiza o resolve (723 ms)
-      // e o DNS+TLS do validator (~1.8 s com conexao fria)
-      const url = await (urlAquecida(faixa.id) || resolveStreamUrl(faixa.id, { signal: sinal }));
+      // Usa a URL ja aquecida no hover, se houver: economiza o resolve (723 ms)
+      // e o DNS+TLS do validator (~1.8 s com conexao fria).
+      //
+      // MAS: no celular nao existe hover. O pointerenter dispara junto com o
+      // toque, e o clique logo em seguida reaproveita a MESMA promessa. Se o
+      // aquecimento falhou, o clique herdava a falha sem nunca tentar de novo.
+      // Por isso o fallback explicito aqui.
+      let url;
+      try {
+        const quente = urlAquecida(faixa.id);
+        url = quente ? await quente : await resolveStreamUrl(faixa.id, { signal: sinal });
+      } catch (e) {
+        if (sinal.aborted) throw e;
+        url = await resolveStreamUrl(faixa.id, { signal: sinal });
+      }
+      this.#passo('url resolvida', new URL(url).host);
       const PREFIXO = 2 << 20;
 
       const r = await fetch(url, { headers: { Range: `bytes=0-${PREFIXO - 1}` }, signal: sinal });
       if (!r.ok && r.status !== 206) throw new Error(`stream respondeu ${r.status}`);
+      this.#passo('resposta do stream', r.status + (r.redirected ? ' (redirecionou)' : ''));
       const prefixo = await r.arrayBuffer();
+      this.#passo('bytes baixados', (prefixo.byteLength / 1048576).toFixed(2) + ' MB');
       const parcial = r.status === 206;
       aoProgredir?.(parcial ? 0.3 : 1);
 
@@ -128,6 +151,9 @@ export class Deck extends EventTarget {
     this.picos = null;
     this.erro = null;
     this.progresso = 0;
+    this.passos = [];
+    this._t0 = performance.now();
+    this.#passo('inicio', faixa.source || 'local');
     this.#estado('carregando', { faixa });
 
     try {
@@ -142,6 +168,7 @@ export class Deck extends EventTarget {
       const bytes = primeiro.byteLength;
       const buf = await this.ctx.decodeAudioData(primeiro.slice(0));
       if (ac.signal.aborted) return;
+      this.#passo('decodificado', buf.duration.toFixed(1) + ' s');
 
       await this.transport.load(buf);
       this.picos = calcularPicos(buf);
@@ -177,7 +204,8 @@ export class Deck extends EventTarget {
       this.erro = e.message;
       // falha de rede no Audius é frequente (1 em 3 mesmo com retry): a UI
       // precisa mostrar e oferecer nova tentativa, nunca falhar em silêncio
-      this.dispatchEvent(new CustomEvent('error', { detail: { erro: e.message, faixa } }));
+      this.#passo('FALHOU', e.message);
+      this.dispatchEvent(new CustomEvent('error', { detail: { erro: e.message, faixa, passos: this.passos } }));
     }
   }
 

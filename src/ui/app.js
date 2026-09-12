@@ -72,7 +72,11 @@ function ligarEventos() {
     if (!trocado) mostrarCreditos(faixa);
   });
 
+  // rastro visivel: no celular nao da pra abrir console
+  deck.addEventListener('passo', (e) => desenharPassos(e.detail.passos));
+
   deck.addEventListener('error', (e) => {
+    desenharPassos(e.detail.passos, true);
     // falha de rede no Audius é frequente: mostrar e oferecer retry, nunca calar
     $('erro').hidden = false;
     $('erro').innerHTML = `não consegui carregar: ${e.detail.erro} — <a href="#" id="retry" style="color:var(--acc)">tentar de novo</a>`;
@@ -110,6 +114,16 @@ function ligarEventos() {
     $('e-keylock').innerHTML = 'keylock <b style="color:var(--bad)">falhou</b>';
     setTimeout(() => { $('erro').hidden = true; }, 6000);
   });
+}
+
+function desenharPassos(passos, falhou = false) {
+  const el = $('passos');
+  if (!passos?.length) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = passos.map((p) =>
+    `<div class="${p.nome === 'FALHOU' ? 'ruim' : ''}">` +
+    `<span class="ms">${p.ms}ms</span><span class="nm">${p.nome}</span><span>${p.detalhe ?? ''}</span></div>`).join('');
+  if (!falhou) setTimeout(() => { if (!$('passos').querySelector('.ruim')) el.hidden = true; }, 8000);
 }
 
 function mostrarCreditos(faixa) {

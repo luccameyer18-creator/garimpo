@@ -100,6 +100,12 @@
   .item .a { font-size:11px; color:var(--mut); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .item .m { font:10px ui-monospace,Consolas,monospace; color:var(--mut); text-align:right; flex:none; }
   .aviso { color:var(--bad); font-size:12px; margin-top:8px; }
+  .passos { font:11px ui-monospace,Consolas,monospace; color:var(--mut); margin-top:6px;
+            background:#0a0c0f; border:1px solid var(--linha); border-radius:7px; padding:8px 10px; }
+  .passos div { display:flex; gap:8px; }
+  .passos .ms { color:#5a6475; min-width:46px; text-align:right; }
+  .passos .nm { color:var(--fg); min-width:128px; }
+  .passos .ruim .nm { color:var(--bad); }
   .creditos { font-size:10px; color:var(--mut); line-height:1.5; }
   .creditos a { color:var(--mut); }
 </style>
@@ -154,6 +160,7 @@
           <span>BPM efetivo <b id="t-bpm">—</b></span>
         </div>
         <div id="erro" class="aviso" hidden></div>
+        <div id="passos" class="passos" hidden></div>
       </div>
 
       <div class="pitch">
