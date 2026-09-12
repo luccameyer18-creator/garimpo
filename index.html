@@ -98,6 +98,14 @@
   .item { display:flex; gap:8px; align-items:center; padding:7px 8px; border-radius:7px; cursor:pointer;
           border:1px solid transparent; }
   .item:hover { background:var(--painel2); border-color:var(--linha); }
+  /* combina com o que esta no deck: da pra ver de longe, sem ler numero */
+  .item.otima { border-color:var(--ok); background:linear-gradient(90deg,rgba(61,220,132,.13),transparent 62%); }
+  .item.otima::before { content:''; position:absolute; left:0; top:8px; bottom:8px; width:3px;
+                        background:var(--ok); border-radius:2px; }
+  .item.boa { border-color:rgba(255,138,61,.5); background:linear-gradient(90deg,rgba(255,138,61,.09),transparent 62%); }
+  .item.longe { opacity:.42; }
+  .item { position:relative; }
+  .marca { font:10px ui-monospace,Consolas,monospace; }
   .item .n { min-width:0; flex:1; }
   .item .t { font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .item .a { font-size:11px; color:var(--mut); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

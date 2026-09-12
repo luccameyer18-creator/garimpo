@@ -4,7 +4,7 @@
  * professor entrar depois como mais um cliente da mesma API.
  */
 import { Deck } from '../mix/deck.js';
-import { trending, search, GENRES, attribution, prefetch, compativeis } from '../sources/audius.js';
+import { trending, search, GENRES, attribution, prefetch, compativeis, keyCompatible } from '../sources/audius.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (s, casas = 0) => {
@@ -34,7 +34,7 @@ function nivelMaster() {
 let ligando = null;
 
 /** Versão do build. Sem isto não dá pra saber se o celular pegou cache. */
-export const VERSAO = '2026-09-12.6';
+export const VERSAO = '2026-09-12.7';
 
 /**
  * Fase atual de ligar(). Vai pro diagnóstico.
@@ -188,6 +188,7 @@ function ligarEventos() {
     $('tag-tom').innerHTML = faixa.camelot ? `<b>${faixa.camelot}</b> ${faixa.key}` : '—';
     $('erro').hidden = true;
     desenharMini();
+    repintarLista();
     if (!trocado) mostrarCreditos(faixa);
     $('b-compat').disabled = !faixa.bpm;
     $('b-compat').textContent = faixa.bpm
@@ -248,6 +249,7 @@ function ligarEventos() {
     $('b-compat').disabled = !faixa.bpm;
     $('b-compat').textContent = faixa.bpm ? `mixa com esta (${faixa.bpm} ${faixa.camelot || ''})` : 'carregue uma faixa';
     $('e-grid').textContent = `${bpm ?? '?'} @ ${ancora}s`;
+    repintarLista();
     $('e-grid').title = `confianca ${confianca}, analisado em ${ms} ms`;
   });
 
@@ -506,6 +508,48 @@ $('busca').oninput = (e) => {
   buscaTimer = setTimeout(() => carregarLista(() => search(q, { limit: 40 })), 350);
 };
 
+/**
+ * Como esta faixa se relaciona com a que esta no deck.
+ * A ideia e a mesma do professor: em vez do usuario procurar, a informacao
+ * vem ate ele. Olhar a lista e ver de longe o que encaixa.
+ */
+function avaliar(t) {
+  const base = deck?.faixa;
+  if (!base?.bpm || !t.bpm) return null;
+  const razao = t.bpm / base.bpm;
+  const pitch = razao - 1;
+  if (Math.abs(pitch) > 0.16) return { classe: 'longe', pitch, rotulo: null };
+
+  const h = keyCompatible(
+    base.camelot ? { camelot: base.camelot } : null,
+    t.camelot ? { camelot: t.camelot } : null
+  );
+  const noPitchFacil = Math.abs(pitch) <= 0.08;   // cabe no fader de 8%
+  if (h.ok && noPitchFacil) return { classe: 'otima', pitch, rotulo: h.reason };
+  if (h.ok)                 return { classe: 'boa',   pitch, rotulo: h.reason + ', pitch alto' };
+  if (noPitchFacil)         return { classe: 'boa',   pitch, rotulo: 'BPM casa, tom nao' };
+  return { classe: 'longe', pitch, rotulo: null };
+}
+
+/** Repinta a lista inteira: chamado quando troca a faixa do deck. */
+function repintarLista() {
+  for (const el of document.querySelectorAll('#lista .item')) {
+    const t = el.__faixa;
+    if (!t) continue;
+    const v = avaliar(t);
+    el.classList.remove('otima', 'boa', 'longe');
+    const marca = el.querySelector('.marca');
+    if (!v) { if (marca) marca.textContent = ''; continue; }
+    el.classList.add(v.classe);
+    if (marca) {
+      marca.textContent = v.rotulo
+        ? `${v.pitch >= 0 ? '+' : ''}${(v.pitch * 100).toFixed(1)}%  ${v.rotulo}` : '';
+      marca.style.color = v.classe === 'otima' ? 'var(--ok)'
+                        : v.classe === 'boa' ? 'var(--quente)' : 'var(--mut)';
+    }
+  }
+}
+
 async function carregarLista(fn) {
   const lista = $('lista');
   lista.innerHTML = '<div style="color:var(--mut);padding:8px">buscando…</div>';
@@ -524,6 +568,10 @@ async function carregarLista(fn) {
                      `</div><div class="m">${t.bpm ?? '—'}<br>${t.camelot ?? ''}${extra}</div>`;
       el.querySelector('.t').textContent = t.title;
       el.querySelector('.a').textContent = t.artist;
+      el.__faixa = t;
+      const marca = document.createElement('div');
+      marca.className = 'a marca';
+      el.querySelector('.n').appendChild(marca);
       // aquece no hover (desktop) ou ao encostar (celular)
       let aquecida = false;
       const aquecer = () => { if (!aquecida) { aquecida = true; prefetch(t.id).catch(() => {}); } };
@@ -546,6 +594,7 @@ async function carregarLista(fn) {
       });
       lista.appendChild(el);
     }
+    repintarLista();
     // as tres primeiras ja aquecem sozinhas: sao as mais provaveis de clicar
     faixas.slice(0, 3).forEach((t) => prefetch(t.id).catch(() => {}));
   } catch (e) {
