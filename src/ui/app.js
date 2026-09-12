@@ -4,7 +4,7 @@
  * professor entrar depois como mais um cliente da mesma API.
  */
 import { Deck } from '../mix/deck.js';
-import { trending, search, GENRES, attribution, prefetch } from '../sources/audius.js';
+import { trending, search, GENRES, attribution, prefetch, compativeis } from '../sources/audius.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (s, casas = 0) => {
@@ -34,7 +34,7 @@ function nivelMaster() {
 let ligando = null;
 
 /** Versão do build. Sem isto não dá pra saber se o celular pegou cache. */
-export const VERSAO = '2026-09-12.4';
+export const VERSAO = '2026-09-12.5';
 
 /**
  * Fase atual de ligar(). Vai pro diagnóstico.
@@ -189,6 +189,9 @@ function ligarEventos() {
     $('erro').hidden = true;
     desenharMini();
     if (!trocado) mostrarCreditos(faixa);
+    $('b-compat').disabled = !faixa.bpm;
+    $('b-compat').textContent = faixa.bpm
+      ? `mixa com esta (${faixa.bpm} ${faixa.camelot || ''})` : 'carregue uma faixa';
     // carregar nao e tocar. Sem dizer isso, a faixa entra e parece que nada
     // aconteceu — e o usuario reporta "nao saiu audio".
     if (!deck.tocando) {
@@ -500,8 +503,12 @@ async function carregarLista(fn) {
     for (const t of faixas) {
       const el = document.createElement('div');
       el.className = 'item';
-      el.innerHTML = `<div class="n"><div class="t"></div><div class="a"></div></div>
-                      <div class="m">${t.bpm ?? '—'}<br>${t.camelot ?? ''}</div>`;
+      const extra = t.pitchNecessario !== undefined
+        ? `<br><span style="color:${t.harmonicamenteOk ? 'var(--ok)' : 'var(--mut)'}">${t.pitchNecessario >= 0 ? '+' : ''}${(t.pitchNecessario * 100).toFixed(1)}%</span>`
+        : '';
+      el.innerHTML = `<div class="n"><div class="t"></div><div class="a"></div>` +
+                     (t.harmonia ? `<div class="a" style="color:${t.harmonicamenteOk ? 'var(--ok)' : 'var(--mut)'}">${t.harmonia}</div>` : '') +
+                     `</div><div class="m">${t.bpm ?? '—'}<br>${t.camelot ?? ''}${extra}</div>`;
       el.querySelector('.t').textContent = t.title;
       el.querySelector('.a').textContent = t.artist;
       // aquece no hover (desktop) ou ao encostar (celular)
@@ -534,6 +541,14 @@ async function carregarLista(fn) {
 }
 carregarLista(() => trending({ genre: 'House', limit: 40 }));
 $('e-ver').textContent = VERSAO;
+
+// Procurar por nome num catalogo independente nao funciona: "french house"
+// devolve Rock e Comedy mal etiquetados. Procurar por 122 BPM em 8A funciona.
+$('b-compat').onclick = () => {
+  if (!deck?.faixa?.bpm) return;
+  $('busca').value = '';
+  carregarLista(() => compativeis(deck.faixa));
+};
 
 // ─────────────────────────── diagnóstico ───────────────────────────
 // Sem console no celular e sem conseguir reproduzir o ambiente do usuário,

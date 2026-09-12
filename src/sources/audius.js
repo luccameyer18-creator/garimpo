@@ -375,6 +375,64 @@ export function attribution(track) {
   };
 }
 
+/**
+ * Faixas que dá pra mixar COM esta: BPM dentro do alcance do pitch e tom
+ * compatível na roda de Camelot.
+ *
+ * É o núcleo do planejador de set, antecipado — porque procurar por nome num
+ * catálogo independente não funciona (buscar "french house" devolve Rock e
+ * Comedy mal etiquetados), mas procurar por 122 BPM em 8A funciona sempre.
+ *
+ * A dobra de oitava do snapBpm tem que vir ANTES da comparação, senão uma
+ * faixa de 124 e outra lida como 62 parecem incompatíveis sendo o mesmo andamento.
+ */
+export async function compativeis(faixa, {
+  toleranciaBpm = 0.08,     // o que o pitch fader alcança
+  limite = 60,
+  generos = null,
+  signal,
+} = {}) {
+  if (!faixa?.bpm) throw new AudiusError('a faixa carregada não tem BPM');
+
+  const alvo = faixa.bpm;
+  const busca = generos || [faixa.genre, 'House', 'Disco', 'Deep House', 'Tech House']
+    .filter((g, i, a) => g && a.indexOf(g) === i);
+
+  const vistas = new Map();
+  for (const g of busca) {
+    try {
+      for (const t of await trending({ genre: g, limit: 50, signal })) {
+        if (!t.bpm || t.isLongMix || t.id === faixa.id) continue;
+        if (!vistas.has(t.id)) vistas.set(t.id, t);
+      }
+    } catch { /* um gênero fora do ar não derruba o resto */ }
+  }
+
+  const fora = [];
+  for (const t of vistas.values()) {
+    const razao = t.bpm / alvo;
+    const desvio = Math.abs(razao - 1);
+    if (desvio > toleranciaBpm) continue;               // fora do pitch fader
+
+    const harmonia = keyCompatible(
+      faixa.camelot ? { camelot: faixa.camelot } : null,
+      t.camelot ? { camelot: t.camelot } : null
+    );
+
+    fora.push({
+      ...t,
+      pitchNecessario: (razao - 1),                      // fração; -0.02 = -2%
+      harmonia: harmonia.reason,
+      harmonicamenteOk: harmonia.ok,
+      // ordena por harmonia primeiro, depois por quão pouco precisa de pitch
+      _score: (harmonia.ok ? 0 : 10) + (harmonia.distance ?? 2) + desvio * 20,
+    });
+  }
+
+  fora.sort((a, b) => a._score - b._score);
+  return fora.slice(0, limite);
+}
+
 export const GENRES = [
   'Electronic', 'House', 'Techno', 'Deep House', 'Tech House', 'Progressive House',
   'Drum & Bass', 'Dubstep', 'Trap', 'Hip-Hop/Rap', 'Disco', 'Trance', 'Ambient',
