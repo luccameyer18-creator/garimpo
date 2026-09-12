@@ -15,6 +15,16 @@ const fmt = (s, casas = 0) => {
 };
 
 let ctx = null, deck = null, pronto = false;
+let medidor = null, bufMedidor = null, picoMaster = 0;
+
+/** Nivel instantaneo do master, 0..1. */
+function nivelMaster() {
+  if (!medidor) return 0;
+  medidor.getFloatTimeDomainData(bufMedidor);
+  let s = 0;
+  for (let i = 0; i < bufMedidor.length; i++) s += bufMedidor[i] * bufMedidor[i];
+  return Math.sqrt(s / bufMedidor.length);
+}
 
 /**
  * O AudioContext nasce no PRIMEIRO gesto e nunca é suspenso.
@@ -24,7 +34,7 @@ let ctx = null, deck = null, pronto = false;
 let ligando = null;
 
 /** Versão do build. Sem isto não dá pra saber se o celular pegou cache. */
-export const VERSAO = '2026-09-12.3';
+export const VERSAO = '2026-09-12.4';
 
 /**
  * Fase atual de ligar(). Vai pro diagnóstico.
@@ -50,6 +60,14 @@ async function ligar() {
     try {
       marcar('criando AudioContext');
 
+      // iOS: por padrão o Web Audio cai na categoria de sessão "ambient", que é
+      // SILENCIADA pela chavinha física de mute do iPhone — enquanto um <audio>
+      // comum ignora a chave. Resultado: tudo funciona, o app diz que está
+      // tocando, e não sai som nenhum. Pedir "playback" corrige.
+      try {
+        if (navigator.audioSession) navigator.audioSession.type = 'playback';
+      } catch {}
+
       // resume() PRIMEIRO, ainda dentro do gesto. Se vier depois de um await
       // (addModule leva centenas de ms), a ativacao do toque ja expirou e o
       // celular recusa em silencio. No desktop passava; no celular nao.
@@ -69,6 +87,13 @@ async function ligar() {
       marcar('montando o grafo');
       const master = ctx.createGain();
       master.gain.value = 0.85;
+      // Medidor no master. E o que distingue "o grafo nao esta produzindo som"
+      // de "esta produzindo e o aparelho nao deixa ouvir" (chave de silencioso,
+      // volume, saida errada). Sem isso a pergunta fica sem resposta.
+      medidor = ctx.createAnalyser();
+      medidor.fftSize = 256;
+      bufMedidor = new Float32Array(medidor.fftSize);
+      master.connect(medidor);
       master.connect(ctx.destination);
 
       marcar('criando o deck');
@@ -164,6 +189,13 @@ function ligarEventos() {
     $('erro').hidden = true;
     desenharMini();
     if (!trocado) mostrarCreditos(faixa);
+    // carregar nao e tocar. Sem dizer isso, a faixa entra e parece que nada
+    // aconteceu — e o usuario reporta "nao saiu audio".
+    if (!deck.tocando) {
+      $('dica').innerHTML = 'faixa carregada — toque <b style="color:var(--ok)">PLAY</b>';
+      $('b-play').classList.add('pulsa');
+      setTimeout(() => $('b-play').classList.remove('pulsa'), 6000);
+    }
   });
 
   // rastro visivel: no celular nao da pra abrir console
@@ -178,6 +210,8 @@ function ligarEventos() {
   });
 
   deck.addEventListener('playing', () => {
+    $('b-play').classList.remove('pulsa');
+    if (deck.tocando) $('dica').textContent = 'tocando';
     $('b-play').classList.toggle('lig', deck.tocando);
     $('b-play').textContent = deck.tocando ? 'PAUSE' : 'PLAY';
   });
@@ -248,6 +282,10 @@ function quadro() {
   requestAnimationFrame(quadro);
   if (!pronto) return;
   desenharOnda();
+  const n = nivelMaster();
+  if (n > picoMaster) picoMaster = n;
+  $('e-nivel').textContent = n > 0.0005 ? (20 * Math.log10(n)).toFixed(0) + ' dB' : 'silencio';
+  $('e-nivel').style.color = n > 0.0005 ? 'var(--ok)' : 'var(--mut)';
   const pos = deck.displayPosition;
   $('t-pos').textContent = fmt(pos, 2);
   const rest = deck.duration - pos;
@@ -542,6 +580,10 @@ $('b-diag').onclick = async () => {
     passosDaUltimaCarga: deck?.passos ?? [],
     faixasNaLista: document.querySelectorAll('#lista .item').length,
     keylockDisponivel: deck?.temKeylock ?? null,
+    tocando: deck?.tocando ?? null,
+    nivelMasterAgora: +nivelMaster().toFixed(5),
+    picoMasterDesdeOInicio: +picoMaster.toFixed(5),
+    volumeDoAparelho: 'so voce consegue ver',
     problemas: problemas.slice(-8),
     sondas: [],
   };
