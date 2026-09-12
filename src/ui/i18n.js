@@ -16,6 +16,13 @@
  */
 
 const PT = {
+  'acervo.garimpar': 'garimpar mais',
+  'acervo.parar': 'parar',
+  'acervo.tem': 'acervo: {n} faixas no aparelho',
+  'acervo.vazio': 'acervo vazio — toque em garimpar',
+  'acervo.cavando': 'garimpando… {n} faixas · {i}/{de} · {f}',
+  'acervo.erro': 'garimpo falhou: {m}',
+  'acervo.indisponivel': 'este navegador não guarda acervo local',
   'fila.soAndamento': 'casa só pelo andamento — corte os médios na entrada',
   'mix.eco': 'ECO',
   'mix.eco.div': 'eco em {v} tempo — toque pra trocar',
@@ -167,6 +174,13 @@ const PT = {
 };
 
 const EN = {
+  'acervo.garimpar': 'dig for more',
+  'acervo.parar': 'stop',
+  'acervo.tem': 'crate: {n} tracks on this device',
+  'acervo.vazio': 'empty crate — tap dig',
+  'acervo.cavando': 'digging… {n} tracks · {i}/{de} · {f}',
+  'acervo.erro': 'dig failed: {m}',
+  'acervo.indisponivel': 'this browser keeps no local crate',
   'fila.soAndamento': 'tempo match only — cut the mids on the way in',
   'mix.eco': 'ECHO',
   'mix.eco.div': 'echo at {v} beat — tap to change',
@@ -317,6 +331,13 @@ const EN = {
 };
 
 const ES = {
+  'acervo.garimpar': 'buscar más',
+  'acervo.parar': 'parar',
+  'acervo.tem': 'acervo: {n} canciones en el aparato',
+  'acervo.vazio': 'acervo vacío — tocá buscar',
+  'acervo.cavando': 'buscando… {n} canciones · {i}/{de} · {f}',
+  'acervo.erro': 'la búsqueda falló: {m}',
+  'acervo.indisponivel': 'este navegador no guarda acervo local',
   'fila.soAndamento': 'coincide solo en tempo — cortá los medios al entrar',
   'mix.eco': 'ECO',
   'mix.eco.div': 'eco en {v} tiempo — tocá para cambiar',

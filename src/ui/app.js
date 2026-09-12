@@ -10,6 +10,8 @@ import { plano, autoajuste } from '../coach/guia.js';
 import { montarFila, resumo as resumoFila } from '../coach/fila.js';
 import { momentos, proximoMomento, faltaPara } from '../coach/momentos.js';
 import { juntarCandidatas, montarSet, resumoSet, PILHAS as PILHAS_SET } from '../coach/setlist.js';
+import * as crate from '../sources/crate.js';
+import { garimpar } from '../sources/garimpar.js';
 import { Piloto } from '../coach/piloto.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
@@ -1032,16 +1034,32 @@ async function carregarLista(fn) {
 const PILHAS = [
   { grupo: 'app.grupo.eletronico',
     itens: GENRES.map((g) => ({ chave: 'gen:' + g, nome: g,
-      carregar: () => trending({ genre: g, limit: 40 }) })) },
+      carregar: () => daCrateOuRede('gen:' + g, () => trending({ genre: g, limit: 40 })) })) },
   { grupo: 'app.grupo.brasil',
     itens: CRATES.filter((c) => c.reg === 'BR')
       .map((c) => ({ chave: 'br:' + c.nome, nome: c.nome,
-        carregar: () => crateBr(c.nome, { limite: 40 }) })) },
+        carregar: () => daCrateOuRede('br:' + c.nome, () => crateBr(c.nome, { limite: 40 })) })) },
   { grupo: 'app.grupo.latino',
     itens: CRATES.filter((c) => c.reg === 'LAT')
       .map((c) => ({ chave: 'lat:' + c.nome, nome: c.nome,
-        carregar: () => crateBr(c.nome, { limite: 40 }) })) },
+        carregar: () => daCrateOuRede('lat:' + c.nome, () => crateBr(c.nome, { limite: 40 })) })) },
 ];
+
+/**
+ * Uma pilha vem do ACERVO LOCAL quando ele já tem material dela; senão, da rede.
+ *
+ * O acervo é instantâneo e funciona sem internet, mas só existe depois de
+ * garimpar. O limiar de 12 é pra não mostrar uma lista raquítica só porque uma
+ * varredura foi interrompida no meio dessa pilha — abaixo disso, a rede dá uma
+ * resposta melhor.
+ */
+async function daCrateOuRede(chave, daRede) {
+  try {
+    const local = await crate.buscar({ pilha: chave, limite: 300 });
+    if (local.length >= 12) return local;
+  } catch { /* sem IndexedDB: segue pela rede, como sempre foi */ }
+  return daRede();
+}
 
 let pilhaAtual = 'gen:House';
 const carregarPilha = (chave) => {
@@ -1387,7 +1405,7 @@ $('b-piloto').onclick = async () => {
   $('piloto-nota').style.color = 'var(--neon)';
   $('piloto-nota').textContent = 'garimpando faixas…';
   try {
-    const cands = await juntarCandidatas({ pilhas: pilhasEscolhidas() });
+    const cands = await candidatasDoSet(pilhasEscolhidas());
     if (!cands.length && !fixas.length) throw new Error(t('pref.semFaixas'));
     const s = montarSet(cands, {
       minutos: Number($('pref-min').value),
@@ -1723,3 +1741,73 @@ window.addEventListener('idioma', () => {
     if (bt) bt.title = t('mix.eco.div', { v: DIVISOES[ecoDiv[id]].rot });
   }
 });
+
+
+// ─────────────────────── acervo local (garimpo) ───────────────────────
+
+/**
+ * Candidatas pro set: acervo local primeiro, rede como reserva.
+ *
+ * Com o acervo cheio isto é a diferença entre escolher entre ~100 faixas e
+ * escolher entre milhares — e é o que faz o set de 60 min existir sem repetir.
+ */
+async function candidatasDoSet(pilhas) {
+  try {
+    const escolhidas = pilhas
+      ? PILHAS_SET.filter((p) => pilhas.includes(p.nome)).map((p) => p.chave || p.nome)
+      : null;
+    const local = [];
+    if (escolhidas?.length) {
+      for (const ch of escolhidas) local.push(...await crate.buscar({ pilha: ch, limite: 600 }));
+    } else {
+      local.push(...await crate.buscar({ limite: 4000 }));
+    }
+    // 100–150 BPM é o mesmo recorte que juntarCandidatas usa
+    const bons = local.filter((f) => f.bpm >= 100 && f.bpm <= 150 &&
+                                     f.duration >= 90 && f.duration <= 420);
+    if (bons.length >= 40) return bons;
+  } catch { /* sem acervo, vai pela rede */ }
+  return juntarCandidatas({ pilhas });
+}
+
+let cavando = null;
+
+async function mostrarAcervo() {
+  try {
+    const n = await crate.contar();
+    $('acervo-n').textContent = n
+      ? t('acervo.tem', { n: n.toLocaleString('pt-BR') })
+      : t('acervo.vazio');
+    $('acervo-n').style.color = n > 2000 ? 'var(--ok)' : 'var(--mut)';
+  } catch {
+    $('acervo-n').textContent = t('acervo.indisponivel');
+    $('b-garimpar').disabled = true;
+  }
+}
+
+$('b-garimpar').onclick = async () => {
+  if (cavando) { cavando.abort(); return; }
+  cavando = new AbortController();
+  const b = $('b-garimpar');
+  b.classList.add('lig'); b.textContent = t('acervo.parar');
+  try {
+    await garimpar({
+      alvo: 12000, signal: cavando.signal,
+      aoAndar: ({ total, frente, feito, de }) => {
+        $('acervo-n').textContent = t('acervo.cavando',
+          { n: total.toLocaleString('pt-BR'), f: frente, i: feito, de });
+        $('acervo-n').style.color = 'var(--neon)';
+      },
+    });
+  } catch (e) {
+    $('acervo-n').textContent = t('acervo.erro', { m: e.message });
+  }
+  cavando = null;
+  b.classList.remove('lig'); b.textContent = t('acervo.garimpar');
+  await mostrarAcervo();
+  // com acervo novo, recarrega a pilha em que a pessoa está
+  carregarPilha(pilhaAtual);
+};
+
+mostrarAcervo();
+window.addEventListener('idioma', mostrarAcervo);

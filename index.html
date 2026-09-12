@@ -279,6 +279,13 @@
   .item .fixar.lig { color:var(--neon); border-color:var(--neon);
                      box-shadow:0 0 9px rgba(255,78,205,.35); }
 
+  /* o acervo local: quantas faixas ja foram garimpadas e ficam no aparelho */
+  .acervo { display:flex; align-items:center; gap:6px; }
+  #acervo-n { flex:1; min-width:0; font-size:9.5px; }
+  #b-garimpar { flex:none; padding:4px 8px; font:700 9px ui-monospace,monospace; }
+  #b-garimpar.lig { border-color:var(--neon); color:var(--neon);
+                    box-shadow:0 0 10px rgba(255,78,205,.3); }
+
   .crates { display:flex; flex-direction:column; gap:3px; max-height:132px; overflow-y:auto;
             padding-right:2px; flex:none; }
   .grupo-chips { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
@@ -625,6 +632,10 @@
       </div>
       <button id="b-sugerir" data-i18n="sug.abrir">deixar uma sugestão</button>
       <div class="rot" id="piloto-nota" style="margin:0"></div>
+      <div class="acervo">
+        <span id="acervo-n" class="rot" style="margin:0">—</span>
+        <button id="b-garimpar" data-i18n="acervo.garimpar">garimpar mais</button>
+      </div>
       <div class="crates" id="crates"></div>
       <input type="text" id="busca" placeholder="buscar por nome…" data-i18n-attr="placeholder:app.buscar">
       <div class="lista" id="lista"></div>

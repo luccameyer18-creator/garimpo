@@ -151,8 +151,52 @@ export async function estatisticas() {
   });
 }
 
+/**
+ * Os artistas que já apareceram no acervo, com quantas faixas cada um tem aqui.
+ *
+ * É a lista que a varredura por artista consome: cada faixa encontrada aponta
+ * pra um artista, e o catálogo daquele artista costuma ser muito maior do que
+ * o que veio pelo trending. Medi um com 279 faixas tendo chegado por uma só.
+ */
+export async function artistas({ max = 4000 } = {}) {
+  const b = await abrir();
+  return new Promise((ok, no) => {
+    const conta = new Map();
+    const cur = b.transaction(LOJA, 'readonly').objectStore(LOJA).openCursor();
+    cur.onsuccess = () => {
+      const c = cur.result;
+      if (!c) {
+        return ok([...conta.entries()]
+          .sort((x, y) => y[1] - x[1])
+          .slice(0, max)
+          .map(([handle, n]) => ({ handle, aqui: n })));
+      }
+      const h = c.value.handle;
+      if (h) conta.set(h, (conta.get(h) || 0) + 1);
+      c.continue();
+    };
+    cur.onerror = () => no(cur.error);
+  });
+}
+
+/** Handles de artista já varridos, pra não varrer duas vezes. */
+const CHAVE_VARRIDOS = 'garimpo.artistasVarridos';
+export function artistasVarridos() {
+  try { return new Set(JSON.parse(localStorage.getItem(CHAVE_VARRIDOS) || '[]')); }
+  catch { return new Set(); }
+}
+export function marcarVarrido(handle) {
+  try {
+    const s = artistasVarridos();
+    s.add(handle);
+    // 8000 handles ≈ 120 KB: cabe folgado e evita revarrer a cada garimpo
+    localStorage.setItem(CHAVE_VARRIDOS, JSON.stringify([...s].slice(-8000)));
+  } catch { /* sem storage, revarre — é lento, não é errado */ }
+}
+
 export async function limpar() {
   const b = await abrir();
+  try { localStorage.removeItem(CHAVE_VARRIDOS); } catch {}
   return new Promise((ok, no) => {
     const p = b.transaction(LOJA, 'readwrite').objectStore(LOJA).clear();
     p.onsuccess = () => ok(true);
