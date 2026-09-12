@@ -27,6 +27,21 @@
 import { TimeMap } from './timemap.js';
 import { AUDIO } from '../config.js';
 
+/**
+ * Promessa com prazo. Sem isto, qualquer ida e volta ao AudioWorklet trava pra
+ * sempre se o contexto estiver suspenso — e travar é pior que falhar, porque
+ * não há erro pra capturar nem pra mostrar.
+ */
+function comPrazo(promessa, ms, oQue) {
+  let t;
+  return Promise.race([
+    Promise.resolve(promessa).finally(() => clearTimeout(t)),
+    new Promise((_, rej) => {
+      t = setTimeout(() => rej(new Error(`${oQue} não respondeu em ${ms} ms`)), ms);
+    }),
+  ]);
+}
+
 const XFADE = 0.008; // 8 ms de crossfade no handoff
 const SLAB_BITS = 19;
 const SLAB = 1 << SLAB_BITS;
@@ -113,23 +128,57 @@ export class Transport extends EventTarget {
    * Se o signalsmith falhar, devolve um Transport sem keylock em vez de
    * quebrar: um deck sem keylock ainda é um deck.
    */
-  static async create(ctx, { destination, comKeylock = true } = {}) {
+  static async create(ctx, { destination, comKeylock = true, timeoutMs = 2500 } = {}) {
     let stretch = null, latency = 0;
     if (comKeylock) {
       try {
-        const mod = await import('https://cdn.jsdelivr.net/npm/signalsmith-stretch@1.3.2/SignalsmithStretch.mjs');
-        stretch = await mod.default(ctx);
-        await stretch.configure({ blockMs: AUDIO.keylockBlockMs });
-        latency = await stretch.latency();   // async: medir uma vez, cachear
+        // CADA await aqui e uma ida e volta de mensagem ate o AudioWorklet, e
+        // worklet de contexto SUSPENSO nao processa mensagem. No iOS (onde todo
+        // navegador e WebKit, inclusive o Chrome) o contexto fica suspenso ate
+        // um gesto valido, entao latency() NUNCA resolvia e o create travava
+        // pra sempre — sem erro, porque nao ha excecao, so um await eterno.
+        // O deck nunca nascia e o app parecia morto.
+        //
+        // Regra: nada relacionado a keylock pode bloquear a criacao do deck.
+        // Um deck sem keylock e um deck; nenhum deck e um app quebrado.
+        const mod = await comPrazo(
+          import('https://cdn.jsdelivr.net/npm/signalsmith-stretch@1.3.2/SignalsmithStretch.mjs'),
+          timeoutMs, 'baixar o signalsmith');
+        stretch = await comPrazo(mod.default(ctx), timeoutMs, 'criar o nó');
+        await comPrazo(stretch.configure({ blockMs: AUDIO.keylockBlockMs }), timeoutMs, 'configure()');
+        latency = await comPrazo(stretch.latency(), timeoutMs, 'latency()');
         // num contexto ao vivo o nó precisa ser iniciado; offline a renderização
         // puxa sozinha, e foi por isso que o gate não pegou isto.
-        try { await stretch.start(); } catch (e) { console.warn('[transport] stretch.start():', e.message); }
+        await comPrazo(stretch.start(), timeoutMs, 'start()').catch(() => {});
       } catch (e) {
-        console.warn('[transport] keylock indisponível:', e.message);
+        console.warn('[transport] seguindo sem keylock:', e.message);
+        try { stretch?.disconnect(); } catch {}
         stretch = null;
+        latency = 0;
       }
     }
     return new Transport(ctx, { destination, stretch, stretchLatency: latency });
+  }
+
+  /** Tenta ligar o keylock depois, quando o contexto já estiver rodando. */
+  async tentarKeylockDepois() {
+    if (this.stretch || this.ctx.state !== 'running') return false;
+    try {
+      const mod = await comPrazo(
+        import('https://cdn.jsdelivr.net/npm/signalsmith-stretch@1.3.2/SignalsmithStretch.mjs'),
+        2500, 'signalsmith');
+      const st = await comPrazo(mod.default(this.ctx), 2500, 'nó');
+      await comPrazo(st.configure({ blockMs: AUDIO.keylockBlockMs }), 2500, 'configure');
+      this.stretchLatency = await comPrazo(st.latency(), 2500, 'latency');
+      await comPrazo(st.start(), 2500, 'start').catch(() => {});
+      this.lockAnalyser = this.ctx.createAnalyser();
+      this.lockAnalyser.fftSize = 256;
+      this._buf = new Float32Array(this.lockAnalyser.fftSize);
+      st.connect(this.lockAnalyser).connect(this.lockGain);
+      this.stretch = st;
+      this.dispatchEvent(new CustomEvent('keylockDisponivel'));
+      return true;
+    } catch { return false; }
   }
 
   // ─────────────────────────── carga ───────────────────────────

@@ -50,11 +50,16 @@ async function ligar() {
       ligarEventos();
       pronto = true;
 
-      $('dica').textContent = deck.temKeylock
-        ? 'áudio ligado' : 'áudio ligado (sem keylock)';
       $('e-keylock').innerHTML = `keylock <b>${deck.temKeylock ? 'ok' : 'indisponível'}</b>`;
+      $('e-estado').textContent = ctx.state;
+      // nao dizer "ligado" se o contexto ainda esta suspenso: no iOS ele fica
+      // assim ate um gesto valido, e mentir aqui esconde exatamente o problema
+      $('dica').textContent = ctx.state === 'running'
+        ? (deck.temKeylock ? 'áudio ligado' : 'áudio ligado (sem keylock)')
+        : 'toque de novo para liberar o áudio';
       setInterval(() => {
         $('e-lat').textContent = `${((ctx.outputLatency ?? 0) * 1e3).toFixed(0)} ms`;
+        if ($('e-estado').textContent !== ctx.state) $('e-estado').textContent = ctx.state;
       }, 1000);
       requestAnimationFrame(quadro);
     } catch (e) {
@@ -72,11 +77,40 @@ async function ligar() {
   return ligando;
 }
 
-// sem {once:true}: se a primeira tentativa falhar, o proximo toque tenta de novo
-const tentarLigar = () => { ligar().catch(() => {}); };
-addEventListener('pointerdown', tentarLigar);
-addEventListener('touchend', tentarLigar);
-addEventListener('keydown', tentarLigar);
+/**
+ * Retomar o áudio é DIFERENTE de criar o deck, e no iOS isso importa.
+ *
+ * No iPhone todo navegador é WebKit por baixo (o Chrome inclusive), e lá o
+ * AudioContext só sai de "suspended" se o resume() acontecer dentro de um gesto
+ * válido. Meu handler antigo consumia o primeiro gesto para criar tudo, e os
+ * gestos seguintes viam uma promessa pendente e não tentavam de novo — o
+ * contexto ficava suspenso pra sempre.
+ *
+ * Agora: toda interação tenta retomar, quantas vezes for preciso.
+ */
+async function garantirRodando() {
+  if (!ctx) return;
+  if (ctx.state === 'running') return;
+  try { await ctx.resume(); } catch {}
+  if (ctx.state === 'running') {
+    $('e-estado').textContent = 'ok';
+    $('dica').textContent = 'áudio ligado';
+    // o keylock pode ter sido pulado porque o contexto estava suspenso
+    if (deck && !deck.temKeylock) {
+      const ok = await deck.transport.tentarKeylockDepois();
+      $('e-keylock').innerHTML = `keylock <b>${ok ? 'ok' : 'indisponível'}</b>`;
+    }
+  } else {
+    $('e-estado').textContent = ctx.state;
+    $('dica').textContent = 'toque de novo para liberar o áudio';
+  }
+}
+
+// sem {once:true}: se falhar, o próximo gesto tenta de novo
+const tentarLigar = () => { ligar().then(garantirRodando).catch(() => {}); };
+for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) {
+  addEventListener(ev, tentarLigar);
+}
 
 // ─────────────────────────── eventos do deck ───────────────────────────
 
@@ -476,6 +510,7 @@ $('b-diag').onclick = async () => {
       : 'NAO EXISTE',
     passosDaUltimaCarga: deck?.passos ?? [],
     faixasNaLista: document.querySelectorAll('#lista .item').length,
+    keylockDisponivel: deck?.temKeylock ?? null,
     problemas: problemas.slice(-8),
     sondas: [],
   };
