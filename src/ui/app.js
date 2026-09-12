@@ -8,6 +8,8 @@ import { Mixer, erroDeFase } from '../mix/mixer.js';
 import { plano, autoajuste } from '../coach/guia.js';
 import { montarFila, resumo as resumoFila } from '../coach/fila.js';
 import { momentos, proximoMomento, faltaPara } from '../coach/momentos.js';
+import { juntarCandidatas, montarSet, resumoSet } from '../coach/setlist.js';
+import { Piloto } from '../coach/piloto.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
   keyCompatible, resolveStreamUrl, CRATES, crateBr,
@@ -1220,3 +1222,99 @@ for (const id of ['A', 'B']) {
     }
   };
 }
+
+
+// ─────────────────────── o professor toca o set ───────────────────────
+
+/**
+ * O piloto: monta um set com suas preferências e toca do começo ao fim.
+ *
+ * Ele usa os MESMOS métodos que a sua mão usaria — nada de caminho
+ * privilegiado. E solta na hora que você encostar em qualquer controle, que é
+ * a única forma de um piloto ser útil em vez de irritante.
+ */
+let piloto = null;
+
+function garantirPiloto() {
+  if (piloto) return piloto;
+  piloto = new Piloto({
+    decks, mixer,
+    encaixar: () => $('b-encaixar').click(),
+    sincronizar: (id) => sincronizar(id),
+    carregar: async (id, faixa) => {
+      decks[id].carregarAudius(faixa);
+      const t0 = performance.now();
+      while (performance.now() - t0 < 70000) {
+        const d = decks[id];
+        if (d.estado === 'erro') return false;
+        // espera a analise cobrir a faixa INTEIRA, nao so o prefixo: e a grade
+        // da faixa toda que faz a fase fechar
+        if (!d.parcial && d.picos && d.onset && d.grid?.bpm &&
+            d.onset.v.length / d.onset.taxa > d.duration * 0.9) return true;
+        await new Promise((r) => setTimeout(r, 600));
+      }
+      return false;
+    },
+  });
+  piloto.addEventListener('passo', (e) => {
+    const { passo, faixa, resta, motivo, erro } = e.detail;
+    $('piloto-nota').textContent = erro ? `piloto parou: ${erro}`
+      : motivo ? `piloto ${passo} — ${motivo}`
+      : faixa ? `${passo}: ${faixa}${resta != null ? ` · faltam ${resta}` : ''}`
+      : passo;
+    $('piloto-nota').style.color = erro ? 'var(--bad)' : 'var(--neon)';
+    if (passo === 'fim do set' || passo === 'parado' || erro) pararPiloto();
+  });
+  piloto.addEventListener('crossfader', (e) => { $('xf').value = e.detail.x; });
+  return piloto;
+}
+
+function pararPiloto() {
+  $('b-piloto').classList.remove('lig');
+  $('b-piloto').textContent = '▶ o professor toca';
+  piloto?.assumirControle?.();
+}
+
+$('b-piloto').onclick = async () => {
+  if (piloto?.ativo) { pararPiloto(); $('piloto-nota').textContent = 'piloto desligado'; return; }
+  await garantirRodando();
+  const b = $('b-piloto');
+  b.classList.add('lig'); b.textContent = '■ parar';
+  $('piloto-nota').style.color = 'var(--neon)';
+  $('piloto-nota').textContent = 'garimpando faixas…';
+  try {
+    const cands = await juntarCandidatas({});
+    if (!cands.length) throw new Error('não achei faixas com BPM e tom');
+    const s = montarSet(cands, {
+      minutos: Number($('pref-min').value),
+      energia: $('pref-energia').value,
+      semente: referencia()?.bpm ? referencia() : null,
+    });
+    if (s.fila.length < 2) throw new Error('não consegui encadear faixas suficientes');
+    fila = s.fila;
+    desenharFila();
+    $('fila-resumo').textContent = resumoSet(s);
+    $('piloto-nota').textContent = resumoSet(s);
+    await garantirPiloto().tocar(s.fila);
+  } catch (e) {
+    $('piloto-nota').textContent = 'piloto: ' + e.message;
+    $('piloto-nota').style.color = 'var(--bad)';
+    pararPiloto();
+  }
+};
+
+/**
+ * Você encostou: o piloto sai.
+ *
+ * Escuta na fase de captura e em pointerdown pra sair ANTES de a ação
+ * acontecer — se ele soltasse depois, ele e você dariam o comando junto, que é
+ * o pior dos dois mundos. Os controles do próprio piloto ficam de fora.
+ */
+document.addEventListener('pointerdown', (e) => {
+  if (!piloto?.ativo) return;
+  if (e.target.closest('#b-piloto, .piloto-cx, #b-ajuda, #b-diag, .lista, #busca, #crates')) return;
+  if (!e.target.closest('button, input, .jog, select')) return;
+  pararPiloto();
+  $('piloto-nota').textContent = 'você assumiu — o piloto soltou';
+  $('piloto-nota').style.color = 'var(--cue)';
+}, true);

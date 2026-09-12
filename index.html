@@ -106,8 +106,13 @@
            grid-template-rows:minmax(0,1fr); }
   .col { min-width:0; min-height:0; display:flex; flex-direction:column; }
 
+  /* min-height:0 e certo no layout largo, onde a LINHA do grid ja da a altura.
+     Tinha um min-height:296px logo acima anulado por este — sobra de uma
+     tentativa anterior. Nas telas estreitas o grid deixa a linha crescer com o
+     conteudo, e ai sem altura minima o deck colapsa: medi 3px de altura numa
+     janela de 585px. A altura minima voltou, mas so onde ela faz falta (ver
+     as media queries no fim). */
   .deck { border-radius:var(--r); display:flex; flex-direction:column; overflow:hidden;
-          min-height:296px;
           flex:1; min-height:0; border:1px solid var(--linha);
           background:linear-gradient(180deg,#1b1430,#110c1e); position:relative; }
   .deck::before { content:""; position:absolute; inset:0 0 auto; height:3px; }
@@ -212,6 +217,18 @@
 
   /* todas as pilhas de musica com a mesma gramatica: chip. cabe num teto com
      rolagem propria pra nao comer o espaco da lista de faixas */
+  /* flex:1 com base auto nao encolhe abaixo do conteudo, e os dois seletores
+     saiam 321px pra fora da coluna. flex:1 1 0 + min-width:0 e o par que
+     realmente deixa encolher; o wrap cobre o resto. */
+  .piloto-cx { display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
+  .piloto-cx select { flex:1 1 auto; min-width:0; font-size:9.5px; padding:3px 4px; }
+  #b-piloto { flex:1 1 100%; min-width:0; font:800 10px ui-monospace,monospace;
+              letter-spacing:.05em; padding:7px 6px;
+              border-color:var(--neon); color:var(--neon); }
+  #b-piloto.lig { background:linear-gradient(180deg,#ffa2e6,var(--neon)); border-color:var(--neon);
+                  color:#2b0420; box-shadow:0 0 16px rgba(255,78,205,.5); }
+  #piloto-nota { font-size:9.5px; min-height:12px; }
+
   .crates { display:flex; flex-direction:column; gap:3px; max-height:132px; overflow-y:auto;
             padding-right:2px; flex:none; }
   .grupo-chips { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
@@ -390,17 +407,29 @@
   dialog .fechar { margin-top:20px; width:100%; padding:12px; font-size:12px; }
 
   @media (max-width:1240px) { .palco { grid-template-columns:1fr 218px 1fr 252px; } }
+  /* Abaixo disto a tela deixa de caber em uma pagina so, e a pagina passa a
+     rolar de proposito. Quando a linha do grid solta a altura, cada bloco
+     precisa dizer a sua — senao colapsa. */
   @media (max-width:1040px) {
     body { overflow:auto; }
     .palco { grid-template-columns:1fr 1fr; height:auto; grid-template-rows:none; }
+    .col { min-height:auto; }
+    .deck { min-height:360px; }
+    canvas.onda { max-height:150px; }
     .col.mix { grid-column:1/-1; order:3; }
-    .col.lib { grid-column:1/-1; order:4; min-height:320px; }
+    .col.lib { grid-column:1/-1; order:4; min-height:480px; }
+    .mixer { min-height:280px; }
+    /* a lista e flex:1 dentro da lateral; com a linha do grid solta ela ficava
+       com ALTURA ZERO — medido 528x0 numa janela de 585px */
+    .lista { min-height:220px; }
   }
   @media (max-width:700px) {
     .palco { grid-template-columns:1fr; }
+    .deck { min-height:330px; }
     .prof { padding:10px 12px; }
     button { min-height:40px; }
     .knob .kill, .faixa-sel button, .mini-b { min-height:24px !important; }
+    .crates { max-height:96px; }
   }
 </style>
 </head>
@@ -488,6 +517,21 @@
         <button id="b-compat" disabled style="flex:1">combina agora</button>
         <button id="b-fila" disabled title="monta a sequência do set">montar sequência</button>
       </div>
+      <div class="piloto-cx">
+        <button id="b-piloto" title="o professor monta e toca um set inteiro">▶ o professor toca</button>
+        <select id="pref-min" title="duração do set">
+          <option value="15">15 min</option>
+          <option value="30" selected>30 min</option>
+          <option value="45">45 min</option>
+          <option value="60">60 min</option>
+        </select>
+        <select id="pref-energia" title="curva de energia">
+          <option value="subir" selected>subindo</option>
+          <option value="estavel">estável</option>
+          <option value="descer">descendo</option>
+        </select>
+      </div>
+      <div class="rot" id="piloto-nota" style="margin:0"></div>
       <div class="crates" id="crates"></div>
       <input type="text" id="busca" placeholder="buscar por nome…">
       <div class="lista" id="lista"></div>

@@ -22,26 +22,39 @@ export const CONTROLES = [
      '.bpm-val', '.pos', '.faixa-sel', '.auto'].map((c) => `#deck${d} ${c}`)),
   '#xf', '#master', '#fase', '#lista', '#b-compat', '#busca',
   '#prof-plano', '#b-ajuda', '#b-diag', '#b-arquivo',
-  '#b-encaixar', '#crates', '#saida-fone',
+  '#b-encaixar', '#crates', '#saida-fone', '#b-piloto', '#pref-min', '#pref-energia',
   ...['A', 'B'].flatMap((d) => [`#fone-${d}`, `#vol-${d}`, `#fino-menos-${d}`, `#fino-mais-${d}`]),
   ...['A', 'B'].flatMap((d) =>
     ['grave', 'medio', 'agudo'].flatMap((b) => [`#eq-${d}-${b}`, `#kill-${d}-${b}`])),
 ];
 
-function avaliar(sel) {
+function avaliar(sel, rolagemProposital) {
   const el = document.querySelector(sel);
   if (!el) return { sel, problema: 'NÃO EXISTE' };
   const r = el.getBoundingClientRect();
   if (r.width < 2 || r.height < 2) {
     return { sel, problema: 'tamanho zero', medida: `${r.width | 0}x${r.height | 0}` };
   }
-  if (r.bottom > innerHeight + 1) return { sel, problema: 'cortado embaixo', fora: Math.round(r.bottom - innerHeight) };
-  if (r.top < -1) return { sel, problema: 'cortado em cima', fora: Math.round(-r.top) };
+  /**
+   * "Abaixo da dobra" so e defeito quando a pagina NAO deveria rolar.
+   *
+   * No layout largo, tudo cabe numa tela e sair dela e bug. Em telas estreitas
+   * a pagina rola de proposito, e ai medir contra a altura da JANELA acusava 40
+   * controles de uma vez, afogando os dois achados de verdade. Contra a altura
+   * do DOCUMENTO, "cortado" volta a significar cortado.
+   */
+  const limite = rolagemProposital ? document.documentElement.scrollHeight : innerHeight;
+  const topo = rolagemProposital ? r.top + scrollY : r.top;
+  const base = rolagemProposital ? r.bottom + scrollY : r.bottom;
+  if (base > limite + 1) return { sel, problema: 'cortado embaixo', fora: Math.round(base - limite) };
+  if (topo < -1) return { sel, problema: 'cortado em cima', fora: Math.round(-topo) };
   if (r.right > innerWidth + 1) return { sel, problema: 'cortado à direita', fora: Math.round(r.right - innerWidth) };
   if (r.left < -1) return { sel, problema: 'cortado à esquerda', fora: Math.round(-r.left) };
 
   // o centro do elemento pertence mesmo a ele, ou tem algo por cima?
-  const alvo = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  // cobertura so da pra testar no que esta na janela agora
+  const naJanela = r.top >= 0 && r.bottom <= innerHeight;
+  const alvo = naJanela ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
   if (alvo && alvo !== el && !el.contains(alvo) && !alvo.contains(el)) {
     return { sel, problema: 'coberto', por: (alvo.id || alvo.className || alvo.tagName).toString().slice(0, 28) };
   }
@@ -61,8 +74,10 @@ function avaliar(sel) {
 }
 
 export function inspecionar({ silencioso = false } = {}) {
-  const problemas = CONTROLES.map(avaliar).filter(Boolean);
-  const rola = document.documentElement.scrollHeight > innerHeight + 2;
+  // abaixo de 1040px o layout empilha e a pagina rola de proposito
+  const rolagemProposital = innerWidth <= 1040;
+  const problemas = CONTROLES.map((c) => avaliar(c, rolagemProposital)).filter(Boolean);
+  const rola = !rolagemProposital && document.documentElement.scrollHeight > innerHeight + 2;
   const r = {
     viewport: `${innerWidth}x${innerHeight}`,
     alturaDaPagina: document.documentElement.scrollHeight,
