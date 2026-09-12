@@ -149,6 +149,10 @@
                 box-shadow:inset 0 2px 8px rgba(0,0,0,.6); }
   .jog .visor .bpm { font:700 15px ui-monospace,monospace; color:var(--fg); line-height:1; }
   .jog .visor .un { font:8px ui-monospace,monospace; color:var(--fraco); margin-top:2px; }
+  .jog .nome-jog { position:absolute; left:0; right:0; bottom:5px; text-align:center;
+                   font:800 8px ui-monospace,monospace; letter-spacing:.18em; color:var(--fraco);
+                   pointer-events:none; }
+  .jog.apontado .nome-jog { color:var(--ok); }
 
   .transp { display:flex; flex-direction:column; gap:7px; flex:1; min-width:0; }
   .botoes { display:grid; grid-template-columns:1fr 1fr; gap:6px; flex:none; }
@@ -173,11 +177,20 @@
                       50% { box-shadow:0 0 0 9px rgba(46,230,168,0); } }
   .apontado { animation:aponta 1.25s ease-out infinite; border-color:var(--ok) !important;
               color:var(--ok) !important; }
-  .fantasma { position:relative; }
-  .fantasma::after { content:attr(data-porque); position:absolute; left:50%; bottom:calc(100% + 7px);
-                     transform:translateX(-50%); white-space:nowrap; z-index:9;
-                     background:var(--ok); color:#04210f; font:700 10px ui-monospace,monospace;
-                     padding:4px 8px; border-radius:6px; box-shadow:0 3px 10px rgba(0,0,0,.5); }
+  /* etiqueta que o professor pendura no controle que ele esta apontando.
+     Acender so nao basta: quem nunca mixou nao sabe qual daqueles e o "jog". */
+  [data-rotulo] { position:relative; }
+  [data-rotulo]::after { content:attr(data-rotulo); position:absolute; left:50%; bottom:calc(100% + 9px);
+                     transform:translateX(-50%); white-space:nowrap; z-index:30; pointer-events:none;
+                     background:var(--ok); color:#03261b; font:800 10px ui-monospace,monospace;
+                     padding:5px 9px; border-radius:7px;
+                     box-shadow:0 4px 14px rgba(0,0,0,.55), 0 0 18px rgba(46,230,168,.35); }
+  [data-rotulo]::before { content:""; position:absolute; left:50%; bottom:calc(100% + 3px);
+                     transform:translateX(-50%); z-index:30; pointer-events:none;
+                     border:5px solid transparent; border-top-color:var(--ok); }
+  /* no jog e na lista a etiqueta vai por DENTRO, senao sai da tela */
+  #lista[data-rotulo]::after, #lista[data-rotulo]::before { bottom:auto; top:6px; }
+  #lista[data-rotulo]::before { top:-4px; border-top-color:transparent; border-bottom-color:var(--ok); }
 
   .tempo { font:10px ui-monospace,monospace; color:var(--mut); display:flex; gap:9px; flex-wrap:wrap; }
   .tempo b { color:var(--fg); }
@@ -306,7 +319,7 @@
     <div class="mixer">
       <div>
         <canvas class="fase" id="fase"></canvas>
-        <div class="rot" id="rot-fase">encaixe das batidas</div>
+        <div class="rot" id="rot-fase"><b style="color:var(--mut)">ENCAIXE DAS BATIDAS</b></div>
       </div>
       <div class="tiras">
         <div class="tira" data-d="A">
@@ -330,7 +343,7 @@
       </div>
       <div>
         <input type="range" class="xf" id="xf" min="0" max="1" step="0.005" value="0.5">
-        <div class="rot">◄ só o A · CROSSFADER · só o B ►</div>
+        <div class="rot"><b style="color:var(--mut)">CROSSFADER</b> — ◄ só o A · os dois · só o B ►</div>
       </div>
     </div>
   </div>
@@ -398,6 +411,7 @@
       <div class="jog">
         <div class="marca-jog"></div>
         <div class="visor"><div><div class="bpm">—</div><div class="un">BPM</div></div></div>
+        <div class="nome-jog">JOG</div>
       </div>
       <div class="transp">
         <div class="botoes">

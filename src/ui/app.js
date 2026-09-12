@@ -11,7 +11,7 @@ import {
   keyCompatible, resolveStreamUrl,
 } from '../sources/audius.js';
 
-export const VERSAO = '2026-09-12.13';
+export const VERSAO = '2026-09-12.14';
 
 const $ = (id) => document.getElementById(id);
 /** Elemento que pode nao existir (diagnostico saiu da tela). */
@@ -486,9 +486,21 @@ function rodarProfessor() {
   $('prof-fala').innerHTML = p.fala + (p.porque ? `<small>${p.porque}</small>` : '');
   $('prof').classList.toggle('azul', p.cor === 'azul');
 
-  for (const el of apontados) el?.classList.remove('apontado');
-  apontados = (p.apontar || []).map((id) => $(id)).filter(Boolean);
-  for (const el of apontados) el.classList.add('apontado');
+  // apaga o que estava aceso
+  for (const el of apontados) {
+    el.classList.remove('apontado');
+    el.removeAttribute('data-rotulo');
+  }
+  // acende E NOMEIA. Acender sem dizer o que e ainda deixa quem nunca mixou
+  // adivinhando qual daqueles controles e o "jog".
+  apontados = [];
+  for (const alvo of p.apontar || []) {
+    const el = $(typeof alvo === 'string' ? alvo : alvo.id);
+    if (!el) continue;
+    el.classList.add('apontado');
+    if (alvo.rotulo) el.setAttribute('data-rotulo', alvo.rotulo);
+    apontados.push(el);
+  }
 }
 
 function nivelMaster() {
@@ -595,7 +607,9 @@ function desenharFase() {
 
 function desenharPassos(id, passos, falhou = false) {
   const el = vistas[id].passos;
-  if (!passos?.length) { el.hidden = true; return; }
+  // O rastro tecnico e ferramenta MINHA de depuracao. So aparece quando algo
+  // falha; no caminho feliz ele e ruido na cara de quem so quer mixar.
+  if (!falhou || !passos?.length) { el.hidden = true; return; }
   el.hidden = false;
   el.innerHTML = passos.map((p) =>
     `<div class="${p.nome === 'FALHOU' ? 'ruim' : ''}">` +
