@@ -115,16 +115,55 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
   for (const c of CRATES) {
     const buscas = c.buscas || [{ q: c.termo, filtro: c.filtro }];
     for (const b of buscas) {
-      for (const offset of PAGINAS_BUSCA) {
-        frentes.push({
-          nome: `${c.nome} · ${b.q}`,
-          pilha: (c.reg === 'BR' ? 'br:' : 'lat:') + c.nome,
-          url: `${H}/tracks/search?query=${encodeURIComponent(b.q)}&limit=${LIMITE}` +
-               `&offset=${offset}&app_name=${APP_NAME}`,
-          filtro: b.filtro !== undefined ? b.filtro : null,
-        });
-      }
+      /**
+       * Uma SÉRIE por termo, não 12 frentes soltas.
+       *
+       * Paginar sempre até o fim gasta requisição em página vazia: medi termos
+       * devolvendo `+0` seis vezes seguidas antes de a varredura desistir. Uma
+       * série para na primeira página que volta VAZIA DA API — não na primeira
+       * que não traz novidade, porque uma página inteira de faixas já
+       * conhecidas ainda indica que há mais adiante.
+       */
+      frentes.push({
+        nome: `${c.nome} · ${b.q}`,
+        pilha: (c.reg === 'BR' ? 'br:' : 'lat:') + c.nome,
+        filtro: b.filtro !== undefined ? b.filtro : null,
+        serie: PAGINAS_BUSCA.map((offset) =>
+          `${H}/tracks/search?query=${encodeURIComponent(b.q)}&limit=${LIMITE}` +
+          `&offset=${offset}&app_name=${APP_NAME}`),
+      });
     }
+  }
+
+  /**
+   * 1b. BUSCAS ELETRÔNICAS, também em série profunda.
+   *
+   * O trending por gênero para em `offset=200` — 300 faixas por gênero por
+   * janela, e acabou. A busca por texto não tem esse teto: medi `offset=3000`
+   * ainda devolvendo 100 cheias. Então, pro eletrônico, buscar por texto rende
+   * várias vezes mais que confiar só no trending.
+   *
+   * Os termos incluem o que o Audius NÃO tem como gênero e que é justamente o
+   * que um DJ procura: edit, bootleg, mashup, remix. Sem filtro — aqui não há
+   * homônimo em outra língua pra separar.
+   */
+  const TERMOS_ELETRONICOS = [
+    'house', 'tech house', 'deep house', 'progressive house', 'afro house',
+    'bass house', 'future house', 'melodic house', 'techno', 'melodic techno',
+    'minimal techno', 'hard techno', 'trance', 'psytrance', 'electro',
+    'drum and bass', 'dnb', 'jungle', 'dubstep', 'bass music', 'garage',
+    'breakbeat', 'hardstyle', 'disco', 'nu disco', 'italo disco', 'funky house',
+    'edit', 'bootleg', 'mashup', 'remix', 'club mix', 'extended mix',
+  ];
+  for (const q of TERMOS_ELETRONICOS) {
+    frentes.push({
+      nome: `eletrônico · ${q}`,
+      pilha: null,
+      filtro: null,
+      serie: PAGINAS_BUSCA.map((offset) =>
+        `${H}/tracks/search?query=${encodeURIComponent(q)}&limit=${LIMITE}` +
+        `&offset=${offset}&app_name=${APP_NAME}`),
+    });
   }
 
   // 2. trending por gênero, janela e página
@@ -215,6 +254,14 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
             const faixas = await pegar(`${H}/playlists/${p.id}/tracks?app_name=${APP_NAME}`, signal);
             lote.push(...preparar(faixas));
           } catch { /* uma playlist fora do ar não derruba a varredura */ }
+        }
+      } else if (f.serie) {
+        for (const url of f.serie) {
+          if (signal?.aborted) break;
+          const cru = await pegar(url, signal);
+          if (!cru.length) break;        // a API acabou este termo: não insiste
+          lote.push(...preparar(cru));
+          await dormir(PAUSA);
         }
       } else {
         const cru = await pegar(f.url, signal);

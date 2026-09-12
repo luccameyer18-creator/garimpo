@@ -12,6 +12,7 @@ import { momentos, proximoMomento, faltaPara } from '../coach/momentos.js';
 import { juntarCandidatas, montarSet, resumoSet, PILHAS as PILHAS_SET } from '../coach/setlist.js';
 import * as crate from '../sources/crate.js';
 import { garimpar } from '../sources/garimpar.js';
+import { carregarSemente } from '../sources/semente.js';
 import { Piloto } from '../coach/piloto.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
@@ -1808,6 +1809,27 @@ $('b-garimpar').onclick = async () => {
   // com acervo novo, recarrega a pilha em que a pessoa está
   carregarPilha(pilhaAtual);
 };
+
+/**
+ * Na primeira visita, carrega o acervo que vem junto com o app.
+ *
+ * Sem isto, quem recebe o link abre o Garimpo vazio — o acervo do IndexedDB é
+ * do aparelho de quem garimpou, não do endereço. A semente é um arquivo
+ * estático no mesmo servidor, então custa zero e chega comprimido.
+ *
+ * Roda depois do primeiro quadro pra não disputar com a montagem da tela.
+ */
+(async () => {
+  await new Promise((r) => setTimeout(r, 400));
+  const r = await carregarSemente({
+    aoAndar: ({ feitas, de }) => {
+      $('acervo-n').textContent = t('acervo.semeando', { i: feitas, de });
+      $('acervo-n').style.color = 'var(--acc)';
+    },
+  });
+  await mostrarAcervo();
+  if (r.carregou && r.novas) carregarPilha(pilhaAtual);
+})();
 
 mostrarAcervo();
 window.addEventListener('idioma', mostrarAcervo);

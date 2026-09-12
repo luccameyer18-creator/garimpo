@@ -16,6 +16,7 @@
  */
 
 const PT = {
+  'acervo.semeando': 'trazendo o acervo… {i}/{de}',
   'acervo.garimpar': 'garimpar mais',
   'acervo.parar': 'parar',
   'acervo.tem': 'acervo: {n} faixas no aparelho',
@@ -174,6 +175,7 @@ const PT = {
 };
 
 const EN = {
+  'acervo.semeando': 'loading the crate… {i}/{de}',
   'acervo.garimpar': 'dig for more',
   'acervo.parar': 'stop',
   'acervo.tem': 'crate: {n} tracks on this device',
@@ -331,6 +333,7 @@ const EN = {
 };
 
 const ES = {
+  'acervo.semeando': 'trayendo el acervo… {i}/{de}',
   'acervo.garimpar': 'buscar más',
   'acervo.parar': 'parar',
   'acervo.tem': 'acervo: {n} canciones en el aparato',
