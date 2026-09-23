@@ -1965,12 +1965,19 @@ try { minimizarDj(localStorage.getItem('garimpo.dj.min') === '1'); } catch {}
  */
 function soViagem(on) {
   document.body.classList.toggle('so-viagem', on);
-  $('b-so-viagem').textContent = t(on ? 'viagem.voltar' : 'viagem.so');
+  const qual = document.body.classList.contains('viagem') ? 'viagem.so' : 'pista.so';
+  $('b-so-viagem').textContent = t(on ? 'viagem.voltar' : qual);
 }
+document.addEventListener('show', () => soViagem(document.body.classList.contains('so-viagem')));
+document.addEventListener('so-show', () => soViagem(true));
 $('b-so-viagem').onclick = () => soViagem(!document.body.classList.contains('so-viagem'));
 $('b-so-pular').onclick = () => $('b-pular').click();
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('so-viagem')) soViagem(false); });
-new MutationObserver(() => { if (!document.body.classList.contains('viagem')) soViagem(false); })
+new MutationObserver(() => {
+  const b = document.body.classList;
+  if (!b.contains('viagem') && !b.contains('pista-cheia')) { if (b.contains('so-viagem')) soViagem(false); }
+  else if (!b.contains('so-viagem')) soViagem(false);   // repinta o rótulo (viagem ↔ pista)
+})
   .observe(document.body, { attributes: true, attributeFilter: ['class'] });
 window.addEventListener('idioma', () => { pintarBiblioteca(); repintarLista(); });
 

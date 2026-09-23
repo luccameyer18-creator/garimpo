@@ -14,6 +14,10 @@
  *   DROP     confete e o "DROP!" no meio da tela — só em drop MARCADO na faixa
  *   QUEBRA   a luz baixa e a galera só balança, esperando a volta
  *
+ * 🎉 PISTA liga o club COMPLETO por cima da CDJ: mais lasers e mais fortes,
+ * a galera maior em duas fileiras, o globo grande e a névoa densa. A pista e
+ * a viagem se alternam; sem nenhuma das duas, ficam os efeitos no ambiente.
+ *
  * O globo, os reflexos e a névoa moram em pista.js (#luzes), também na frente.
  * Com a VIAGEM ligada (viagem.js), os lasers saem — a viagem já ocupa a tela —
  * e ficam a galera e o confete.
@@ -85,6 +89,18 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
   bViagem.className = 'cena-viagem';
   bViagem.type = 'button';
   bViagem.textContent = '🌀 viagem';
+  const bPista = document.createElement('button');
+  bPista.className = 'cena-pista';
+  bPista.type = 'button';
+  bPista.textContent = '🎉 pista';
+  let modoPista = false;
+  const ligarPista = (on) => {
+    modoPista = on;
+    bPista.classList.toggle('lig', on);
+    document.body.classList.toggle('pista-cheia', on);
+    document.dispatchEvent(new CustomEvent('show'));
+    montarGente();
+  };
   const bTroca = document.createElement('button');
   bTroca.className = 'cena-troca';
   bTroca.type = 'button';
@@ -94,7 +110,21 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
     const on = viagem?.alternar();
     bViagem.classList.toggle('lig', !!on);
     bTroca.hidden = !on;
+    if (on && modoPista) ligarPista(false);          // uma de cada vez
   };
+  bPista.onclick = () => {
+    ligarPista(!modoPista);
+    if (modoPista && viagem?.ligada) { viagem.alternar(false); bViagem.classList.remove('lig'); bTroca.hidden = true; }
+  };
+  el.appendChild(bPista);
+  // 👁 só o show: esconde a CDJ (app.js cuida; aqui só pede)
+  const bSo = document.createElement('button');
+  bSo.className = 'cena-so';
+  bSo.type = 'button';
+  bSo.textContent = '👁';
+  bSo.title = 'só o show: esconde a CDJ (Esc volta)';
+  bSo.onclick = () => document.dispatchEvent(new CustomEvent('so-show'));
+  el.appendChild(bSo);
   bTroca.onclick = () => viagem?.trocar?.(1.2);
   if (viagem) { el.appendChild(bViagem); el.appendChild(bTroca); }
   pintarEfeitos();
@@ -106,13 +136,18 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
   function montarGente() {
     gente = [];
     const JEITOS = ['pula', 'pula', 'balanca', 'cabeca', 'acena'];
-    const passo = 34 * u;
+    // modo pista: duas fileiras, gente maior; a de trás um pouco acima e menor
+    const filas = modoPista ? [{ esc: 1.25, dy: 0.12, fundo: true }, { esc: 1.7, dy: 0 }] : [{ esc: 1, dy: 0 }];
+    let k = 0;
+    for (const fl of filas) {
+    const passo = 34 * u * fl.esc;
     const n = Math.max(6, Math.ceil(W / passo));
     for (let i = 0; i < n; i++) {
-      const k = i + 1;
+      k++;
       gente.push({
+        dy: fl.dy, fundo: !!fl.fundo,
         x: (i + 0.5 + (hash(k) - 0.5) * 0.6) * (W / n),
-        esc: 0.8 + hash(k + 2) * 0.4,
+        esc: (0.8 + hash(k + 2) * 0.4) * fl.esc,
         jeito: JEITOS[Math.floor(hash(k + 21) * JEITOS.length)],
         salto: 0.7 + hash(k + 3) * 0.8,
         // atraso próprio: ninguém na pista pula junto de verdade
@@ -120,6 +155,7 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
         braco: hash(k + 8), fase: hash(k + 11) * 6.28, ordem: hash(k + 13),
         alfa: 0, c: k % 2,
       });
+    }
     }
   }
 
@@ -140,9 +176,10 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
   function lasers(pal, luz) {
     const varre = Math.sin((E.batida * Math.PI) / 8);          // uma ida por 8 tempos
     const aberto = Math.min(1, E.energia * 0.6 + E.grave * 0.5 + E.dropV * 0.8);
-    const n = E.tocando ? 2 + Math.round(aberto * 5) : 1;
+    const n = E.tocando ? (modoPista ? 4 : 2) + Math.round(aberto * (modoPista ? 7 : 5)) : 1;
     const abre = 0.04 + aberto * 0.06;
-    const alfa = (0.3 + E.pulso * (E.compasso === 0 ? 0.35 : 0.2)) * (E.quebra ? 0.15 : 1) * (E.tocando ? 1 : 0.25) * luz;
+    const alfa = (0.3 + E.pulso * (E.compasso === 0 ? 0.35 : 0.2)) * (E.quebra ? 0.15 : 1) * (E.tocando ? 1 : 0.25) * luz
+               * (modoPista ? 1.7 : 1);
     const fontes = [
       { x: 0, y: 0, base: 0.8 + varre * 0.35, cor: pal[0] },
       { x: W, y: 0, base: Math.PI - 0.8 - varre * 0.35, cor: pal[1] },
@@ -188,10 +225,10 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
         lado = Math.sin(E.batida * Math.PI / 4 + p.fase) * hr * 0.4;
       }
       const x = p.x + lado;
-      const y = H - hr * 2.4 - salto;              // metade do corpo aparece na borda
+      const y = H - hr * 2.4 - salto - p.dy * H;   // metade do corpo aparece na borda
       // silhueta de NEON: só o contorno, aceso pelo agudo — por cima da CDJ
       // um corpo cheio taparia os controles; o contorno não
-      c.globalAlpha = p.alfa * (0.35 + E.agudo * 0.45 + E.dropV * 0.2) * luz;
+      c.globalAlpha = p.alfa * (0.35 + E.agudo * 0.45 + E.dropV * 0.2) * luz * (p.fundo ? 0.6 : 1);
       c.strokeStyle = pal[p.c];
       c.lineWidth = Math.max(1, 1.4 * u);
       c.beginPath(); c.arc(x, y + cabeca, hr, 0, 6.283); c.stroke();
@@ -240,8 +277,9 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
     c.globalCompositeOperation = 'source-over';
     c.clearRect(0, 0, W, H);
     c.globalCompositeOperation = 'lighter';
-    // nível 1: só confete e DROP; do 2 pra cima, lasers e galera
-    if (Q.nivel >= 2) {
+    // nível 1: só confete e DROP; do 2 pra cima, lasers e galera. No modo
+    // 🎉 pista, que a pessoa PEDIU, desde o 1 (em resolução menor)
+    if (Q.nivel >= 2 || modoPista) {
       if (!viagem?.ligada) lasers(pal, luz);
       galera(pal, dt, luz);
     }

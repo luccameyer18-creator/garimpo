@@ -5,9 +5,14 @@
  * nenhum. Em vez de chutar quanto efeito cabe, isto MEDE: acompanha o tempo
  * de cada quadro da tela e ajusta o nível dos efeitos sozinho.
  *
- *   - engasgou (mediana acima de ~22 ms, ou 1 em 10 quadros acima de 34 ms):
- *     desce um nível na hora
- *   - liso por 8 s seguidos (mediana abaixo de ~18 ms): tenta subir um
+ *   - engasgou em DUAS medições seguidas (mediana acima de ~22 ms, ou 1 em
+ *     10 quadros acima de 34 ms): desce um nível
+ *   - liso por 5 s seguidos (mediana abaixo de ~18 ms): tenta subir um
+ *   - os primeiros 12 s não contam: é quando o acervo de 39 mil faixas carrega
+ *     e a tela engasga por motivo que não é efeito — medindo ali, ele
+ *     derrubava tudo até zero logo na abertura
+ *   - sozinho ele não passa do nível 1; o 0 só com o aparelho em apuros de
+ *     verdade (mediana acima de 45 ms)
  *   - a folga entre os dois limites e as esperas depois de cada troca impedem
  *     o vai-e-volta
  *
@@ -38,7 +43,7 @@ function aplicar(n) {
   for (const fn of ouvintes) { try { fn(n); } catch {} }
 }
 
-let tempos = [], ultimo = 0, proximaAvaliacao = 0, lisoDesde = 0, esperaAte = 0;
+let tempos = [], ultimo = 0, proximaAvaliacao = 0, lisoDesde = 0, esperaAte = 12000, engasgos = 0;
 
 function medir(agora) {
   requestAnimationFrame(medir);
@@ -61,15 +66,17 @@ function medir(agora) {
 
   const engasgou = mediana > 22 || p90 > 34;
   const liso = mediana < 18 && p90 < 24;
-  if (engasgou && qualidade.nivel > 0) {
+  const piso = mediana > 45 ? 0 : 1;
+  engasgos = engasgou ? engasgos + 1 : 0;
+  if (engasgos >= 2 && qualidade.nivel > piso) {
     aplicar(qualidade.nivel - 1);
     esperaAte = agora + 3000;              // dá tempo do nível novo mostrar efeito
-    lisoDesde = 0; tempos = [];
+    lisoDesde = 0; tempos = []; engasgos = 0;
   } else if (liso) {
     if (!lisoDesde) lisoDesde = agora;
-    if (agora - lisoDesde > 8000 && qualidade.nivel < 3) {
+    if (agora - lisoDesde > 5000 && qualidade.nivel < 3) {
       aplicar(qualidade.nivel + 1);
-      esperaAte = agora + 8000;            // subir é devagar; descer é rápido
+      esperaAte = agora + 5000;
       lisoDesde = 0; tempos = [];
     }
   } else lisoDesde = 0;

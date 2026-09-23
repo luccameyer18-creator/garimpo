@@ -494,7 +494,11 @@
   .cena-viagem, .cena-troca { position:absolute; top:6px; z-index:3; padding:3px 8px; border-radius:20px; font-size:12px;
                 background:rgba(10,7,19,.85); border-color:color-mix(in srgb, var(--neon) 45%, transparent); color:#fff; }
   .janela-pista .cena-viagem { right:94px; }
-  .janela-pista .cena-troca { right:190px; }
+  .janela-pista .cena-troca { right:272px; }
+  /* 👁 só o show: aparece com a pista ou a viagem ligada */
+  .cena-so { position:absolute; top:6px; right:306px; z-index:3; padding:3px 9px; border-radius:20px; font-size:12px; display:none;
+             background:rgba(10,7,19,.85); border-color:color-mix(in srgb, var(--neon) 45%, transparent); color:#fff; }
+  body.viagem .cena-so, body.pista-cheia .cena-so { display:inline-block; }
   .cena-viagem:hover { color:#fff; border-color:var(--neon); }
   .cena-viagem.lig { border-color:var(--neon); box-shadow:0 0 12px color-mix(in srgb, var(--neon) 55%, transparent); }
 
@@ -515,6 +519,15 @@
   body.q0 #luzes, body.q0 #cena-tela, body.q0 #viagem-frente { display:none !important; }
   body.sem-efeitos #luzes, body.sem-efeitos #viagem-frente, body.sem-efeitos #viagem-fundo { display:none !important; }
 
+  /* 🎉 PISTA: o club completo por cima da CDJ — globo grande, névoa densa */
+  .cena-pista { position:absolute; top:6px; right:190px; z-index:3; padding:3px 9px; border-radius:20px; font-size:11px;
+                background:rgba(10,7,19,.85); border-color:color-mix(in srgb, var(--neon) 45%, transparent); color:#fff; }
+  .cena-pista.lig, .cena-viagem.lig { border-color:var(--neon); box-shadow:0 0 12px color-mix(in srgb, var(--neon) 55%, transparent); }
+  body.pista-cheia #luzes .bola { width:64px; height:64px; }
+  body.pista-cheia #luzes .facetas { width:128px; height:64px; background-size:9px 9px, 9px 9px, auto; }
+  body.pista-cheia #luzes .fio { height:10px; }
+  body.pista-cheia #luzes .nevoa i { background:radial-gradient(closest-side, rgba(200,180,255,.32), rgba(200,180,255,.12) 55%, transparent); }
+
   /* ───────── VIAGEM: a página inteira ───────── */
   /* Os efeitos passam POR CIMA da CDJ, na tela toda: o MilkDrop numa camada
      só, na frente, com mistura "screen" — a luz do visual soma sobre os
@@ -532,7 +545,7 @@
 
   /* SÓ A VIAGEM: a CDJ some (continua tocando), fica o visual e dois botões */
   #so-viagem { position:fixed; right:14px; bottom:14px; z-index:58; display:none; gap:6px; }
-  body.viagem #so-viagem { display:flex; }
+  body.so-viagem #so-viagem { display:flex; }
   #so-viagem button { padding:10px 14px; border-radius:22px; font:800 12px ui-sans-serif,system-ui,sans-serif;
                       background:rgba(10,6,20,.78); border-color:color-mix(in srgb, var(--neon) 55%, transparent); color:#fff;
                       box-shadow:0 0 16px color-mix(in srgb, var(--neon) 35%, transparent); }
@@ -541,7 +554,7 @@
   body.so-viagem .topo, body.so-viagem .prof, body.so-viagem .palco, body.so-viagem .aba-bib {
     opacity:0; pointer-events:none; transition:opacity .5s; }
   body.viagem .topo, body.viagem .prof, body.viagem .palco { transition:opacity .5s; }
-  .cena-rot { position:absolute; left:10px; top:8px; right:230px; display:flex; gap:6px; align-items:center;
+  .cena-rot { position:absolute; left:10px; top:8px; right:350px; display:flex; gap:6px; align-items:center;
               font:800 9px ui-monospace,monospace; letter-spacing:.14em; color:rgba(242,238,252,.75);
               text-transform:uppercase; pointer-events:none; text-shadow:0 1px 4px #000; }
   .cena-rot .vivo { width:7px; height:7px; border-radius:50%; background:var(--bad); flex:none;
@@ -923,12 +936,26 @@
     .palco { grid-template-rows:minmax(0,1fr) auto; }
     .col.cabine { grid-column:1 / 4; grid-row:2; }
     body.bib-fixa .col.lib { grid-column:4; grid-row:1 / span 2; }
-    .col.mix .mixer { flex:1 1 auto; justify-content:space-between; }
+    /* mixer: a sobra de altura vai pro medidor de encaixe (quanto maior, mais
+       fácil de ler a fase), não pra um vão vazio no meio */
+    .col.mix .mixer { flex:1 1 auto; justify-content:flex-start; }
+    .col.mix .mixer > div:first-child { flex:1 1 auto; display:flex; flex-direction:column; min-height:0; }
+    .col.mix .mixer .fase { flex:1 1 auto; height:auto; min-height:30px; max-height:150px; }
+    /* a cabine vira UM console: linha neon em cima, o DJ sem caixa própria,
+       as próximas com um contorno discreto */
+    .janela-pista { border:1px solid color-mix(in srgb, var(--neon) 30%, var(--linha));
+                    background:linear-gradient(180deg, rgba(40,14,48,.6), rgba(12,8,24,.7)) !important;
+                    box-shadow:inset 0 2px 0 color-mix(in srgb, var(--neon) 55%, transparent), 0 8px 28px rgba(0,0,0,.45); }
+    .janela-pista > .dj-painel { border:none; background:transparent !important; padding:0 4px; box-shadow:none; }
+    .janela-pista > .fila-cx { border-color:color-mix(in srgb, var(--lock) 40%, transparent); background:rgba(12,8,24,.7); }
     .janela-pista { height:auto; min-height:0; flex:none; margin-top:0; background:rgba(12,8,24,.55);
                     flex-direction:row; align-items:flex-end; justify-content:flex-start; gap:10px; padding:34px 10px 10px; }
-    .janela-pista > .dj-painel { width:min(660px, 58%); display:grid; align-content:end; gap:6px 10px;
-      grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);
-      grid-template-areas:"modos linha" "generos generos" "op nota" "prefs tecnica"; }
+    /* o DJ em 3 colunas e 2 linhas: é ELE quem dá a altura da cabine. As
+       próximas ficam por cima, à direita, rolando dentro do espaço dela —
+       antes a lista esticava a cabine e cortava o PITCH dos decks */
+    .janela-pista > .dj-painel { width:min(900px, 64%); display:grid; align-content:end; gap:6px 10px;
+      grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,1fr);
+      grid-template-areas:"modos linha op" "generos generos nota" "prefs prefs tecnica"; }
     .dj-painel .dj-modos { grid-area:modos; }
     .dj-painel .dj-linha { grid-area:linha; }
     .dj-painel .dj-generos { grid-area:generos; }
@@ -936,7 +963,7 @@
     .dj-painel #piloto-nota { grid-area:nota; align-self:center; }
     .dj-painel #piloto-tecnica { grid-area:tecnica; }
     .dj-painel .prefs { grid-area:prefs; }
-    .janela-pista > .fila-cx { margin-left:auto; width:min(380px, 34%); max-height:150px; position:relative; z-index:2;
+    .janela-pista > .fila-cx { position:absolute; right:10px; top:34px; bottom:10px; width:min(380px, 33%); z-index:2;
       display:flex; flex-direction:column; background:rgba(12,8,24,.84); }
     .janela-pista > .fila-cx .fila { max-height:none; flex:1 1 auto; min-height:0; }
   }
@@ -1351,6 +1378,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260923l"></script>
+<script type="module" src="./src/ui/app.js?v=20260923n"></script>
 </body>
 </html>
