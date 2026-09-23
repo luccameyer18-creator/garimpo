@@ -86,7 +86,8 @@ export function montarCena(el, { rotulo = null } = {}) {
   }
 
   function ajustar() {
-    dpr = Math.min(2, devicePixelRatio || 1);
+    // 1,5x basta pra uma cena que se mexe o tempo todo; 2x é o dobro de pixel
+    dpr = Math.min(1.5, devicePixelRatio || 1);
     const w = Math.round(el.clientWidth * dpr), h = Math.round(el.clientHeight * dpr);
     if (w === W && h === H) return;
     W = cv.width = w; H = cv.height = h;
@@ -99,13 +100,15 @@ export function montarCena(el, { rotulo = null } = {}) {
   let visivel = true;
   new IntersectionObserver((es) => { visivel = es[0]?.isIntersecting ?? true; }).observe(el);
 
-  let ultimoDrop = E.drop, tAntes = performance.now(), giro = 0, textoAntes = '';
+  let ultimoDrop = E.drop, tAntes = performance.now(), giro = 0, textoAntes = '', tRotulo = 0;
 
   function quadro(agora) {
     requestAnimationFrame(quadro);
     if (!visivel || document.hidden) return;
     const dt = Math.min(0.1, (agora - tAntes) / 1000);
     if (E.reduzido && agora - tAntes < 500) return;
+    // sem música a cena é só ambiente: 20 quadros por segundo bastam
+    if (!E.tocando && !confete.length && agora - tAntes < 50) return;
     tAntes = agora;
     if (!W || !H) { ajustar(); if (!W || !H) return; }
 
@@ -295,8 +298,11 @@ export function montarCena(el, { rotulo = null } = {}) {
     vi.addColorStop(0, 'rgba(0,0,0,0)'); vi.addColorStop(1, 'rgba(0,0,0,.55)');
     c.fillStyle = vi; c.fillRect(0, 0, W, H);
 
-    if (rot && rotulo) {
-      const tx = rotulo({ ...E, pessoas: gente.filter((p) => p.alfa > 0.5).length });
+    if (rot && rotulo && agora - tRotulo > 250) {
+      tRotulo = agora;
+      let pessoas = 0;
+      for (const p of gente) if (p.alfa > 0.5) pessoas++;
+      const tx = rotulo({ ...E, pessoas });
       if (tx !== textoAntes) { textoAntes = tx; rot.innerHTML = tx; }
     }
   }

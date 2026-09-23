@@ -23,7 +23,12 @@
  * O que cada técnica é, quando serve, e o roteiro.
  * `tempos` é a duração padrão; o escolhedor pode pedir outra.
  *
- * Passos: { em, faz }            ação num tempo exato
+ * Passos: { em, faz, diz?, porque?, mostra? }  ação num tempo exato
+ *   `diz`/`porque` são chaves de tradução da NARRAÇÃO: o que o DJ acabou de
+ *   fazer e por quê. `mostra` são os controles que ele mexeu ({s} = deck que
+ *   sai, {e} = deck que entra). É assim que o piloto ENSINA: a frase aparece
+ *   na barra do professor e o controle acende, no instante em que acontece.
+ *   Passo só com `diz` (sem `faz`) narra o começo de uma rampa.
  * Rampas: { de, ate, alvo, v0, v1 }  valor que desliza entre dois tempos
  * Alvos de rampa: 'xf' | 'fader:X' | 'filtro:X' | 'eq:X:banda' | 'eco:X'
  */
@@ -34,9 +39,11 @@ export const TECNICAS = {
     tempos: 32,
     roteiro: ({ sai, entra, xfSai, xfEntra }) => ({
       passos: [
-        { em: 0,  faz: (m) => m.kill(entra, 'grave', true) },
-        { em: 16, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); } },
-        { em: 30, faz: (m) => m.parar(sai) },
+        { em: 0,  faz: (m) => m.kill(entra, 'grave', true),
+          diz: 'n.graves.0', porque: 'n.graves.0p', mostra: ['kill-{e}-grave', 'xf'] },
+        { em: 16, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); },
+          diz: 'n.graves.16', porque: 'n.graves.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'] },
+        { em: 30, faz: (m) => m.parar(sai), diz: 'n.fim' },
       ],
       rampas: [
         { de: 0,  ate: 16, alvo: 'xf', v0: xfSai, v1: 0.5 },
@@ -52,9 +59,12 @@ export const TECNICAS = {
     roteiro: ({ sai, entra, xfSai, xfEntra }) => ({
       passos: [
         // quem entra começa abafado (passa-baixa) e sem grave
-        { em: 0,  faz: (m) => { m.kill(entra, 'grave', true); m.filtro(entra, -0.75); } },
-        { em: 16, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); } },
-        { em: 30, faz: (m) => { m.parar(sai); m.filtro(sai, 0); m.filtro(entra, 0); } },
+        { em: 0,  faz: (m) => { m.kill(entra, 'grave', true); m.filtro(entra, -0.75); },
+          diz: 'n.filtro.0', porque: 'n.filtro.0p', mostra: ['fil-{e}', 'kill-{e}-grave'] },
+        { em: 8, diz: 'n.filtro.8', porque: 'n.filtro.8p', mostra: ['fil-{s}'] },
+        { em: 16, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); },
+          diz: 'n.graves.16', porque: 'n.graves.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'] },
+        { em: 30, faz: (m) => { m.parar(sai); m.filtro(sai, 0); m.filtro(entra, 0); }, diz: 'n.fim' },
       ],
       rampas: [
         { de: 0,  ate: 16, alvo: 'xf', v0: xfSai, v1: 0.5 },
@@ -71,11 +81,13 @@ export const TECNICAS = {
     tempos: 16,
     roteiro: ({ sai, entra, xfEntra }) => ({
       passos: [
-        { em: 0,  faz: (m) => m.ecoDivisao(sai, 0.5) },
+        { em: 0,  faz: (m) => m.ecoDivisao(sai, 0.5),
+          diz: 'n.eco.0', porque: 'n.eco.0p', mostra: ['eco-{s}'] },
         // no tempo 8: fecha o fader de quem sai (o eco é pós-fader e segue
         // soando), e a outra entra inteira, de uma vez, no 1 do compasso
-        { em: 8,  faz: (m) => { m.fader(sai, 0); m.xf(xfEntra); m.kill(entra, 'grave', false); } },
-        { em: 14, faz: (m) => { m.eco(sai, 0); m.parar(sai); m.fader(sai, 1); } },
+        { em: 8,  faz: (m) => { m.fader(sai, 0); m.xf(xfEntra); m.kill(entra, 'grave', false); },
+          diz: 'n.eco.8', porque: 'n.eco.8p', mostra: ['vol-{s}', 'xf'] },
+        { em: 14, faz: (m) => { m.eco(sai, 0); m.parar(sai); m.fader(sai, 1); }, diz: 'n.fim' },
       ],
       rampas: [
         { de: 0, ate: 8, alvo: `eco:${sai}`, v0: 0, v1: 0.75 },
@@ -89,15 +101,16 @@ export const TECNICAS = {
     tempos: 24,
     roteiro: ({ sai, entra, xfSai, xfEntra }) => ({
       passos: [
-        { em: 0,  faz: (m) => { m.loop(sai, 8); m.kill(entra, 'grave', true); } },
-        { em: 16, faz: (m) => m.loop(sai, 4) },
+        { em: 0,  faz: (m) => { m.loop(sai, 8); m.kill(entra, 'grave', true); },
+          diz: 'n.loop.0', porque: 'n.loop.0p', mostra: ['kill-{e}-grave', 'xf'] },
+        { em: 16, faz: (m) => m.loop(sai, 4), diz: 'n.loop.16', porque: 'n.loop.16p', mostra: ['fil-{s}'] },
         { em: 20, faz: (m) => m.loop(sai, 2) },
         { em: 22, faz: (m) => m.loop(sai, 1) },
         // o corte: cai no 1, grave troca de lado, e o loop morre junto
         { em: 24, faz: (m) => {
           m.xf(xfEntra); m.kill(entra, 'grave', false); m.kill(sai, 'grave', true);
           m.semLoop(sai); m.parar(sai);
-        } },
+        }, diz: 'n.loop.24', porque: 'n.loop.24p', mostra: ['xf', 'kill-{e}-grave'] },
       ],
       rampas: [
         { de: 0, ate: 16, alvo: 'xf', v0: xfSai, v1: 0.5 },
@@ -113,10 +126,11 @@ export const TECNICAS = {
     tempos: 8,
     roteiro: ({ sai, entra, xfEntra }) => ({
       passos: [
+        { em: 0, diz: 'n.corte.0', porque: 'n.corte.0p', mostra: ['fil-{s}'] },
         { em: 8, faz: (m) => {
           m.xf(xfEntra); m.kill(entra, 'grave', false);
           m.parar(sai); m.filtro(sai, 0);
-        } },
+        }, diz: 'n.corte.8', porque: 'n.corte.8p', mostra: ['xf'] },
       ],
       rampas: [
         { de: 0, ate: 8, alvo: `filtro:${sai}`, v0: 0, v1: 0.6 },   // afina, sobe a tensão
@@ -130,9 +144,13 @@ export const TECNICAS = {
     tempos: 64,
     roteiro: ({ sai, entra, xfSai, xfEntra }) => ({
       passos: [
-        { em: 0,  faz: (m) => { m.kill(entra, 'grave', true); m.eq(entra, 'medio', 0.2); m.eq(entra, 'agudo', 0.3); } },
-        { em: 32, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); } },
-        { em: 62, faz: (m) => { m.parar(sai); for (const d of [sai, entra]) for (const b of ['medio', 'agudo']) m.eq(d, b, 0.5); } },
+        { em: 0,  faz: (m) => { m.kill(entra, 'grave', true); m.eq(entra, 'medio', 0.2); m.eq(entra, 'agudo', 0.3); },
+          diz: 'n.blend.0', porque: 'n.blend.0p', mostra: ['kill-{e}-grave', 'eq-{e}-medio', 'eq-{e}-agudo'] },
+        { em: 16, diz: 'n.blend.16', porque: 'n.blend.16p', mostra: ['eq-{e}-agudo', 'eq-{s}-agudo'] },
+        { em: 32, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); },
+          diz: 'n.blend.32', porque: 'n.graves.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave', 'eq-{e}-medio'] },
+        { em: 62, faz: (m) => { m.parar(sai); for (const d of [sai, entra]) for (const b of ['medio', 'agudo']) m.eq(d, b, 0.5); },
+          diz: 'n.fim' },
       ],
       rampas: [
         { de: 0,  ate: 16, alvo: 'xf', v0: xfSai, v1: 0.5 },
@@ -256,7 +274,8 @@ export function escolherTecnica({ saiFaixa, entraFaixa, anterior = null, estilo 
  * @param {function} dorme  espera interrompível; devolve false se o usuário assumiu
  * @returns {Promise<boolean>} false se foi interrompido
  */
-export async function executar(nomeTecnica, { m, dorme, sai, entra, bpm, tempos = null, aoPasso = () => {} }) {
+export async function executar(nomeTecnica, { m, dorme, sai, entra, bpm, tempos = null, aoPasso = () => {},
+                                              aoFalar = () => {} }) {
   const tec = TECNICAS[nomeTecnica] || TECNICAS.graves;
   const total = tempos || tec.tempos;
   const escala = total / tec.tempos;   // o escolhedor pode pedir versão mais curta ou longa
@@ -277,7 +296,13 @@ export async function executar(nomeTecnica, { m, dorme, sai, entra, bpm, tempos 
 
     // passos cujo tempo chegou
     while (proximo < passos.length && passos[proximo].em <= tempo) {
-      try { passos[proximo].faz(m); } catch { /* um passo ruim não derruba a transição */ }
+      const p = passos[proximo];
+      try { p.faz?.(m); } catch { /* um passo ruim não derruba a transição */ }
+      if (p.diz) {
+        const vars = { s: sai, e: entra };
+        const troca = (id) => id.replace('{s}', sai).replace('{e}', entra);
+        aoFalar({ diz: p.diz, porque: p.porque || null, vars, mostra: (p.mostra || []).map(troca) });
+      }
       proximo++;
     }
     // rampas em curso

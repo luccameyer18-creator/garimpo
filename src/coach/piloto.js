@@ -60,6 +60,11 @@ export class Piloto extends EventTarget {
     this.dispatchEvent(new CustomEvent('passo', { detail: { passo, ...extra } }));
   }
 
+  /** Narração pra quem está aprendendo: o que fez, por quê, e em qual controle. */
+  #narra(diz, { porque = null, vars = {}, mostra = [] } = {}) {
+    this.dispatchEvent(new CustomEvent('narra', { detail: { diz, porque, vars, mostra } }));
+  }
+
   /** Você encostou num controle: o piloto sai de cena imediatamente. */
   assumirControle(motivo = 'você assumiu') {
     // `this.parar` também: quem ouve 'parado' chama pararPiloto(), que chama
@@ -150,6 +155,7 @@ export class Piloto extends EventTarget {
     const d = this.decks;
     this.#diz('sincronizando', { deck: entra });
     this.sincronizar(entra);
+    this.#narra('n.sync', { porque: 'n.sync.p', vars: { e: entra, s: sai }, mostra: [`sync-${entra}`] });
     if (!await this.#dorme(400)) return false;
 
     d[entra].seek(this.#entrada(d[entra]));
@@ -159,6 +165,7 @@ export class Piloto extends EventTarget {
 
     this.encaixar();
     this.#diz('encaixando');
+    this.#narra('n.encaixar', { porque: 'n.encaixar.p', vars: { e: entra }, mostra: ['b-encaixar', 'fase'] });
     if (!await this.#dorme(1200)) return false;
 
     const tecnica = faixa?.tecnica && TECNICAS[faixa.tecnica]
@@ -169,11 +176,16 @@ export class Piloto extends EventTarget {
     const tempos = faixa?.tempos || Math.max(8, Math.round(TECNICAS[tecnica].tempos * est.escala / 4) * 4);
     this.ultimaTecnica = tecnica;
     this.#diz('tecnica', { tecnica: TECNICAS[tecnica].nome, tempos, porque: faixa?.porqueIA || null });
+    this.#narra('n.tecnica', {
+      porque: faixa?.porqueIA ? null : 'n.tecnica.p',
+      vars: { t: TECNICAS[tecnica].nome, n: tempos, est: est.nome, q: TECNICAS[tecnica].quando, ia: faixa?.porqueIA || '' },
+    });
 
     const ok = await executar(tecnica, {
       m: this.#acoes(), dorme: (ms) => this.#dorme(ms),
       sai, entra, bpm: d[entra].bpmEfetivo, tempos,
       aoPasso: ({ tempo, de }) => this.dispatchEvent(new CustomEvent('progresso', { detail: { tempo, de, tecnica } })),
+      aoFalar: (x) => this.#narra(x.diz, x),
     });
     if (!ok) return false;
 
@@ -185,6 +197,7 @@ export class Piloto extends EventTarget {
     // o andamento volta devagar pro natural da faixa que entrou
     if (est.caminha) {
       this.#diz('bpm caminhando', { deck: entra });
+      this.#narra('n.caminha', { porque: 'n.caminha.p', vars: { e: entra }, mostra: [`pitch-${entra}`] });
       if (!await caminharBpm(d[entra], { dorme: (ms) => this.#dorme(ms) })) return false;
     }
     return true;

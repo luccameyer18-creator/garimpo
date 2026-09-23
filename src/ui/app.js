@@ -191,6 +191,7 @@ function montarVista(id) {
   v.auto.id = 'auto-' + id;
   v.finos[0].id = 'fino-menos-' + id;
   v.finos[1].id = 'fino-mais-' + id;
+  v.fader.id = 'pitch-' + id;
   vistas[id] = v;
   const d = decks[id];
 
@@ -643,6 +644,23 @@ function quadro() {
 }
 
 let ultimoProf = 0, ultimaLista = '', apontados = [];
+
+/**
+ * A última coisa que o DJ automático disse (ver `#narra` no piloto.js e os
+ * campos `diz`/`porque`/`mostra` das técnicas). Vira um item do professor:
+ * mesma barra, mesma luz no controle — o DJ ensina pelo mesmo canal.
+ */
+let narracao = null, nNarracao = 0;
+function itemNarracao(n) {
+  return {
+    // o número muda a cada fala: é o que faz a luz reacender no controle novo
+    id: 'dj:' + n.k,
+    cor: 'agora',
+    fala: '🎧 ' + t(n.diz, n.vars),
+    porque: n.porque ? t(n.porque, n.vars) : (n.vars?.ia ? 'Jev: ' + n.vars.ia : null),
+    apontar: (n.mostra || []).map((id) => ({ id, rotulo: t('n.rot') })),
+  };
+}
 // declarado aqui e montado no fim do arquivo: o professor roda antes disso
 let mascote = null;
 
@@ -661,7 +679,11 @@ function rodarProfessor() {
   const est = montarEstado();
   rodarAuto(est);
 
-  const itens = plano(est);
+  let itens = plano(est);
+  // com o DJ automático tocando, a barra vira a NARRAÇÃO dele: o que acabou
+  // de fazer, por quê, e o controle aceso. As regras do professor ficam
+  // quietas — senão ele reclamaria dos graves que o próprio DJ está trocando.
+  if (piloto?.ativo && narracao) itens = [itemNarracao(narracao)];
 
   // o Garimpeiro: lâmpada na cor do conselho mais urgente, e dança no BPM
   // do deck que está no ar — sem precisar ler texto
@@ -1497,6 +1519,19 @@ function garantirPiloto() {
     if (passo === 'fim do set' || passo === 'parado' || erro) pararPiloto();
   });
   piloto.addEventListener('crossfader', (e) => { $('xf').value = e.detail.x; });
+  piloto.addEventListener('narra', (e) => {
+    narracao = { ...e.detail, k: ++nNarracao };
+    ultimoProf = 0;                  // mostra já, sem esperar o próximo ciclo
+  });
+  // esperando a hora certa também é aula: diz o que ele está esperando
+  piloto.addEventListener('passo', (e) => {
+    const { passo, seg, tipo, deck } = e.detail;
+    if (passo === 'esperando') {
+      const k = narracao?.diz === 'n.espera' ? narracao.k : ++nNarracao;
+      narracao = { diz: 'n.espera', porque: 'n.espera.p', k,
+                   vars: { s: seg, d: deck, m: t(tipo === 'quebra' ? 'n.espera.quebra' : 'n.espera.frase') } };
+    } else if (passo === 'parado' || passo === 'fim do set') narracao = null;
+  });
   piloto.addEventListener('tocou', (e) => registrarTocada(e.detail.faixa));
   /**
    * Mostra QUAL técnica ele está fazendo e QUEM decidiu (Jev ou o estilo).
