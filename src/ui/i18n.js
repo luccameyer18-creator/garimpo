@@ -16,6 +16,13 @@
  */
 
 const PT = {
+  'fila.abre': 'abre o set',
+  'bib.tudoChip': 'tudo', 'bib.tudo': 'todos os gêneros', 'bib.generos': '{n} gênero(s) marcado(s) — é daqui que o DJ toca',
+  'bib.soFavoritas': 'só favoritas ({n}) — o DJ toca só elas',
+  'bib.favoritar': 'favoritar', 'bib.desfavoritar': 'tirar das favoritas',
+  'bib.o.embaralhar': 'embaralhar — toque de novo pra embaralhar outra vez', 'bib.o.favoritas': 'só favoritas',
+  'bib.o.tom': 'tom', 'bib.o.combina': 'combina',
+  'bib.djUsaLista': 'o DJ toca do que está selecionado na lista de músicas',
   'estilo.dica': 'o jeito de tocar — cada escola de DJ prefere técnicas diferentes',
   'piloto.tempos': 'tempos',
   'piloto.porEstilo': 'escolhido pelo estilo',
@@ -183,6 +190,13 @@ const PT = {
 };
 
 const EN = {
+  'fila.abre': 'opens the set',
+  'bib.tudoChip': 'all', 'bib.tudo': 'all genres', 'bib.generos': '{n} genre(s) ticked — the DJ plays from here',
+  'bib.soFavoritas': 'favorites only ({n}) — the DJ plays only these',
+  'bib.favoritar': 'add to favorites', 'bib.desfavoritar': 'remove from favorites',
+  'bib.o.embaralhar': 'shuffle — tap again to reshuffle', 'bib.o.favoritas': 'favorites only',
+  'bib.o.tom': 'key', 'bib.o.combina': 'fits',
+  'bib.djUsaLista': 'the DJ plays from whatever is selected in the track list',
   'estilo.dica': 'the way it plays — each DJ school prefers different techniques',
   'piloto.tempos': 'beats',
   'piloto.porEstilo': 'picked by the style',
@@ -349,6 +363,13 @@ const EN = {
 };
 
 const ES = {
+  'fila.abre': 'abre el set',
+  'bib.tudoChip': 'todo', 'bib.tudo': 'todos los géneros', 'bib.generos': '{n} género(s) marcado(s) — de acá toca el DJ',
+  'bib.soFavoritas': 'solo favoritas ({n}) — el DJ toca solo esas',
+  'bib.favoritar': 'agregar a favoritas', 'bib.desfavoritar': 'sacar de favoritas',
+  'bib.o.embaralhar': 'mezclar — tocá de nuevo para volver a mezclar', 'bib.o.favoritas': 'solo favoritas',
+  'bib.o.tom': 'tono', 'bib.o.combina': 'pega',
+  'bib.djUsaLista': 'el DJ toca de lo que está seleccionado en la lista',
   'estilo.dica': 'la forma de tocar — cada escuela de DJ prefiere técnicas distintas',
   'piloto.tempos': 'tiempos',
   'piloto.porEstilo': 'elegido por el estilo',

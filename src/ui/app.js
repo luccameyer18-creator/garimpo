@@ -9,14 +9,15 @@ import { Mixer, erroDeFase } from '../mix/mixer.js';
 import { plano, autoajuste } from '../coach/guia.js';
 import { montarFila, resumo as resumoFila } from '../coach/fila.js';
 import { momentos, proximoMomento, faltaPara } from '../coach/momentos.js';
-import { juntarCandidatas, montarSet, resumoSet, PILHAS as PILHAS_SET } from '../coach/setlist.js';
+import { montarSet, resumoSet } from '../coach/setlist.js';
 import * as crate from '../sources/crate.js';
 import { garimpar } from '../sources/garimpar.js';
 import { carregarSemente } from '../sources/semente.js';
 import { Piloto } from '../coach/piloto.js';
-import { ESTILOS } from '../coach/tecnicas.js';
+import { ESTILOS, TECNICAS } from '../coach/tecnicas.js';
 import { decidirSet, aplicarDecisoes } from '../coach/jev.js';
 import { montarMascote } from './mascote.js';
+import * as bib from './biblioteca.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
   keyCompatible, resolveStreamUrl, CRATES, crateBr,
@@ -986,7 +987,17 @@ function atualizarCompat() {
     ? `mixa com ${base.bpm} ${base.camelot || ''}` : 'carregue uma faixa';
 }
 
+/**
+ * Só a busca MAIS RECENTE desenha a lista.
+ *
+ * As buscas são assíncronas e levam tempos diferentes (uma varredura do acervo
+ * custa ~775 ms). Sem esta trava, trocar de gênero rápido fazia uma busca
+ * antiga terminar depois e sobrescrever a nova — medido: a lista mostrou 300
+ * faixas no modo "só favoritas", que tinha 3.
+ */
+let pedidoLista = 0;
 async function carregarLista(fn) {
+  const meu = ++pedidoLista;
   const lista = $('lista');
   lista.innerHTML = '<div style="color:var(--mut);padding:8px">buscando…</div>';
   try {
@@ -995,6 +1006,7 @@ async function carregarLista(fn) {
     // "t is not a function" — e so parou depois que a estrela passou a chamar
     // t() ali dentro, entao o bug nasceu longe da causa.
     const faixas = (await fn()).filter((x) => !x.isLongMix);
+    if (meu !== pedidoLista) return;      // chegou atrasada: já pediram outra
     lista.innerHTML = '';
     if (!faixas.length) { lista.innerHTML = '<div style="color:var(--mut);padding:8px">nada aqui</div>'; return; }
     for (const faixa of faixas) {
@@ -1021,14 +1033,19 @@ async function carregarLista(fn) {
       el.querySelector('.pa').onclick = (e) => { e.stopPropagation(); por('A'); };
       el.querySelector('.pb').onclick = (e) => { e.stopPropagation(); por('B'); };
 
-      // estrela: marca a faixa como obrigatória no set do professor
+      // estrela: FAVORITA. O modo favoritas mostra só elas — e o DJ toca só elas
       const estrela = el.querySelector('.fixar');
       const pintarEstrela = () => {
-        const on = fixas.some((f) => f.id === faixa.id);
+        const on = bib.ehFavorita(faixa.id);
         estrela.classList.toggle('lig', on);
-        estrela.title = t(on ? 'pref.fixar.tirar' : 'pref.fixar.por');
+        estrela.title = t(on ? 'bib.desfavoritar' : 'bib.favoritar');
       };
-      estrela.onclick = (e) => { e.stopPropagation(); alternarFixa(faixa); pintarEstrela(); };
+      estrela.onclick = (e) => {
+        e.stopPropagation();
+        bib.alternarFavorita(faixa);
+        pintarEstrela();
+        if (bib.estado.ordem === 'favoritas') recarregar(); else pintarBiblioteca();
+      };
       el.__pintarEstrela = pintarEstrela;
       pintarEstrela();
 
@@ -1053,79 +1070,76 @@ async function carregarLista(fn) {
 }
 
 /**
- * UM so jeito de escolher musica: todas as pilhas viram chip.
- *
- * Antes os generos eletronicos moravam num <select> e as crates brasileiras e
- * latinas eram chips — duas gramaticas pra mesma acao, e a pergunta obvia foi
- * "por que esses nao sao iguais aos novos?". Agora sao.
- *
- * Generos eletronicos vao por GENERO na API; Brasil e America Latina vao por
- * BUSCA DE TEXTO, porque o Audius nao tem genero pra funk carioca, pagode nem
- * reggaeton. A diferenca fica escondida atras do chip, que e onde ela pertence.
+ * A biblioteca: UM menu de gêneros (seleção múltipla) que serve à lista E ao
+ * DJ, busca, modo favoritas e ordem escolhível. A lógica mora em
+ * biblioteca.js; aqui só desenha e liga os cliques.
  */
-/**
- * Cada pilha tem uma CHAVE única e um rótulo.
- *
- * Eram identificadas pelo rótulo, e "Funk" existe duas vezes: o gênero
- * eletrônico do Audius e a crate de funk brasileiro. Os dois chips acendiam
- * juntos e o clique sempre carregava o primeiro. Chave prefixada pelo grupo
- * resolve, e o rótulo continua sendo só "Funk" na tela, que é como se fala.
- */
-const PILHAS = [
-  { grupo: 'app.grupo.eletronico',
-    itens: GENRES.map((g) => ({ chave: 'gen:' + g, nome: g,
-      carregar: () => daCrateOuRede('gen:' + g, () => trending({ genre: g, limit: 40 })) })) },
-  { grupo: 'app.grupo.brasil',
-    itens: CRATES.filter((c) => c.reg === 'BR')
-      .map((c) => ({ chave: 'br:' + c.nome, nome: c.nome,
-        carregar: () => daCrateOuRede('br:' + c.nome, () => crateBr(c.nome, { limite: 40 })) })) },
-  { grupo: 'app.grupo.latino',
-    itens: CRATES.filter((c) => c.reg === 'LAT')
-      .map((c) => ({ chave: 'lat:' + c.nome, nome: c.nome,
-        carregar: () => daCrateOuRede('lat:' + c.nome, () => crateBr(c.nome, { limite: 40 })) })) },
-];
+let tBusca = null;
 
-/**
- * Uma pilha vem do ACERVO LOCAL quando ele já tem material dela; senão, da rede.
- *
- * O acervo é instantâneo e funciona sem internet, mas só existe depois de
- * garimpar. O limiar de 12 é pra não mostrar uma lista raquítica só porque uma
- * varredura foi interrompida no meio dessa pilha — abaixo disso, a rede dá uma
- * resposta melhor.
- */
-async function daCrateOuRede(chave, daRede) {
-  try {
-    const local = await crate.buscar({ pilha: chave, limite: 150, amostrar: true });
-    if (local.length >= 12) return local;
-  } catch { /* sem IndexedDB: segue pela rede, como sempre foi */ }
-  return daRede();
+/** Nota de "combina com o que está tocando", pra ordem `combina`. */
+function pontuarCombina(faixa) {
+  const v = avaliar(faixa);
+  return !v ? 0 : v.classe === 'otima' ? 3 : v.classe === 'boa' ? 2 : 1;
 }
 
-let pilhaAtual = 'gen:House';
-const carregarPilha = (chave) => {
-  const it = PILHAS.flatMap((p) => p.itens).find((x) => x.chave === chave);
-  if (!it) return;
-  pilhaAtual = chave;
-  for (const b of $('crates').querySelectorAll('button')) b.classList.toggle('lig', b.dataset.pilha === chave);
-  carregarLista(it.carregar);
-};
+/**
+ * Os chips acendem NA HORA; a varredura espera 150 ms sem clique.
+ *
+ * Cada varredura do acervo custa ~775 ms, e cinco cliques rápidos disparavam
+ * cinco — 3,9 s até a lista assentar, mesmo com as quatro primeiras sendo
+ * descartadas no fim. Assim a resposta visual é imediata e só a última
+ * seleção custa uma varredura.
+ */
+let tRecarregar = null;
+function recarregar() {
+  pintarBiblioteca();
+  clearTimeout(tRecarregar);
+  tRecarregar = setTimeout(() =>
+    carregarLista(() => bib.faixasDaLista({ texto: $('busca').value, pontuarCombina })), 150);
+}
 
-$('crates').innerHTML = PILHAS.map((p) =>
-  `<div class="grupo-chips"><span class="rot-chips" data-i18n="${p.grupo}">${t(p.grupo)}</span>` +
-  p.itens.map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('') +
-  '</div>').join('');
+function pintarBiblioteca() {
+  const sel = new Set(bib.estado.selecionadas);
+  for (const b of $('crates').querySelectorAll('button[data-pilha]')) {
+    b.classList.toggle('lig', b.dataset.pilha === '*' ? !sel.size : sel.has(b.dataset.pilha));
+  }
+  for (const b of $('ordem').querySelectorAll('button[data-ordem]')) {
+    const ativo = b.dataset.ordem === bib.estado.ordem;
+    b.classList.toggle('lig', ativo);
+    b.dataset.seta = ativo && ['bpm', 'tom', 'nome'].includes(b.dataset.ordem)
+      ? (bib.estado.decrescente ? '↓' : '↑') : '';
+  }
+  const n = sel.size;
+  $('bib-resumo').textContent = bib.estado.ordem === 'favoritas'
+    ? t('bib.soFavoritas', { n: bib.estado.favoritas.length })
+    : n ? t('bib.generos', { n }) : t('bib.tudo');
+}
+
+$('crates').innerHTML =
+  `<div class="grupo-chips"><button data-pilha="*" class="chip-tudo">${t('bib.tudoChip')}</button></div>` +
+  bib.GRUPOS.map((g) =>
+    `<div class="grupo-chips"><span class="rot-chips" data-i18n="${g.grupo}">${t(g.grupo)}</span>` +
+    g.itens.map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('') +
+    '</div>').join('');
 $('crates').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-pilha]');
-  if (b) carregarPilha(b.dataset.pilha);
+  if (!b) return;
+  bib.alternarGenero(b.dataset.pilha);
+  // escolher gênero sai do modo favoritas: a pessoa quer ver o gênero
+  if (bib.estado.ordem === 'favoritas') bib.escolherOrdem('embaralhar');
+  recarregar();
 });
 
+$('ordem').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-ordem]');
+  if (!b) return;
+  bib.escolherOrdem(b.dataset.ordem);
+  recarregar();
+});
 
-let tBusca = null;
-$('busca').oninput = (e) => {
+$('busca').oninput = () => {
   clearTimeout(tBusca);
-  const q = e.target.value.trim();
-  if (!q) return carregarPilha(pilhaAtual);
-  tBusca = setTimeout(() => carregarLista(() => search(q, { limit: 40 })), 350);
+  tBusca = setTimeout(recarregar, 300);
 };
 
 // ─────────────────────────── fila do set ───────────────────────────
@@ -1161,9 +1175,15 @@ function desenharFila() {
      */
     const dificil = (faixa.nivel ?? 0) >= 2;
     d.classList.toggle('dificil', dificil);
-    d.querySelector('.a').textContent =
-      `${faixa.bpm} ${faixa.camelot || ''} · ${faixa.pitch >= 0 ? '+' : ''}` +
-      `${(faixa.pitch * 100).toFixed(1)}% · ${dificil ? t('fila.soAndamento') : faixa.motivo}`;
+    // a primeira abre o set: não há de onde ela venha, então nem pitch nem motivo
+    const comoEntra = i === 0 ? t('fila.abre')
+      : `${faixa.pitch >= 0 ? '+' : ''}${((faixa.pitch || 0) * 100).toFixed(1)}% · ` +
+        (dificil ? t('fila.soAndamento') : (faixa.motivo || ''));
+    // a técnica que vai ser usada pra ENTRAR com esta faixa — quem está
+    // aprendendo lê o nome e ouve a técnica acontecendo
+    const tec = i > 0 && faixa.tecnica && TECNICAS[faixa.tecnica]
+      ? ` · → ${TECNICAS[faixa.tecnica].nome}${faixa.tempos ? ' ' + faixa.tempos : ''}` : '';
+    d.querySelector('.a').textContent = `${faixa.bpm} ${faixa.camelot || ''} · ${comoEntra}${tec}`;
     d.querySelector('.destino').onclick = async () => {
       try { await ligar(); } catch { return; }
       await garantirRodando();
@@ -1221,7 +1241,8 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyB') { e.preventDefault(); decks.B?.alternar(); }
 });
 
-carregarLista(() => trending({ genre: 'House', limit: 40 }));
+// primeira carga: a seleção e a ordem que a pessoa deixou da última vez
+recarregar();
 qd('e-ver').textContent = VERSAO;
 
 // ─────────────────────────── diagnóstico ───────────────────────────
@@ -1461,15 +1482,16 @@ $('b-piloto').onclick = async () => {
   $('piloto-nota').style.color = 'var(--neon)';
   $('piloto-nota').textContent = 'garimpando faixas…';
   try {
-    const cands = await candidatasDoSet(pilhasEscolhidas());
-    if (!cands.length && !fixas.length) throw new Error(t('pref.semFaixas'));
+    // o DJ toca do MESMO lugar que a lista mostra: gêneros marcados, ou favoritas
+    const cands = await bib.candidatasDoSet();
+    if (cands.length < 2) throw new Error(t('pref.semFaixas'));
     const s = montarSet(cands, {
       minutos: Number($('pref-min').value),
       energia: $('pref-energia').value,
-      obrigatorias: fixas,
+      obrigatorias: [],
       recentes: jaTocadas,
       // com faixas escolhidas, quem abre o set é a primeira delas, não o deck
-      semente: fixas.length ? null : (referencia()?.bpm ? referencia() : null),
+      semente: referencia()?.bpm ? referencia() : null,
     });
     if (s.fila.length < 2) throw new Error(t('pref.poucas'));
 
@@ -1559,100 +1581,12 @@ traduzirDOM();
 // ──────────────── o que o professor vai tocar ────────────────
 
 /**
- * Duas escolhas, e elas respondem a coisas diferentes.
- *
- * GÊNEROS limitam o pote de onde ele garimpa. Marcar só Disco e House faz um
- * set de pista clássico; marcar Funk BR e Brega faz outro. Nenhum marcado seria
- * um pote vazio, então "nenhum" significa "todos" — é o que a pessoa quer dizer
- * quando desmarca tudo e aperta play.
- *
- * FAIXAS FIXAS são as músicas que ele TEM que tocar. Não entram empilhadas no
- * começo: o montador encaixa cada uma no ponto em que ela cabe de tom e
- * andamento, e usa faixas de ligação pra chegar nelas. A que não couber em
- * lugar nenhum é reportada com o motivo, em vez de ser enfiada no meio.
- *
- * As duas ficam no localStorage, porque quem escolheu 8 gêneros não quer
- * escolher de novo amanhã.
+ * O painel ⚙ do DJ ficou só com o que não cabe na biblioteca: esquecer o que
+ * já tocou. Os gêneros e as músicas do set agora se escolhem NA LISTA — um
+ * menu só pra navegar e pra dizer ao DJ o que tocar.
  */
-let fixas = [];
-try { fixas = JSON.parse(localStorage.getItem('garimpo.fixas') || '[]'); } catch {}
-
-function guardarFixas() {
-  try { localStorage.setItem('garimpo.fixas', JSON.stringify(fixas)); } catch {}
-}
-
-function alternarFixa(faixa) {
-  const i = fixas.findIndex((f) => f.id === faixa.id);
-  if (i >= 0) fixas.splice(i, 1);
-  else if (faixa.bpm && faixa.camelot) fixas.push(faixa);
-  else { $('piloto-nota').textContent = t('pref.semDados'); return; }
-  guardarFixas();
-  desenharFixas();
-}
-
-function desenharFixas() {
-  const cx = $('fixas');
-  if (!cx) return;
-  cx.innerHTML = fixas.length
-    ? fixas.map((f, i) =>
-        `<div class="fixa" data-i="${i}"><b>${i + 1}</b> ${f.title.slice(0, 26)}` +
-        `<span style="opacity:.7"> ${f.bpm} ${f.camelot}</span>` +
-        `<button class="x" title="${t('pref.fixar.tirar')}">×</button></div>`).join('')
-    : `<div class="vazio">${t('pref.fixas.vazio')}</div>`;
-  for (const el of cx.querySelectorAll('.fixa .x')) {
-    el.onclick = () => {
-      fixas.splice(Number(el.parentElement.dataset.i), 1);
-      guardarFixas(); desenharFixas(); repintarLista();
-    };
-  }
-  $('b-prefs').classList.toggle('lig', fixas.length > 0 || pilhasEscolhidas() !== null);
-}
-
-let pilhasLig = null;
-try {
-  const g = JSON.parse(localStorage.getItem('garimpo.pilhas') || 'null');
-  if (Array.isArray(g)) pilhasLig = new Set(g);
-} catch {}
-
-/** null = todas. Desmarcar tudo também significa todas: pote vazio não é escolha. */
-function pilhasEscolhidas() {
-  if (!pilhasLig || !pilhasLig.size || pilhasLig.size === PILHAS_SET.length) return null;
-  return [...pilhasLig];
-}
-
-function desenharPilhas() {
-  const cx = $('pilhas');
-  cx.innerHTML = PILHAS_SET.map((p) =>
-    `<button data-p="${p.nome}" class="${!pilhasLig || pilhasLig.has(p.nome) ? 'lig' : ''}">${p.nome}</button>`).join('');
-  for (const b of cx.children) {
-    b.onclick = () => {
-      if (!pilhasLig) pilhasLig = new Set(PILHAS_SET.map((x) => x.nome));
-      const n = b.dataset.p;
-      pilhasLig.has(n) ? pilhasLig.delete(n) : pilhasLig.add(n);
-      try { localStorage.setItem('garimpo.pilhas', JSON.stringify([...pilhasLig])); } catch {}
-      desenharPilhas(); desenharFixas();
-    };
-  }
-}
-
-$('b-prefs').onclick = () => {
-  const p = $('prefs');
-  p.hidden = !p.hidden;
-  if (!p.hidden) { desenharPilhas(); desenharFixas(); }
-};
-$('b-pilhas-todos').onclick = () => {
-  pilhasLig = null;
-  try { localStorage.removeItem('garimpo.pilhas'); } catch {}
-  desenharPilhas(); desenharFixas();
-};
-$('b-pilhas-nenhum').onclick = () => {
-  pilhasLig = new Set();
-  try { localStorage.setItem('garimpo.pilhas', '[]'); } catch {}
-  desenharPilhas(); desenharFixas();
-};
-desenharPilhas();
-desenharFixas();
-window.addEventListener('idioma', () => { desenharPilhas(); desenharFixas(); repintarLista(); });
+$('b-prefs').onclick = () => { $('prefs').hidden = !$('prefs').hidden; };
+window.addEventListener('idioma', () => { pintarBiblioteca(); repintarLista(); });
 
 
 // ──────────── memória do que já tocou, e o botão de pular ────────────
@@ -1817,32 +1751,6 @@ window.addEventListener('idioma', () => {
 
 // ─────────────────────── acervo local (garimpo) ───────────────────────
 
-/**
- * Candidatas pro set: acervo local primeiro, rede como reserva.
- *
- * Com o acervo cheio isto é a diferença entre escolher entre ~100 faixas e
- * escolher entre milhares — e é o que faz o set de 60 min existir sem repetir.
- */
-async function candidatasDoSet(pilhas) {
-  try {
-    const escolhidas = pilhas
-      ? PILHAS_SET.filter((p) => pilhas.includes(p.nome)).map((p) => p.chave || p.nome)
-      : null;
-    // AMOSTRA espalhada: as primeiras N do cursor eram sempre o mesmo canto
-    // do acervo, e um set de 60 min saiu inteiro entre 100 e 110 BPM
-    const local = [];
-    const filtro = { bpmMin: 100, bpmMax: 150, amostrar: true };
-    if (escolhidas?.length) {
-      for (const ch of escolhidas) local.push(...await crate.buscar({ ...filtro, pilha: ch, limite: 900 }));
-    } else {
-      local.push(...await crate.buscar({ ...filtro, limite: 5000 }));
-    }
-    const bons = local.filter((f) => f.duration >= 90 && f.duration <= 420);
-    if (bons.length >= 40) return bons;
-  } catch { /* sem acervo, vai pela rede */ }
-  return juntarCandidatas({ pilhas });
-}
-
 let cavando = null;
 
 async function mostrarAcervo() {
@@ -1879,7 +1787,7 @@ $('b-garimpar').onclick = async () => {
   b.classList.remove('lig'); b.textContent = t('acervo.garimpar');
   await mostrarAcervo();
   // com acervo novo, recarrega a pilha em que a pessoa está
-  carregarPilha(pilhaAtual);
+  recarregar();
 };
 
 /**
@@ -1900,7 +1808,7 @@ $('b-garimpar').onclick = async () => {
     },
   });
   await mostrarAcervo();
-  if (r.carregou && r.novas) carregarPilha(pilhaAtual);
+  if (r.carregou && r.novas) recarregar();
 })();
 
 mostrarAcervo();

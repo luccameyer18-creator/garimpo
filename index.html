@@ -295,6 +295,14 @@
   #b-garimpar.lig { border-color:var(--neon); color:var(--neon);
                     box-shadow:0 0 10px rgba(255,78,205,.3); }
 
+  /* ordem da lista: embaralhar, favoritas, BPM, tom, nome, combina */
+  .ordem { display:flex; gap:3px; flex-wrap:wrap; }
+  .ordem button { flex:1 1 auto; padding:4px 6px; font:700 9.5px ui-monospace,monospace; border-radius:6px; }
+  .ordem button.lig { border-color:var(--acc); color:var(--acc); box-shadow:0 0 10px rgba(76,201,240,.3); }
+  .ordem button[data-seta]:not([data-seta=""])::after { content:attr(data-seta); margin-left:3px; }
+  #bib-resumo { font-size:9.5px; }
+  .crates .chip-tudo { font-weight:800; }
+
   .crates { display:flex; flex-direction:column; gap:3px; max-height:132px; overflow-y:auto;
             padding-right:2px; flex:none; }
   .grupo-chips { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
@@ -628,14 +636,7 @@
         <button id="b-prefs" data-i18n-attr="title:pref.abrir" title="escolher o que ele vai tocar">⚙</button>
       </div>
       <div class="prefs" id="prefs" hidden>
-        <div class="rot-chips" data-i18n="pref.generos">gêneros que ele pode usar</div>
-        <div class="pilhas" id="pilhas"></div>
-        <div class="prefs-linha">
-          <button id="b-pilhas-todos" data-i18n="pref.todos">todos</button>
-          <button id="b-pilhas-nenhum" data-i18n="pref.nenhum">nenhum</button>
-        </div>
-        <div class="rot-chips" data-i18n="pref.fixas">faixas que ele tem que tocar</div>
-        <div class="fixas" id="fixas"></div>
+        <div class="rot" data-i18n="bib.djUsaLista" style="margin:0">o DJ toca do que está selecionado na lista de músicas</div>
         <div class="prefs-linha">
           <button id="b-esquecer" data-i18n="pref.esquecer">esquecer o que já tocou</button>
         </div>
@@ -647,8 +648,17 @@
         <span id="acervo-n" class="rot" style="margin:0">—</span>
         <button id="b-garimpar" data-i18n="acervo.garimpar">garimpar mais</button>
       </div>
-      <div class="crates" id="crates"></div>
       <input type="text" id="busca" placeholder="buscar por nome…" data-i18n-attr="placeholder:app.buscar">
+      <div class="crates" id="crates"></div>
+      <div class="ordem" id="ordem">
+        <button data-ordem="embaralhar" data-i18n-attr="title:bib.o.embaralhar">🔀</button>
+        <button data-ordem="favoritas" data-i18n-attr="title:bib.o.favoritas">★</button>
+        <button data-ordem="bpm">BPM</button>
+        <button data-ordem="tom" data-i18n="bib.o.tom">tom</button>
+        <button data-ordem="nome">A–Z</button>
+        <button data-ordem="combina" data-i18n="bib.o.combina">combina</button>
+      </div>
+      <div class="rot" id="bib-resumo" style="margin:0"></div>
       <div class="lista" id="lista"></div>
       <div class="creditos" id="creditos"></div>
       <button id="b-arquivo" style="font-size:10px;font-weight:600" data-i18n="app.arquivo">usar um arquivo meu</button>

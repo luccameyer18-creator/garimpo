@@ -100,6 +100,41 @@ export async function contar() {
  * Varre com cursor em vez de carregar tudo: com 10 mil faixas, `getAll()`
  * traria ~5 MB pra memória só pra jogar fora 9900 delas.
  */
+/**
+ * Várias pilhas numa PASSADA SÓ, com amostra separada por pilha.
+ *
+ * Cada varredura do acervo custa ~775 ms com 39 mil faixas, e a biblioteca
+ * fazia uma por gênero marcado: cinco gêneros eram quatro segundos de espera.
+ * Aqui é uma passada pra todos. E a amostra é POR pilha — com uma só, House
+ * (2.400 faixas) engoliria Pagode (83) e o gênero pequeno sumiria da lista.
+ */
+export async function buscarPilhas(pilhas, { bpmMin = null, bpmMax = null, porPilha = 250 } = {}) {
+  const b = await abrir();
+  const alvo = pilhas.map((p) => ({ p, gen: p.startsWith('gen:') ? p.slice(4) : null, arr: [], vistos: 0 }));
+  return new Promise((ok, no) => {
+    const cur = b.transaction(LOJA, 'readonly').objectStore(LOJA).openCursor();
+    cur.onsuccess = () => {
+      const c = cur.result;
+      if (!c) {
+        const vistos = new Set(), fora = [];
+        for (const a of alvo) for (const f of a.arr) if (!vistos.has(f.id)) { vistos.add(f.id); fora.push(f); }
+        return ok(fora);
+      }
+      const f = c.value;
+      if (f.bpm && f.camelot && !(bpmMin != null && !(f.bpm >= bpmMin)) && !(bpmMax != null && !(f.bpm <= bpmMax))) {
+        for (const a of alvo) {
+          if (f.pilha !== a.p && !(a.gen && f.genre === a.gen)) continue;
+          if (a.arr.length < porPilha) a.arr.push(f);
+          else { const j = Math.floor(Math.random() * (a.vistos + 1)); if (j < porPilha) a.arr[j] = f; }
+          a.vistos++;
+        }
+      }
+      c.continue();
+    };
+    cur.onerror = () => no(cur.error);
+  });
+}
+
 export async function buscar({ pilha = null, genero = null, texto = null,
                                bpmMin = null, bpmMax = null, camelot = null,
                                precisaBpmETom = true, limite = 200,
