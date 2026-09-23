@@ -44,6 +44,8 @@ export class Piloto extends EventTarget {
     this.passo = '';
     this.estilo = 'pista';
     this.ultimaTecnica = null;
+    // "tocar junto": o DJ conduz, mas o gesto-chave de cada transição é seu
+    this.juntos = false;
   }
 
   /**
@@ -61,12 +63,14 @@ export class Piloto extends EventTarget {
   }
 
   /** Narração pra quem está aprendendo: o que fez, por quê, e em qual controle. */
-  #narra(diz, { porque = null, vars = {}, mostra = [] } = {}) {
-    this.dispatchEvent(new CustomEvent('narra', { detail: { diz, porque, vars, mostra } }));
+  #narra(diz, { porque = null, vars = {}, mostra = [], vez = false, acertou = null } = {}) {
+    this.dispatchEvent(new CustomEvent('narra', { detail: { diz, porque, vars, mostra, vez, acertou } }));
   }
 
   /** Você encostou num controle: o piloto sai de cena imediatamente. */
   assumirControle(motivo = 'você assumiu') {
+    // tocando junto, mexer nos controles é o combinado — não é tomar o volante
+    if (this.juntos && motivo === 'você assumiu') return;
     // `this.parar` também: quem ouve 'parado' chama pararPiloto(), que chama
     // isto de novo — sem esta guarda era recursão infinita (estouro de pilha
     // medido ao apertar ■ parar com o DJ tocando)
@@ -186,6 +190,12 @@ export class Piloto extends EventTarget {
       sai, entra, bpm: d[entra].bpmEfetivo, tempos,
       aoPasso: ({ tempo, de }) => this.dispatchEvent(new CustomEvent('progresso', { detail: { tempo, de, tecnica } })),
       aoFalar: (x) => this.#narra(x.diz, x),
+      aluno: this.juntos,
+      ler: {
+        morto: (id, b) => this.mixer.canal(id).eq.morto(b),
+        fader: (id) => this.mixer.canal(id).valores.fader,
+        xf: () => this.mixer.crossfader,
+      },
     });
     if (!ok) return false;
 

@@ -115,6 +115,23 @@ body > *:not(#pista):not(#porta):not(#luzes):not(dialog) { position:relative; z-
              radial-gradient(circle at 50% 50%, transparent 55%, rgba(20,12,40,.55)); }
 :root[data-tema="black"] #luzes .globo { opacity:.6; }
 
+/* névoa na frente: três manchas enormes e macias, derivando devagar. Os
+   fachos passando por ela é o que dá cara de club. Gradiente, não blur. */
+#luzes .nevoa { position:absolute; inset:0; will-change:opacity; }
+#luzes .nevoa i { position:absolute; width:70vmax; height:50vmax; border-radius:50%; will-change:transform;
+  background:radial-gradient(closest-side, rgba(200,180,255,.22), rgba(200,180,255,.08) 55%, transparent); }
+#luzes .nevoa .n1 { left:-20vmax; bottom:-25vmax; animation: nevoa-a 38s ease-in-out infinite alternate; }
+#luzes .nevoa .n2 { right:-25vmax; bottom:-20vmax; animation: nevoa-b 47s ease-in-out infinite alternate; }
+#luzes .nevoa .n3 { left:20vw; bottom:-35vmax; animation: nevoa-a 55s ease-in-out infinite alternate-reverse; }
+:root[data-tema="black"] #luzes .nevoa i { background:radial-gradient(closest-side, rgba(120,110,150,.16), transparent); }
+@keyframes nevoa-a { from { transform: translate(0, 0) scale(1) } to { transform: translate(18vw, -8vh) scale(1.25) } }
+@keyframes nevoa-b { from { transform: translate(0, 0) scale(1.1) } to { transform: translate(-22vw, -12vh) scale(.9) } }
+
+/* o brilho que respira no deck no ar (opacidade escrita por quadro) */
+.deck > .brilho { position:absolute; inset:0; border-radius:inherit; pointer-events:none; opacity:0;
+  box-shadow: inset 0 0 0 1px rgba(76,201,240,.9), inset 0 0 34px rgba(76,201,240,.35); will-change:opacity; }
+.deck[data-d="B"] > .brilho { box-shadow: inset 0 0 0 1px rgba(255,179,71,.9), inset 0 0 34px rgba(255,179,71,.3); }
+
 @keyframes luz-gira  { to { transform: translateX(-260px) } }
 @keyframes luz-gira2 { to { transform: translateX(-370px) } }
 @keyframes globo-gira { to { transform: translateX(-30px) } }
@@ -133,10 +150,24 @@ export const estadoPista = {
   pulso: 0, energia: 0, bpm: 0, tocando: false,
   batida: 0,          // tempos desde a âncora da grade (fracionário)
   drop: -1e9,         // performance.now() do último drop
+  dropReal: false,    // o último drop veio de um marcador da faixa?
   dropV: 0,           // 1 no drop, decaindo
   quebra: false,
   reduzido: false,
+  // o que está soando, por banda (0..1, suavizado): é o que deixa a pista
+  // reagir ao GRAVE, à voz e ao chimbal em vez de só ao relógio
+  grave: 0, medio: 0, agudo: 0,
+  espectro: null,     // Uint8Array cru do analisador (o visualizador desenha dele)
+  compasso: 0,        // tempo dentro do compasso: 0, 1, 2, 3
+  estilo: 'pista',
 };
+
+/** Média de um trecho do espectro, 0..1. */
+function banda(esp, de, ate) {
+  let s = 0;
+  for (let i = de; i < ate; i++) s += esp[i];
+  return s / ((ate - de) * 255);
+}
 
 /**
  * @param {object} dep
@@ -144,7 +175,7 @@ export const estadoPista = {
  * @param {function} dep.nivel     nível do master agora, 0..1
  * @param {function} [dep.momentos] (id) => marcadores da faixa no deck
  */
-export function montarPista({ deckNoAr, nivel, momentos = () => [] }) {
+export function montarPista({ deckNoAr, nivel, momentos = () => [], espectro = () => null, estilo = () => 'pista' }) {
   if (document.getElementById('pista')) return;
   const st = document.createElement('style');
   st.textContent = CSS;
@@ -162,7 +193,8 @@ export function montarPista({ deckNoAr, nivel, momentos = () => [] }) {
   luzes.setAttribute('aria-hidden', 'true');
   luzes.innerHTML = '<div class="espelho"><div class="reflexos"></div><div class="reflexos r2"></div></div>' +
     '<div class="fachos"><div class="facho l1"></div><div class="facho l2"></div><div class="facho l3"></div><div class="facho l4"></div></div>' +
-    '<div class="globo"><i class="fio"></i><div class="bola"><div class="facetas"></div></div></div>';
+    '<div class="globo"><i class="fio"></i><div class="bola"><div class="facetas"></div></div></div>' +
+    '<div class="nevoa"><i class="n1"></i><i class="n2"></i><i class="n3"></i></div>';
   document.body.appendChild(luzes);
 
   /**
@@ -174,6 +206,16 @@ export function montarPista({ deckNoAr, nivel, momentos = () => [] }) {
     canhoes: el.querySelector('.canhoes'),
     fachos: luzes.querySelector('.fachos'),
     espelho: luzes.querySelector('.espelho'),
+    nevoa: luzes.querySelector('.nevoa'),
+  };
+  // o brilho que "respira" no deck no ar: uma camada por deck, só opacidade
+  let brilhos = [];
+  const acharBrilhos = () => {
+    brilhos = [...document.querySelectorAll('.deck')].map((dk) => {
+      let b = dk.querySelector(':scope > .brilho');
+      if (!b) { b = document.createElement('div'); b.className = 'brilho'; dk.appendChild(b); }
+      return { dk, b, antes: -1 };
+    });
   };
   const antes = {};
   const opac = (nome, v) => {
@@ -189,8 +231,11 @@ export function montarPista({ deckNoAr, nivel, momentos = () => [] }) {
   E.reduzido = reduzido;
   let posAntes = 0, idAntes = null, lento = 0, quebraAte = -1;
 
-  const marcarDrop = () => {
+  // `real` = veio do marcador da faixa. Só drop real ganha o "DROP!" escrito:
+  // o palpite por energia acende a luz, mas não grita — errar grito é pior
+  const marcarDrop = (real = false) => {
     E.drop = performance.now();
+    E.dropReal = real;
     E.quebra = false; quebraAte = -1;
   };
 
@@ -210,13 +255,25 @@ export function montarPista({ deckNoAr, nivel, momentos = () => [] }) {
     const n = Math.min(1, (nivel() || 0) * 3.2);
     energia += (n > energia ? 0.25 : 0.03) * (n - energia);
 
+    // bandas: grave 47–235 Hz, médio 235 Hz–2,3 kHz, agudo 2,3–9 kHz
+    const esp = espectro();
+    E.espectro = esp;
+    if (esp) {
+      const sobe = (v, alvo, r) => v + (alvo > v ? r : r * 0.35) * (alvo - v);
+      E.grave = sobe(E.grave, Math.min(1, banda(esp, 1, 5) * 1.25), 0.5);
+      E.medio = sobe(E.medio, Math.min(1, banda(esp, 5, 48) * 1.6), 0.4);
+      E.agudo = sobe(E.agudo, Math.min(1, banda(esp, 48, 190) * 2.6), 0.5);
+    }
+    E.compasso = ((Math.floor(E.batida) % 4) + 4) % 4;
+    E.estilo = estilo();
+
     // drop e quebra: o deck no ar passou por cima de um marcador neste quadro?
     // (salto grande de posição = seek ou troca de faixa, não conta)
     const pos = d?.displayPosition ?? 0;
     if (d?.tocando && d.id === idAntes && pos > posAntes && pos - posAntes < 0.5) {
       for (const m of momentos(d.id) || []) {
         if (m.t <= posAntes || m.t > pos) continue;
-        if (m.tipo === 'drop') marcarDrop();
+        if (m.tipo === 'drop') marcarDrop(true);
         else if (m.tipo === 'quebra') { E.quebra = true; quebraAte = E.batida + 32; }
       }
     }
@@ -234,13 +291,23 @@ export function montarPista({ deckNoAr, nivel, momentos = () => [] }) {
     opac('fumaca', 0.35 + energia * 0.5);
     opac('canhoes', (0.25 + pulso * 0.35 + energia * 0.3 + E.dropV * 0.4) * (1 - q * 0.7));
     opac('fachos', (0.07 + pulso * 0.06 + energia * 0.08 + E.dropV * 0.2) * (1 - q * 0.7));
-    opac('espelho', (0.20 + pulso * 0.2 + E.dropV * 0.3) * (1 - q * 0.35));
+    // reflexos brilham com o AGUDO (chimbal); névoa engrossa com o GRAVE
+    opac('espelho', (0.16 + E.agudo * 0.35 + E.dropV * 0.3) * (1 - q * 0.35));
+    opac('nevoa', 0.18 + E.grave * 0.3 + (E.quebra ? 0.25 : 0));
+
+    // a cabine respira: o deck no ar acende no bumbo, mais forte no 1 do compasso
+    const acento = E.compasso === 0 ? 1 : 0.6;
+    for (const x of brilhos) {
+      const v = x.dk.classList.contains('no-ar') ? Math.round((0.15 + pulso * acento * 0.75) * 20) / 20 : 0;
+      if (v !== x.antes) { x.antes = v; x.b.style.opacity = String(v); }
+    }
 
     // marca qual deck está no ar (só quando troca)
     const id = d?.tocando ? d.id : null;
     if (id !== deckAntes) {
       deckAntes = id;
       for (const x of document.querySelectorAll('.deck')) x.classList.toggle('no-ar', x.dataset.d === id);
+      acharBrilhos();
     }
   }
   requestAnimationFrame(quadro);

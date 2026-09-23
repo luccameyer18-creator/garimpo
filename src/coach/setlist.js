@@ -253,7 +253,8 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
  * @param {object} pref.semente   faixa inicial; sem ela, o professor escolhe
  */
 export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente = null,
-                                        obrigatorias = [], recentes = [], sorte = 3.5 } = {}) {
+                                        obrigatorias = [], recentes = [], sorte = 3.5,
+                                        variar = true } = {}) {
   const jaOuvidas = new Set(recentes || []);
   if (!candidatas?.length) return { fila: [], minutos: 0, generos: 0, naoCoube: obrigatorias };
 
@@ -264,10 +265,30 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
    * que o rótulo feio, sem pilha elas escapavam do custo de variedade que
    * impede duas do mesmo gênero em sequência.
    */
-  const pote = [...candidatas];
+  const baralhar = (a) => {
+    const x = [...a];
+    for (let i = x.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [x[i], x[j]] = [x[j], x[i]];
+    }
+    return x;
+  };
+
+  /**
+   * SET NOVO A CADA PEDIDO. Com os mesmos gêneros marcados, o pote era o mesmo
+   * toda vez e o montador ficava sempre com a MELHOR corrente — que é quase a
+   * mesma. Pedir outro set devolvia as mesmas músicas. Agora cada pedido sorteia
+   * 60% do pote (as escolhidas sempre entram) e, lá embaixo, escolhe ao acaso
+   * entre as 4 melhores correntes. Continua bom; só não é mais sempre igual.
+   * `variar: false` é pro set de favoritas, onde o pote é pequeno de propósito.
+   */
+  let pote = [...candidatas];
+  if (variar && pote.length > 120) {
+    pote = baralhar(pote).slice(0, Math.max(120, Math.round(pote.length * 0.6)));
+  }
   for (const o of obrigatorias) {
     if (!o) continue;
-    const jaTem = candidatas.find((t) => t.id === o.id);
+    const jaTem = pote.find((t) => t.id === o.id);
     if (jaTem) continue;
     pote.push({ ...o, pilha: o.pilha || jaTem?.pilha || o.genre || 'escolhida' });
   }
@@ -284,14 +305,6 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
    * Pegar `.slice(0, 40)` de uma lista sempre na mesma ordem é o que fazia todo
    * set começar igual. Embaralhar antes de cortar é a correção de uma linha.
    */
-  const baralhar = (a) => {
-    const x = [...a];
-    for (let i = x.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [x[i], x[j]] = [x[j], x[i]];
-    }
-    return x;
-  };
   const sementes = semente ? [comPilha(semente)]
     : obrigatorias.length ? [comPilha(obrigatorias[0])]
     : baralhar(pote.filter((t) => t.bpm <= (energia === 'descer' ? 134 : 125)))
@@ -299,7 +312,7 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
         .slice(0, 40);
   if (!sementes.length) sementes.push(pote[0]);
 
-  let melhor = null;
+  const resultados = [];
   for (const s of sementes) {
     const r = corrente(s, pote, { minutos, energia, obrigatorias, recentes: jaOuvidas, sorte });
     const generos = new Set(r.fila.map((x) => x.pilha)).size;
@@ -310,8 +323,10 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
                  + (obrigatorias.length - r.naoCoube.length) * 20
                  + (Math.abs(r.minutos - minutos) < 6 ? 8 : 0)
                  - Math.abs(r.minutos - minutos) / 3;
-    if (!melhor || pontos > melhor.pontos) melhor = { ...r, pontos, generos };
+    resultados.push({ ...r, pontos, generos });
   }
+  resultados.sort((a, b) => b.pontos - a.pontos);
+  const melhor = resultados[Math.floor(Math.random() * Math.min(variar ? 4 : 2, resultados.length))];
   return { fila: melhor.fila, minutos: +melhor.minutos.toFixed(1),
            generos: melhor.generos, naoCoube: melhor.naoCoube };
 }

@@ -179,8 +179,13 @@ export async function faixasDaLista({ texto = '', pontuarCombina = null } = {}) 
  * O pote do DJ: a MESMA seleção da lista. Se a pessoa está no modo favoritas,
  * o DJ toca das favoritas — escolher as músicas do set é escolher na lista.
  */
+/** O set só das favoritas: o DJ toca o que você marcou com ♥/★. */
+export function favoritasParaSet() {
+  return favoritas.filter((f) => f.bpm && f.camelot);
+}
+
 export async function candidatasDoSet() {
-  if (ordem === 'favoritas') return favoritas.filter((f) => f.bpm && f.camelot);
+  if (ordem === 'favoritas') return favoritasParaSet();
   let lista = await doAcervo({ bpmMin: 100, bpmMax: 150, porPilha: 900, tudo: 5000 });
   if (lista.length < 40) lista = lista.concat(await daRede());
   return lista.filter((f) => f.bpm && f.camelot && f.duration >= 90 && f.duration <= 420);

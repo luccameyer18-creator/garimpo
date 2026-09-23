@@ -43,6 +43,13 @@ let ctx = null, mixer = null, pronto = false;
 const decks = {};        // { A: Deck, B: Deck }
 const vistas = {};       // { A: {...elementos}, B: {...} }
 let medidor = null, bufMed = null, picoMaster = 0;
+// espectro do master pra pista, o visualizador e o mascote (grave/médio/agudo)
+let analisador = null, bufEsp = null;
+function lerEspectro() {
+  if (!analisador) return null;
+  analisador.getByteFrequencyData(bufEsp);
+  return bufEsp;
+}
 let fila = [];   // sequencia sugerida do set
 
 // ─────────────────────────── ligar o áudio ───────────────────────────
@@ -84,6 +91,11 @@ async function ligar() {
       bufMed = new Float32Array(medidor.fftSize);
       const saida = ctx.createGain();
       saida.connect(medidor);
+      analisador = ctx.createAnalyser();
+      analisador.fftSize = 1024;               // 47 Hz por faixa a 48 kHz
+      analisador.smoothingTimeConstant = 0.55;
+      bufEsp = new Uint8Array(analisador.frequencyBinCount);
+      saida.connect(analisador);
       saida.connect(ctx.destination);
       mixer = new Mixer(ctx, { destination: saida });
 
@@ -149,8 +161,12 @@ const tentarLigar = () => {
     .then(() => {
       if (!$('porta').classList.contains('saiu')) {
         document.body.classList.add('entrou');
+        // a cascata acaba e SAI: animação de transform presa no último quadro
+        // faz a coluna virar a moldura de tudo que é position:fixed dentro dela
+        // — o visualizador em tela cheia ficava do tamanho da coluna
+        setTimeout(() => document.body.classList.remove('entrou'), 900);
         // deck vazio: a primeira coisa a fazer é escolher música
-        if (!decks.A?.faixa) abrirBib(true);
+        if (!decks.A?.faixa) abrirBibPara('A');
       }
       $('porta').classList.add('saiu');
       return garantirRodando();
@@ -193,6 +209,30 @@ function montarVista(id) {
   v.finos[1].id = 'fino-mais-' + id;
   v.fader.id = 'pitch-' + id;
   vistas[id] = v;
+  /**
+   * ♥ no deck: favorita a música que está NELE. Gostou do que está tocando?
+   * Um toque, sem ter que achar a faixa na lista. É daqui que sai o set
+   * "♥ favoritas" do DJ.
+   */
+  const fav = q('.fav');
+  v.pintarFav = () => {
+    const f = decks[id]?.faixa;
+    const on = !!f && bib.ehFavorita(f.id);
+    fav.classList.toggle('lig', on);
+    fav.textContent = on ? '♥' : '♡';
+    fav.disabled = !f;
+  };
+  fav.onclick = () => {
+    const f = decks[id]?.faixa;
+    if (!f) return;
+    bib.alternarFavorita(f);
+    v.pintarFav();
+    fav.classList.add('pulou');
+    setTimeout(() => fav.classList.remove('pulou'), 220);
+    repintarLista();
+    pintarBiblioteca();
+  };
+  v.pintarFav();
   const d = decks[id];
 
   // ── eventos do deck ──
@@ -215,6 +255,7 @@ function montarVista(id) {
     if (!faixa.artwork && faixa.id) buscarCapa(faixa, v);
     v.bpmVal.textContent = faixa.bpm ?? '—';
     v.tom.innerHTML = faixa.camelot ? `<b>${faixa.camelot}</b> ${faixa.key}` : '—';
+    v.pintarFav();
     v.erro.hidden = true;
     desenharMini(id);
     repintarLista();
@@ -655,10 +696,10 @@ function itemNarracao(n) {
   return {
     // o número muda a cada fala: é o que faz a luz reacender no controle novo
     id: 'dj:' + n.k,
-    cor: 'agora',
+    cor: n.vez ? 'urgente' : n.acertou ? 'depois' : 'agora',
     fala: '🎧 ' + t(n.diz, n.vars),
     porque: n.porque ? t(n.porque, n.vars) : (n.vars?.ia ? 'Jev: ' + n.vars.ia : null),
-    apontar: (n.mostra || []).map((id) => ({ id, rotulo: t('n.rot') })),
+    apontar: (n.mostra || []).map((id) => ({ id, rotulo: t(n.vez ? 'n.rotVez' : 'n.rot') })),
   };
 }
 // declarado aqui e montado no fim do arquivo: o professor roda antes disso
@@ -714,6 +755,8 @@ function rodarProfessor() {
     return;
   }
   ultimaLista = chave;
+  // disse uma coisa nova: o Garimpeiro mexe a boca — é ELE falando
+  mascote?.fala();
 
   const cx = $('prof-plano');
   cx.innerHTML = itens.length
@@ -1103,6 +1146,7 @@ async function carregarLista(fn) {
         e.stopPropagation();
         bib.alternarFavorita(faixa);
         pintarEstrela();
+        for (const x of Object.values(vistas)) x.pintarFav?.();
         if (bib.estado.ordem === 'favoritas') recarregar(); else pintarBiblioteca();
       };
       el.__pintarEstrela = pintarEstrela;
@@ -1521,6 +1565,7 @@ function garantirPiloto() {
   piloto.addEventListener('crossfader', (e) => { $('xf').value = e.detail.x; });
   piloto.addEventListener('narra', (e) => {
     narracao = { ...e.detail, k: ++nNarracao };
+    if (e.detail.acertou) mascote?.comemora();
     ultimoProf = 0;                  // mostra já, sem esperar o próximo ciclo
   });
   // esperando a hora certa também é aula: diz o que ele está esperando
@@ -1570,17 +1615,22 @@ $('b-piloto').onclick = async () => {
   $('piloto-nota').textContent = 'garimpando faixas…';
   try {
     // o DJ toca do MESMO lugar que a lista mostra: gêneros marcados, ou favoritas
-    const cands = await bib.candidatasDoSet();
-    if (cands.length < 2) throw new Error(t('pref.semFaixas'));
+    const soFavoritas = $('pref-fonte').value === 'favoritas';
+    const cands = soFavoritas ? bib.favoritasParaSet() : await bib.candidatasDoSet();
+    if (cands.length < 2) throw new Error(t(soFavoritas ? 'dj.poucasFav' : 'pref.semFaixas'));
     const s = montarSet(cands, {
       minutos: Number($('pref-min').value),
       energia: $('pref-energia').value,
       obrigatorias: [],
-      recentes: jaTocadas,
+      // evita o que TOCOU e o que já foi SUGERIDO: pedir outro set traz outras
+      // músicas. No set de favoritas não — ali repetir é o ponto.
+      recentes: soFavoritas ? jaTocadas : [...jaTocadas, ...jaSugeridas],
+      variar: !soFavoritas,
       // com faixas escolhidas, quem abre o set é a primeira delas, não o deck
       semente: referencia()?.bpm ? referencia() : null,
     });
     if (s.fila.length < 2) throw new Error(t('pref.poucas'));
+    if (!soFavoritas) registrarSugeridas(s.fila);
 
     /**
      * O Jev decide o set INTEIRO num pedido só — técnica e duração de cada
@@ -1596,6 +1646,7 @@ $('b-piloto').onclick = async () => {
                           ms: decisao.ms, tok: decisao.tokens?.input_tokens ?? '?' })
       : t('jev.semIA');
     garantirPiloto().estilo = estilo;
+    piloto.juntos = $('pref-modo').value === 'juntos';
 
     fila = s.fila;
     desenharFila();
@@ -1623,7 +1674,7 @@ $('b-piloto').onclick = async () => {
  * o pior dos dois mundos. Os controles do próprio piloto ficam de fora.
  */
 document.addEventListener('pointerdown', (e) => {
-  if (!piloto?.ativo) return;
+  if (!piloto?.ativo || piloto.juntos) return;
   if (e.target.closest('#b-piloto, .piloto-cx, #b-ajuda, #b-diag, .lista, #busca, #crates')) return;
   if (!e.target.closest('button, input, .jog, select')) return;
   pararPiloto();
@@ -1694,6 +1745,15 @@ const MEMORIA = 60;
 let jaTocadas = [];
 try { jaTocadas = JSON.parse(localStorage.getItem('garimpo.tocadas') || '[]'); } catch {}
 
+/** O que já apareceu num set (tocado ou não). Memória maior: 240 faixas. */
+let jaSugeridas = [];
+try { jaSugeridas = JSON.parse(localStorage.getItem('garimpo.sugeridas') || '[]'); } catch {}
+function registrarSugeridas(faixas) {
+  const ids = faixas.map((f) => f.id);
+  jaSugeridas = [...ids, ...jaSugeridas.filter((x) => !ids.includes(x))].slice(0, 240);
+  try { localStorage.setItem('garimpo.sugeridas', JSON.stringify(jaSugeridas)); } catch {}
+}
+
 function registrarTocada(faixa) {
   if (!faixa?.id) return;
   jaTocadas = [faixa.id, ...jaTocadas.filter((x) => x !== faixa.id)].slice(0, MEMORIA);
@@ -1701,8 +1761,8 @@ function registrarTocada(faixa) {
 }
 
 $('b-esquecer').onclick = () => {
-  jaTocadas = [];
-  try { localStorage.removeItem('garimpo.tocadas'); } catch {}
+  jaTocadas = []; jaSugeridas = [];
+  try { localStorage.removeItem('garimpo.tocadas'); localStorage.removeItem('garimpo.sugeridas'); } catch {}
   $('piloto-nota').textContent = t('pref.esqueceu');
   $('piloto-nota').style.color = 'var(--mut)';
 };
@@ -1977,14 +2037,19 @@ montarPista({
   deckNoAr,
   nivel: () => { try { return nivelMaster(); } catch { return 0; } },
   momentos: (id) => momentosDe[id],
+  espectro: lerEspectro,
+  estilo: () => (piloto?.ativo ? piloto.estilo : $('pref-estilo').value) || 'pista',
 });
 
 // a janela da pista, embaixo do mixer: o que o DJ vê da cabine
 montarCena($('janela-pista'), {
+  // estável de propósito: muda quando o ESTADO muda (tocando, quebra, estilo),
+  // nunca por contagem — número pulando no canto parecia mensagem aleatória
   rotulo: (e) => e.tocando
     ? `<span class="vivo"></span>${t(e.quebra ? 'cena.quebra' : 'cena.aoVivo')}` +
-      `<span class="dir">${t('cena.gente', { n: e.pessoas })} · ${Math.round(e.bpm)} BPM</span>`
+      `<span class="dir">${Math.round(e.bpm)} BPM · ${ESTILOS[e.estilo]?.nome || ''}</span>`
     : `<span class="vivo off"></span>${t('cena.vazia')}`,
+  nomeModo: (m) => t('cena.modo.' + m),
 });
 
 /**
@@ -1996,8 +2061,21 @@ montarCena($('janela-pista'), {
  */
 function abrirBib(aberta) {
   document.body.classList.toggle('bib-aberta', aberta);
-  $('b-bib').setAttribute('aria-expanded', String(aberta));
+  for (const l of ['A', 'B']) $('aba-' + l).setAttribute('aria-expanded', String(aberta && alvoBib === l));
   if (!aberta) mirar(null);
+}
+
+/**
+ * De que lado a gaveta abre: o do deck. Trocar de lado com ela FECHADA é
+ * instantâneo (ela está fora da tela dos dois jeitos); com transição ela
+ * atravessaria a tela inteira de um lado pro outro.
+ */
+function ladoDaGaveta(id) {
+  if (document.body.dataset.lado === id) return;
+  document.body.classList.add('sem-trans');
+  document.body.dataset.lado = id;
+  void document.body.offsetWidth;
+  document.body.classList.remove('sem-trans');
 }
 
 /**
@@ -2014,8 +2092,11 @@ function mirar(id) {
 function abrirBibPara(id) {
   // o mesmo BROWSE de novo fecha, como na CDJ
   if (alvoBib === id && document.body.classList.contains('bib-aberta')) { fecharBrowse(); return; }
-  abrirBib(true);
+  // aberta do OUTRO lado: fecha antes, pra ela não atravessar a tela
+  if (document.body.classList.contains('bib-aberta') && document.body.dataset.lado !== id) abrirBib(false);
+  ladoDaGaveta(id);
   mirar(id);
+  abrirBib(true);
   // no celular não há gaveta: a lista mora embaixo, então o BROWSE rola até ela
   if (!gaveta()) $('col-lib').scrollIntoView({ behavior: 'smooth', block: 'start' });
   else if (matchMedia('(pointer:fine)').matches) $('busca').focus({ preventScroll: true });
@@ -2039,12 +2120,13 @@ function medirTopoBib() {
   const y = $('prof').getBoundingClientRect().bottom + 9;
   document.documentElement.style.setProperty('--bib-topo', Math.round(y) + 'px');
 }
-$('b-bib').onclick = () => abrirBib(!document.body.classList.contains('bib-aberta'));
+$('aba-A').onclick = () => abrirBibPara('A');
+$('aba-B').onclick = () => abrirBibPara('B');
 $('b-bib-fechar').onclick = () => abrirBib(false);
 $('b-bib-fixar').onclick = () => fixarBib(!document.body.classList.contains('bib-fixa'));
 document.addEventListener('pointerdown', (e) => {
   if (document.body.classList.contains('bib-fixa') || !document.body.classList.contains('bib-aberta')) return;
-  if (e.target.closest('#col-lib, #porta, dialog, .browse')) return;
+  if (e.target.closest('#col-lib, #porta, dialog, .browse, .aba-bib')) return;
   abrirBib(false);
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') abrirBib(false); });

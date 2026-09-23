@@ -29,6 +29,11 @@
  *   sai, {e} = deck que entra). É assim que o piloto ENSINA: a frase aparece
  *   na barra do professor e o controle acende, no instante em que acontece.
  *   Passo só com `diz` (sem `faz`) narra o começo de uma rampa.
+ *   `aluno` marca o GESTO-CHAVE da técnica. No modo "tocar junto" o DJ não faz
+ *   esse passo: pede pra você 8 tempos antes (`pede`, acendendo `mostra`),
+ *   confere com `feito(ler)` se você fez e em que tempo, e só faz ele mesmo se
+ *   você não fizer até 1 tempo depois. Os gestos são idempotentes (cortar um
+ *   grave já cortado não muda nada), então rodar `faz` depois é seguro.
  * Rampas: { de, ate, alvo, v0, v1 }  valor que desliza entre dois tempos
  * Alvos de rampa: 'xf' | 'fader:X' | 'filtro:X' | 'eq:X:banda' | 'eco:X'
  */
@@ -42,7 +47,9 @@ export const TECNICAS = {
         { em: 0,  faz: (m) => m.kill(entra, 'grave', true),
           diz: 'n.graves.0', porque: 'n.graves.0p', mostra: ['kill-{e}-grave', 'xf'] },
         { em: 16, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); },
-          diz: 'n.graves.16', porque: 'n.graves.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'] },
+          diz: 'n.graves.16', porque: 'n.graves.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'],
+          aluno: { pede: 'n.aluno.graves', porque: 'n.aluno.graves.p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'],
+                  feito: (ler) => ler.morto(sai, 'grave') && !ler.morto(entra, 'grave') } },
         { em: 30, faz: (m) => m.parar(sai), diz: 'n.fim' },
       ],
       rampas: [
@@ -63,7 +70,9 @@ export const TECNICAS = {
           diz: 'n.filtro.0', porque: 'n.filtro.0p', mostra: ['fil-{e}', 'kill-{e}-grave'] },
         { em: 8, diz: 'n.filtro.8', porque: 'n.filtro.8p', mostra: ['fil-{s}'] },
         { em: 16, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); },
-          diz: 'n.graves.16', porque: 'n.graves.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'] },
+          diz: 'n.graves.16', porque: 'n.graves.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'],
+          aluno: { pede: 'n.aluno.graves', porque: 'n.aluno.graves.p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'],
+                  feito: (ler) => ler.morto(sai, 'grave') && !ler.morto(entra, 'grave') } },
         { em: 30, faz: (m) => { m.parar(sai); m.filtro(sai, 0); m.filtro(entra, 0); }, diz: 'n.fim' },
       ],
       rampas: [
@@ -86,7 +95,9 @@ export const TECNICAS = {
         // no tempo 8: fecha o fader de quem sai (o eco é pós-fader e segue
         // soando), e a outra entra inteira, de uma vez, no 1 do compasso
         { em: 8,  faz: (m) => { m.fader(sai, 0); m.xf(xfEntra); m.kill(entra, 'grave', false); },
-          diz: 'n.eco.8', porque: 'n.eco.8p', mostra: ['vol-{s}', 'xf'] },
+          diz: 'n.eco.8', porque: 'n.eco.8p', mostra: ['vol-{s}', 'xf'],
+          aluno: { pede: 'n.aluno.eco', porque: 'n.aluno.eco.p', mostra: ['vol-{s}'],
+                   feito: (ler) => ler.fader(sai) < 0.15 } },
         { em: 14, faz: (m) => { m.eco(sai, 0); m.parar(sai); m.fader(sai, 1); }, diz: 'n.fim' },
       ],
       rampas: [
@@ -110,7 +121,9 @@ export const TECNICAS = {
         { em: 24, faz: (m) => {
           m.xf(xfEntra); m.kill(entra, 'grave', false); m.kill(sai, 'grave', true);
           m.semLoop(sai); m.parar(sai);
-        }, diz: 'n.loop.24', porque: 'n.loop.24p', mostra: ['xf', 'kill-{e}-grave'] },
+        }, diz: 'n.loop.24', porque: 'n.loop.24p', mostra: ['xf', 'kill-{e}-grave'],
+          aluno: { pede: 'n.aluno.corte', porque: 'n.aluno.corte.p', mostra: ['xf'],
+                   feito: (ler) => Math.abs(ler.xf() - xfEntra) < 0.15 } },
       ],
       rampas: [
         { de: 0, ate: 16, alvo: 'xf', v0: xfSai, v1: 0.5 },
@@ -130,7 +143,9 @@ export const TECNICAS = {
         { em: 8, faz: (m) => {
           m.xf(xfEntra); m.kill(entra, 'grave', false);
           m.parar(sai); m.filtro(sai, 0);
-        }, diz: 'n.corte.8', porque: 'n.corte.8p', mostra: ['xf'] },
+        }, diz: 'n.corte.8', porque: 'n.corte.8p', mostra: ['xf'],
+          aluno: { pede: 'n.aluno.corte', porque: 'n.aluno.corte.p', mostra: ['xf'],
+                   feito: (ler) => Math.abs(ler.xf() - xfEntra) < 0.15 } },
       ],
       rampas: [
         { de: 0, ate: 8, alvo: `filtro:${sai}`, v0: 0, v1: 0.6 },   // afina, sobe a tensão
@@ -148,7 +163,9 @@ export const TECNICAS = {
           diz: 'n.blend.0', porque: 'n.blend.0p', mostra: ['kill-{e}-grave', 'eq-{e}-medio', 'eq-{e}-agudo'] },
         { em: 16, diz: 'n.blend.16', porque: 'n.blend.16p', mostra: ['eq-{e}-agudo', 'eq-{s}-agudo'] },
         { em: 32, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); },
-          diz: 'n.blend.32', porque: 'n.graves.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave', 'eq-{e}-medio'] },
+          diz: 'n.blend.32', porque: 'n.graves.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave', 'eq-{e}-medio'],
+          aluno: { pede: 'n.aluno.graves', porque: 'n.aluno.graves.p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'],
+                  feito: (ler) => ler.morto(sai, 'grave') && !ler.morto(entra, 'grave') } },
         { em: 62, faz: (m) => { m.parar(sai); for (const d of [sai, entra]) for (const b of ['medio', 'agudo']) m.eq(d, b, 0.5); },
           diz: 'n.fim' },
       ],
@@ -275,7 +292,7 @@ export function escolherTecnica({ saiFaixa, entraFaixa, anterior = null, estilo 
  * @returns {Promise<boolean>} false se foi interrompido
  */
 export async function executar(nomeTecnica, { m, dorme, sai, entra, bpm, tempos = null, aoPasso = () => {},
-                                              aoFalar = () => {} }) {
+                                              aoFalar = () => {}, aluno = false, ler = null }) {
   const tec = TECNICAS[nomeTecnica] || TECNICAS.graves;
   const total = tempos || tec.tempos;
   const escala = total / tec.tempos;   // o escolhedor pode pedir versão mais curta ou longa
@@ -283,7 +300,13 @@ export async function executar(nomeTecnica, { m, dorme, sai, entra, bpm, tempos 
   const xfSai = sai === 'A' ? 0 : 1, xfEntra = 1 - xfSai;
   const r = tec.roteiro({ sai, entra, xfSai, xfEntra });
 
-  const passos = r.passos.map((p) => ({ ...p, em: p.em * escala })).sort((a, b) => a.em - b.em);
+  // no modo junto, o gesto-chave espera 1 tempo de tolerância pela sua mão
+  const junto = aluno && !!ler;
+  const passos = r.passos.map((p) => ({ ...p, em: p.em * escala, alvo: p.em * escala + (junto && p.aluno ? 1 : 0) }))
+    .sort((a, b) => a.alvo - b.alvo);
+  const vars = { s: sai, e: entra };
+  const troca = (id) => id.replace('{s}', sai).replace('{e}', entra);
+  const pedidos = junto ? passos.filter((p) => p.aluno) : [];
   const rampas = r.rampas.map((p) => ({ ...p, de: p.de * escala, ate: p.ate * escala }));
   const fim = total;
 
@@ -294,13 +317,33 @@ export async function executar(nomeTecnica, { m, dorme, sai, entra, bpm, tempos 
   while (true) {
     const tempo = (performance.now() - t0) / msPorTempo;
 
+    // modo junto: pede o gesto 8 tempos antes e confere se você fez
+    for (const p of pedidos) {
+      if (!p.pediu && tempo >= Math.max(0, p.em - 8)) {
+        p.pediu = true;
+        aoFalar({ diz: p.aluno.pede, porque: p.aluno.porque, vars, mostra: p.aluno.mostra.map(troca), vez: true });
+      }
+      if (p.pediu && !p.fez && tempo <= p.alvo) {
+        let ok = false;
+        try { ok = p.aluno.feito(ler); } catch {}
+        if (ok) {
+          p.fez = true;
+          const erro = tempo - p.em;
+          aoFalar({ diz: erro < -0.6 ? 'n.aluno.cedo' : erro > 0.6 ? 'n.aluno.tarde' : 'n.aluno.boa',
+                    porque: 'n.aluno.boa.p', vars: { ...vars, d: Math.abs(erro).toFixed(1) }, mostra: [],
+                    acertou: Math.abs(erro) <= 0.6 });
+        }
+      }
+    }
+
     // passos cujo tempo chegou
-    while (proximo < passos.length && passos[proximo].em <= tempo) {
+    while (proximo < passos.length && passos[proximo].alvo <= tempo) {
       const p = passos[proximo];
       try { p.faz?.(m); } catch { /* um passo ruim não derruba a transição */ }
-      if (p.diz) {
-        const vars = { s: sai, e: entra };
-        const troca = (id) => id.replace('{s}', sai).replace('{e}', entra);
+      if (junto && p.aluno) {
+        // você fez: o elogio já saiu. Não fez: eu faço, e digo que fiz
+        if (!p.fez) aoFalar({ diz: 'n.aluno.eufiz', porque: p.porque || null, vars, mostra: (p.mostra || []).map(troca) });
+      } else if (p.diz) {
         aoFalar({ diz: p.diz, porque: p.porque || null, vars, mostra: (p.mostra || []).map(troca) });
       }
       proximo++;
