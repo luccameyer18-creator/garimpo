@@ -119,11 +119,12 @@ async function acervoPost(req, env, origem) {
 }
 
 async function acervoGet(url, env, origem) {
-  // paginação por `criada`: quem já tem até T pede só o que veio depois
+  // paginação por `criada` (>=: faixas de um mesmo POST dividem o carimbo, e
+  // quem cortou uma página no meio de um grupo precisa receber o grupo inteiro)
   const desde = Number(url.searchParams.get('desde') || 0);
   const { results } = await env.DB.prepare(
     `SELECT id, title, artist, handle, duration, genre, bpm, camelot, key, pilha, criada
-     FROM faixas WHERE criada > ?1 ORDER BY criada LIMIT 2000`).bind(desde).all();
+     FROM faixas WHERE criada >= ?1 ORDER BY criada LIMIT 2000`).bind(desde).all();
   const total = await env.DB.prepare('SELECT COUNT(*) AS n FROM faixas').first();
   return json({ faixas: results, total: total?.n || 0 }, 200, origem);
 }

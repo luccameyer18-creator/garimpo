@@ -12,4 +12,4 @@ compatibility_date = "2026-09-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "garimpo"
-database_id = "PREENCHER_APOS_d1_create"
+database_id = "241c7753-e4f8-46ad-a916-4bfe8ffc2995"

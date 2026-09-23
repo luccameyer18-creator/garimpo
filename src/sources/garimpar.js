@@ -23,8 +23,15 @@
  */
 
 import { APP_NAME, GENRES, CRATES, isDeckable, normalizeTrack } from './audius.js';
-import { guardar, contar, artistas, artistasVarridos, marcarVarrido,
+import { guardar as guardarLocal, contar, artistas, artistasVarridos, marcarVarrido,
          frentesEsgotadas, marcarEsgotada } from './crate.js';
+import { compartilhar } from './galera.js';
+
+/** Guarda no crate daqui E manda pra galera: o que um garimpa, todos ouvem. */
+function guardar(lote, pilha) {
+  compartilhar((lote || []).map((f) => ({ ...f, pilha: pilha || f.pilha || null })));
+  return guardarLocal(lote, pilha);
+}
 
 const H = 'https://api.audius.co/v1';
 const PAUSA = 120;          // ms entre requisições

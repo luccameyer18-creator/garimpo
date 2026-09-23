@@ -24,14 +24,15 @@
  */
 
 import { TECNICAS, ESTILOS } from './tecnicas.js';
+import { WORKER } from '../sources/galera.js';
 
 /**
  * Onde está o proxy. A chave NUNCA fica na página: a TypeSafe recusa chamada
  * de navegador (CORS) e o site é público.
  *   - local: o dev-server.mjs expõe /_jev lendo a chave de ~/.garimpo
- *   - publicado: o Worker da Cloudflare (URL definida quando ele existir)
+ *   - publicado: o Worker da Cloudflare (worker/index.js), com teto diário
  */
-export const JEV_WORKER = '';   // ← preencher com a URL do Worker
+export const JEV_WORKER = `${WORKER}/jev`;
 export function urlJev() {
   if (/^(127\.0\.0\.1|localhost)$/.test(location.hostname)) return '/_jev';
   return JEV_WORKER || null;

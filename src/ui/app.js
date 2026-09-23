@@ -13,6 +13,7 @@ import { montarSet, resumoSet } from '../coach/setlist.js';
 import * as crate from '../sources/crate.js';
 import { garimpar } from '../sources/garimpar.js';
 import { carregarSemente } from '../sources/semente.js';
+import { puxar as puxarGalera } from '../sources/galera.js';
 import { Piloto } from '../coach/piloto.js';
 import { ESTILOS, TECNICAS } from '../coach/tecnicas.js';
 import { decidirSet, aplicarDecisoes } from '../coach/jev.js';
@@ -1808,8 +1809,10 @@ $('b-garimpar').onclick = async () => {
       $('acervo-n').style.color = 'var(--acc)';
     },
   });
+  // depois o que a galera garimpou desde a última visita
+  const g = await puxarGalera();
   await mostrarAcervo();
-  if (r.carregou && r.novas) recarregar();
+  if ((r.carregou && r.novas) || g.novas) recarregar();
 })();
 
 mostrarAcervo();
