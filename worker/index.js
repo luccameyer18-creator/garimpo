@@ -36,9 +36,16 @@ const MAX_CORPO = 96 * 1024;
 
 const porIp = new Map();        // ip -> { janela, n } — por isolate, melhor esforço
 
+/**
+ * A Vercel: o endereço de produção e as prévias de cada mudança deste projeto
+ * (garimpo-<hash>-laas-sistema.vercel.app). Não é "qualquer .vercel.app".
+ */
+const VERCEL = /^https:\/\/garimpo-(topaz|[a-z0-9]+-laas-sistema)\.vercel\.app$/;
+const permitida = (origem) => ORIGENS.has(origem) || VERCEL.test(origem);
+
 function cabecalhos(origem) {
   return {
-    'Access-Control-Allow-Origin': ORIGENS.has(origem) ? origem : 'https://luccameyer18-creator.github.io',
+    'Access-Control-Allow-Origin': permitida(origem) ? origem : 'https://luccameyer18-creator.github.io',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '600',
@@ -155,7 +162,7 @@ export default {
     const url = new URL(req.url);
     const origem = req.headers.get('Origin') || '';
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cabecalhos(origem) });
-    if (origem && !ORIGENS.has(origem)) return json({ erro: 'origem não autorizada' }, 403, origem);
+    if (origem && !permitida(origem)) return json({ erro: 'origem não autorizada' }, 403, origem);
 
     const ip = req.headers.get('CF-Connecting-IP') || 'desconhecido';
     if (req.method === 'POST' && passouDoIp(ip)) return json({ erro: 'devagar — muitos pedidos' }, 429, origem);

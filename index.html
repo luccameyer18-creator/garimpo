@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Garimpo</title>
 <script>try { var tm = localStorage.getItem('garimpo.tema'); if (tm) document.documentElement.dataset.tema = tm; } catch (e) {}</script>
+<script>
+  // Métricas reais da Vercel (Speed Insights: fluidez medida no aparelho de
+  // quem usa; Web Analytics: visitas). Só lá — no GitHub Pages e no localhost
+  // esses caminhos não existem e dariam 404.
+  if (/\.vercel\.app$/.test(location.hostname)) {
+    window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+    ['/_vercel/speed-insights/script.js', '/_vercel/insights/script.js'].forEach(function (src) {
+      var s = document.createElement('script'); s.defer = true; s.src = src; document.head.appendChild(s);
+    });
+  }
+</script>
 <style>
   /*
    * Paleta: grafite quente, não preto puro. Um CDJ é um objeto físico com
