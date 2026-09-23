@@ -77,7 +77,10 @@
 
   /* 2 — descobrir */
   .contador { font:900 20cqw/1 ui-monospace, monospace; color:var(--cue); text-shadow:0 0 10cqw rgba(255,179,71,.6); }
-  .chuva { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+  /* as etiquetas somem na faixa do meio, onde estão o número e o texto */
+  .chuva { position:absolute; inset:0; overflow:hidden; pointer-events:none;
+           -webkit-mask-image:linear-gradient(#000 0 24%, transparent 33% 71%, #000 80%);
+           mask-image:linear-gradient(#000 0 24%, transparent 33% 71%, #000 80%); }
   .chip { position:absolute; top:-12cqw; padding:2cqw 4cqw; border-radius:8cqw; font-weight:800; font-size:4cqw; white-space:nowrap;
           border:1px solid var(--neon); background:rgba(255,78,205,.16); box-shadow:0 0 4cqw rgba(255,78,205,.4); }
   .cena.ativa .chip { animation:cai 5.2s linear both; }
@@ -198,6 +201,11 @@
   .pausado-aviso { position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); z-index:7; font-size:14cqw; opacity:0;
                    transition:opacity .2s; pointer-events:none; }
   .story.pausado .pausado-aviso { opacity:.8; }
+  /* ?video=1: pra gravar e postar — sem barrinhas, avatar e ✕ (a rede põe os dela) */
+  body.video .story { width:100vw; height:100vh; border-radius:0; box-shadow:none; }
+  body.video .barras, body.video .topo, body.video .toque, body.video .pausado-aviso, body.video #comeco,
+  body.video #b-rever { display:none; }
+  body.video .cta { text-transform:none; letter-spacing:.02em; white-space:nowrap; font-size:5.6cqw; padding:4.6cqw 8cqw; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
 </style>
 </head>
@@ -314,6 +322,14 @@
   const story = $('story');
   const cenas = [...document.querySelectorAll('.cena')];
   const reduzido = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // modo vídeo: quem grava chama __comecarVideo(); a última cena dura 5 s e o
+  // botão de entrar mostra o endereço, porque num vídeo não se clica
+  const VIDEO = new URLSearchParams(location.search).has('video');
+  if (VIDEO) {
+    document.body.classList.add('video');
+    cenas.at(-1).dataset.ms = '5000';
+    document.querySelector('.cta').textContent = 'garimpo-topaz.vercel.app';
+  }
 
   // o Garimpeiro: no avatar, cavando na primeira, falando no professor
   for (const [id, fn] of [['m0', (m) => m.humor(null)], ['av', (m) => m.humor(null)],
@@ -427,7 +443,7 @@
   const cv = $('lasers'), c = cv.getContext('2d');
   const ajustar = () => { const r = story.getBoundingClientRect(); cv.width = Math.round(r.width / 2); cv.height = Math.round(r.height / 2); };
   addEventListener('resize', ajustar); ajustar();
-  const t0 = performance.now();
+  let t0 = performance.now();
   const INTENS = [0.35, 0.45, 0.4, 0.5, 0.5, 1, 0.45, 0.7];
   function quadro(agora) {
     requestAnimationFrame(quadro);
@@ -495,12 +511,17 @@
 
   function comecar(comSom) {
     $('comeco').remove();
+    t0 = performance.now();
     if (comSom) ligarSom(); else { mudo = true; $('b-som').textContent = '🔇'; }
     ir(0);
     requestAnimationFrame(quadro);
   }
   $('b-comecar').onclick = () => comecar(true);
   $('b-sem-som').onclick = () => comecar(false);
+  if (VIDEO) {
+    window.__duracaoVideo = cenas.reduce((s, c) => s + Number(c.dataset.ms), 0);
+    window.__comecarVideo = () => comecar(false);
+  }
 </script>
 </body>
 </html>
