@@ -768,6 +768,10 @@
                 color:var(--mut); transition:transform .2s cubic-bezier(.3,1.6,.5,1), color .15s; }
   .faixa .fav.lig { color:var(--neon); border-color:var(--neon); box-shadow:0 0 12px color-mix(in srgb, var(--neon) 45%, transparent); }
   .faixa .fav.pulou { transform:scale(1.35); }
+  .faixa .lixo { flex:none; width:30px; height:28px; padding:0; border-radius:8px; font-size:13px; line-height:1;
+                 opacity:.55; filter:grayscale(1); }
+  .faixa .lixo:hover { opacity:1; filter:none; border-color:var(--bad); }
+  @media (max-width:700px) { .faixa .lixo { display:none; } }
 
   /* ───────── DJ: modos e gêneros à vista ───────── */
   .dj-modos { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:4px; }
@@ -1178,6 +1182,7 @@
         <span class="tom">—</span>
       </div>
       <button class="fav" data-i18n-attr="title:deck.fav" title="favoritar esta música">♡</button>
+      <button class="lixo" data-i18n-attr="title:deck.lixo" title="isto não é música: tirar do garimpo">👎</button>
       <button class="browse" data-i18n="deck.browse" data-i18n-attr="title:deck.browse.dica" title="escolher a música deste deck">BROWSE</button>
     </div>
     <canvas class="onda"></canvas>
@@ -1230,6 +1235,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260923h"></script>
+<script type="module" src="./src/ui/app.js?v=20260923i"></script>
 </body>
 </html>

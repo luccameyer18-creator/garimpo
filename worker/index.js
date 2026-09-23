@@ -129,6 +129,27 @@ async function acervoGet(url, env, origem) {
   return json({ faixas: results, total: total?.n || 0 }, 200, origem);
 }
 
+/**
+ * Trash compartilhado. POST soma um voto por faixa; GET devolve as que têm
+ * 2+ votos. Só ids no formato do Audius; até 50 por pedido.
+ */
+async function lixoPost(req, env, origem) {
+  let corpo;
+  try { corpo = JSON.parse(await req.text()); } catch { return json({ erro: 'json inválido' }, 400, origem); }
+  const ids = (Array.isArray(corpo?.ids) ? corpo.ids : []).filter((x) => typeof x === 'string' && /^[A-Za-z0-9]{3,16}$/.test(x)).slice(0, 50);
+  if (!ids.length) return json({ votos: 0 }, 200, origem);
+  const agora = Date.now();
+  const stmt = env.DB.prepare(
+    `INSERT INTO lixo (id, votos, criada) VALUES (?1, 1, ?2)
+     ON CONFLICT(id) DO UPDATE SET votos = votos + 1`);
+  await env.DB.batch(ids.map((id) => stmt.bind(id, agora)));
+  return json({ votos: ids.length }, 200, origem);
+}
+async function lixoGet(env, origem) {
+  const { results } = await env.DB.prepare('SELECT id FROM lixo WHERE votos >= 2 LIMIT 20000').all();
+  return json({ ids: results.map((r) => r.id) }, 200, origem);
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -143,6 +164,8 @@ export default {
       if (req.method === 'POST' && url.pathname === '/jev') return await jev(req, env, origem);
       if (req.method === 'POST' && url.pathname === '/acervo') return await acervoPost(req, env, origem);
       if (req.method === 'GET' && url.pathname === '/acervo') return await acervoGet(url, env, origem);
+      if (req.method === 'POST' && url.pathname === '/lixo') return await lixoPost(req, env, origem);
+      if (req.method === 'GET' && url.pathname === '/lixo') return await lixoGet(env, origem);
       if (url.pathname === '/') return json({ garimpo: 'ok' }, 200, origem);
       return json({ erro: 'não achei' }, 404, origem);
     } catch (e) {

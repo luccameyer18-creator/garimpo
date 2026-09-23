@@ -13,10 +13,10 @@ import { montarSet, resumoSet } from '../coach/setlist.js';
 import * as crate from '../sources/crate.js';
 import { garimpar } from '../sources/garimpar.js';
 import { carregarSemente } from '../sources/semente.js';
-import { puxar as puxarGalera } from '../sources/galera.js';
+import { puxar as puxarGalera, votarLixo, puxarLixo } from '../sources/galera.js';
 import { Piloto } from '../coach/piloto.js';
 import { ESTILOS, TECNICAS } from '../coach/tecnicas.js';
-import { decidirSet, aplicarDecisoes } from '../coach/jev.js';
+import { decidirSet, aplicarDecisoes, julgarFaixas } from '../coach/jev.js';
 import { montarMascote } from './mascote.js';
 import { montarPista } from './pista.js';
 import { montarCena } from './cena.js';
@@ -234,6 +234,15 @@ function montarVista(id) {
     fav.classList.toggle('lig', on);
     fav.textContent = on ? '♥' : '♡';
     fav.disabled = !f;
+  };
+  /** 👎 isto não é música: sai do garimpo daqui e vale um voto pra galera. */
+  q('.lixo').onclick = () => {
+    const f = decks[id]?.faixa;
+    if (!f?.id) return;
+    bib.marcarLixo([f.id]);
+    votarLixo([f.id], 'gente');
+    v.artista.textContent = t('deck.lixoFeito');
+    recarregar();
   };
   fav.onclick = () => {
     const f = decks[id]?.faixa;
@@ -1739,7 +1748,7 @@ $('b-piloto').onclick = async () => {
     const soFavoritas = fonteDj === 'favoritas';
     const cands = soFavoritas ? bib.favoritasParaSet() : await bib.candidatasDoSet();
     if (cands.length < 2) throw new Error(t(soFavoritas ? 'dj.poucasFav' : 'pref.semFaixas'));
-    const s = montarSet(cands, {
+    const montar = (pote) => montarSet(pote, {
       minutos: Number($('pref-min').value),
       energia: $('pref-energia').value,
       obrigatorias: [],
@@ -1750,8 +1759,32 @@ $('b-piloto').onclick = async () => {
       // com faixas escolhidas, quem abre o set é a primeira delas, não o deck
       semente: referencia()?.bpm ? referencia() : null,
     });
+    let s = montar(cands);
     if (s.fila.length < 2) throw new Error(t('pref.poucas'));
-    if (!soFavoritas) registrarSugeridas(s.fila);
+
+    /**
+     * Filtro de trash ANTES de tocar: o Jev lê título, artista, tags e
+     * popularidade de cada faixa do set e reprova o que não é música. As
+     * reprovadas vão pro lixo (daqui e da galera) e o set é remontado sem
+     * elas. Duas voltas no máximo; favoritas não passam pelo juiz.
+     */
+    if (!soFavoritas) {
+      let tiradas = 0;
+      for (let volta = 0; volta < 2; volta++) {
+        $('piloto-nota').textContent = t('jev.julgando', { n: s.fila.length });
+        const juiz = await julgarFaixas(s.fila).catch(() => null);
+        if (!juiz?.reprovadas.length) break;
+        const ids = juiz.reprovadas.map((f) => f.id);
+        tiradas += ids.length;
+        bib.marcarLixo(ids);
+        votarLixo(ids, 'jev');
+        const novo = montar(cands.filter((f) => !bib.ehLixo(f.id)));
+        if (novo.fila.length < 2) break;
+        s = novo;
+      }
+      if (tiradas) $('piloto-tecnica').textContent = t('jev.tirou', { n: tiradas });
+      registrarSugeridas(s.fila);
+    }
 
     /**
      * O Jev decide o set INTEIRO num pedido só — técnica e duração de cada
@@ -2085,8 +2118,10 @@ $('b-garimpar').onclick = async () => {
       $('acervo-n').style.color = 'var(--acc)';
     },
   });
-  // depois o que a galera garimpou desde a última visita
+  // depois o que a galera garimpou desde a última visita, e o que ela tirou
   const g = await puxarGalera();
+  const lixoDaGalera = await puxarLixo();
+  if (lixoDaGalera) bib.definirLixoGalera(lixoDaGalera);
   await mostrarAcervo();
   if ((r.carregou && r.novas) || g.novas) recarregar();
 })();

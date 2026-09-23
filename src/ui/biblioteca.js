@@ -45,6 +45,23 @@ let selecionadas = new Set(ler('garimpo.bib.generos', ['gen:House']));
 let ordem = ler('garimpo.bib.ordem', 'embaralhar');
 let decrescente = ler('garimpo.bib.desc', false);
 let favoritas = ler('garimpo.favoritas', []);   // objetos completos: tocam sem rede
+/**
+ * TRASH: o que não é música (piada, teste, grito, ruído). `lixo` é o que VOCÊ
+ * tirou (👎) ou o Jev reprovou neste aparelho; `lixoGalera` é o que a galera
+ * tirou (2+ votos no Worker). Não aparece na lista nem entra em set.
+ * Favorita nunca é trash: se você deu ♥, vale o ♥.
+ */
+let lixo = new Set(ler('garimpo.lixo', []));
+let lixoGalera = new Set(ler('garimpo.lixoGalera', []));
+export function ehLixo(id) { return (lixo.has(id) || lixoGalera.has(id)) && !favoritas.some((f) => f.id === id); }
+export function marcarLixo(ids) {
+  for (const id of ids) lixo.add(id);
+  gravar('garimpo.lixo', [...lixo].slice(-5000));
+}
+export function definirLixoGalera(ids) {
+  lixoGalera = new Set(ids);
+  gravar('garimpo.lixoGalera', [...lixoGalera]);
+}
 
 export const estado = {
   get selecionadas() { return [...selecionadas]; },
@@ -172,7 +189,7 @@ export async function faixasDaLista({ texto = '', pontuarCombina = null } = {}) 
     lista = await doAcervo();
     if (lista.length < 12) lista = lista.concat(await daRede());
   }
-  return ordenar(lista.filter((t) => !t.isLongMix), { pontuarCombina }).slice(0, 300);
+  return ordenar(lista.filter((t) => !t.isLongMix && !ehLixo(t.id)), { pontuarCombina }).slice(0, 300);
 }
 
 /**
@@ -188,5 +205,5 @@ export async function candidatasDoSet() {
   if (ordem === 'favoritas') return favoritasParaSet();
   let lista = await doAcervo({ bpmMin: 100, bpmMax: 150, porPilha: 900, tudo: 5000 });
   if (lista.length < 40) lista = lista.concat(await daRede());
-  return lista.filter((f) => f.bpm && f.camelot && f.duration >= 90 && f.duration <= 420);
+  return lista.filter((f) => f.bpm && f.camelot && f.duration >= 90 && f.duration <= 420 && !ehLixo(f.id));
 }

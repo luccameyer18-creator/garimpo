@@ -77,6 +77,82 @@ function resumoFaixa(f) {
 }
 
 /**
+ * O que o Audius sabe de cada faixa e o acervo não guarda: quantas vezes
+ * tocou, curtidas, reposts, tags, clima, descrição. Um pedido por 25 faixas.
+ */
+async function sinaisAudius(faixas) {
+  const mapa = {};
+  for (let i = 0; i < faixas.length; i += 25) {
+    const q = faixas.slice(i, i + 25).map((f) => 'id=' + encodeURIComponent(f.id)).join('&');
+    try {
+      const r = await fetch(`https://api.audius.co/v1/tracks?${q}&app_name=garimpo`);
+      if (!r.ok) continue;
+      for (const t of (await r.json()).data || []) {
+        mapa[t.id] = {
+          plays: t.play_count ?? null, curtidas: t.favorite_count ?? null, reposts: t.repost_count ?? null,
+          tags: t.tags || null, clima: t.mood || null, descricao: (t.description || '').slice(0, 140) || null,
+        };
+      }
+    } catch {}
+  }
+  return mapa;
+}
+
+/**
+ * ISTO É MÚSICA? — o filtro de trash, antes do set tocar.
+ *
+ * O Jev não ouve áudio: ele lê. Mas trash se denuncia no texto — título de
+ * piada ("Interlude aka Zane's favorite track lol"), "test", gente gritando
+ * no nome, zero plays, zero curtidas, tag de meme. Uma pergunta sim/não por
+ * faixa, todas no mesmo pedido (rodam em paralelo; ~40 tokens cada).
+ *
+ * `corte` é a probabilidade mínima de "sim" pra faixa ficar. Baixo de
+ * propósito (0,35): tirar uma música boa por engano é pior que deixar
+ * passar uma estranha — pra essa, o 👎 do deck resolve.
+ *
+ * @returns {Promise<null | { reprovadas: object[], notas: object, ms: number, tokens: object }>}
+ */
+export async function julgarFaixas(faixas, { corte = 0.35, signal } = {}) {
+  const url = urlJev();
+  if (!url || !faixas?.length) return null;
+  const sinais = await sinaisAudius(faixas);
+  const state = {
+    faixas: faixas.map((f) => ({
+      titulo: f.title, artista: f.artist, genero: f.genre || null,
+      duracao_s: Math.round(f.duration || 0), ...(sinais[f.id] || {}),
+    })),
+  };
+  const questions = {};
+  faixas.forEach((_, i) => {
+    questions[`f${i}`] = {
+      type: 'noul',
+      instructions: `Is \`faixas[${i}]\` a real, finished piece of music that a DJ could play to a dancing crowd? ` +
+        'Answer no for jokes and memes, test uploads, voice memos, people screaming or just talking, noise ' +
+        'experiments, skits, intros or interludes with no groove, podcasts and ringtones. Use the title, artist, ' +
+        'tags, mood, description and the play, like and repost counts as evidence.',
+    };
+  });
+  const t0 = performance.now();
+  let j;
+  try {
+    const r = await fetch(url, {
+      method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'jev-latest', state, questions }),
+    });
+    if (!r.ok) return null;
+    j = await r.json();
+  } catch { return null; }
+  if (!j?.answers) return null;
+  const notas = {}, reprovadas = [];
+  faixas.forEach((f, i) => {
+    const p = j.answers[`f${i}`]?.noul;
+    notas[f.id] = p ?? null;
+    if (typeof p === 'number' && p < corte) reprovadas.push(f);
+  });
+  return { reprovadas, notas, ms: Math.round(performance.now() - t0), tokens: j.usage };
+}
+
+/**
  * Decide técnica e duração de cada transição do set, num pedido só.
  *
  * @param {object[]} fila  faixas na ordem em que vão tocar

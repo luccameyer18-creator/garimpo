@@ -23,3 +23,11 @@ CREATE TABLE IF NOT EXISTS faixas (
   criada   INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS faixas_criada ON faixas (criada);
+
+-- trash: faixas que não são música (piada, teste, grito). Cada 👎 ou
+-- reprovação do Jev é um voto; com 2+ a faixa some do garimpo de todos
+CREATE TABLE IF NOT EXISTS lixo (
+  id     TEXT PRIMARY KEY,
+  votos  INTEGER NOT NULL DEFAULT 1,
+  criada INTEGER NOT NULL
+);

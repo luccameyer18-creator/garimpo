@@ -14,6 +14,28 @@ import { guardar } from './crate.js';
 
 export const WORKER = 'https://garimpo.garimpo-dj.workers.dev';
 
+/**
+ * Trash compartilhado: cada 👎 (ou reprovação do Jev) é um voto. Com 2 votos
+ * a faixa some do garimpo de todo mundo — o Jev de uma pessoa economiza o
+ * token de todas as outras.
+ */
+export async function votarLixo(ids, origem = 'gente') {
+  if (!ids?.length) return;
+  try {
+    await fetch(`${WORKER}/lixo`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids.slice(0, 50), origem }),
+    });
+  } catch {}
+}
+export async function puxarLixo() {
+  try {
+    const r = await fetch(`${WORKER}/lixo`);
+    if (!r.ok) return null;
+    return (await r.json()).ids || [];
+  } catch { return null; }
+}
+
 const CHAVE_DESDE = 'garimpo.galera.desde';
 const CAMPOS = ['id', 'title', 'artist', 'handle', 'duration', 'genre', 'bpm', 'camelot', 'key', 'pilha'];
 const LOTE = 500;          // o Worker aceita até 500 por POST
