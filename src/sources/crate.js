@@ -102,26 +102,42 @@ export async function contar() {
  */
 export async function buscar({ pilha = null, genero = null, texto = null,
                                bpmMin = null, bpmMax = null, camelot = null,
-                               precisaBpmETom = true, limite = 200 } = {}) {
+                               precisaBpmETom = true, limite = 200,
+                               amostrar = false } = {}) {
   const b = await abrir();
   const q = texto ? String(texto).toLowerCase() : null;
   return new Promise((ok, no) => {
     const fora = [];
+    let vistos = 0;
     const loja = b.transaction(LOJA, 'readonly').objectStore(LOJA);
     const cur = loja.openCursor();
     cur.onsuccess = () => {
       const c = cur.result;
-      if (!c || fora.length >= limite) return ok(fora);
+      if (!c || (!amostrar && fora.length >= limite)) return ok(fora);
       const f = c.value;
       let serve = true;
       if (precisaBpmETom && (!f.bpm || !f.camelot)) serve = false;
-      if (serve && pilha && f.pilha !== pilha) serve = false;
+      // `gen:X` também casa com genre === X: o garimpo por texto guarda sem
+      // rótulo, e o chip House mostrava 28 faixas com 39 mil no acervo
+      if (serve && pilha) {
+        const porGenero = pilha.startsWith('gen:') && f.genre === pilha.slice(4);
+        if (f.pilha !== pilha && !porGenero) serve = false;
+      }
       if (serve && genero && f.genre !== genero) serve = false;
       if (serve && bpmMin != null && !(f.bpm >= bpmMin)) serve = false;
       if (serve && bpmMax != null && !(f.bpm <= bpmMax)) serve = false;
       if (serve && camelot && f.camelot !== camelot) serve = false;
       if (serve && q && !`${f.title} ${f.artist} ${f.genre || ''}`.toLowerCase().includes(q)) serve = false;
-      if (serve) fora.push(f);
+      if (serve) {
+        // amostragem de reservatório: `limite` faixas espalhadas pelo acervo
+        // inteiro numa passada, em vez das primeiras na ordem do id
+        if (!amostrar || fora.length < limite) fora.push(f);
+        else {
+          const j = Math.floor(Math.random() * (vistos + 1));
+          if (j < limite) fora[j] = f;
+        }
+        vistos++;
+      }
       c.continue();
     };
     cur.onerror = () => no(cur.error);

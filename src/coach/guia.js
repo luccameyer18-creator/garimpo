@@ -173,14 +173,34 @@ const REGRAS = [
         apontar: [{ id: 'kill-B-grave', rotulo: t('p.gravesJuntos.rot') }] } },
 
   // ── volume desigual entre os decks ──
+  /**
+   * Volume desigual — medido DEPOIS do fader, e com uma ação que existe.
+   *
+   * Dois erros juntos faziam o professor pedir "suba o volume" com o volume no
+   * máximo: o medidor é pré-fader (então mexer no fader NUNCA mudava a
+   * leitura, e o conselho nunca se resolvia), e a regra sempre mandava subir o
+   * mais baixo, mesmo que ele já estivesse no topo.
+   *
+   * Agora compara o que sai de fato (nível × curva do fader, a mesma do
+   * mixer), e se o mais baixo já está no máximo, manda BAIXAR o mais alto.
+   */
   { id: 'volume', grav: 2, facil: 0, quando: (e) => {
       if (!e.ambosAudiveis || !(e.nivelA > 0.003) || !(e.nivelB > 0.003)) return null;
-      const dif = 20 * Math.log10(e.nivelA / e.nivelB);
+      const saida = (nv, f) => nv * Math.pow(Math.max(0, Math.min(1, f ?? 1)), 1.6);
+      const sA = saida(e.nivelA, e.faderA), sB = saida(e.nivelB, e.faderB);
+      if (!(sA > 1e-4) || !(sB > 1e-4)) return null;
+      const dif = 20 * Math.log10(sA / sB);
       if (Math.abs(dif) <= 6) return null;
       const baixo = dif > 0 ? 'B' : 'A', alto = dif > 0 ? 'A' : 'B';
-      return { fala: t('p.volume', { alto, baixo, db: Math.abs(dif).toFixed(0) }),
+      const faderBaixo = baixo === 'A' ? e.faderA : e.faderB;
+      const noTopo = (faderBaixo ?? 1) >= 0.97;
+      return {
+        fala: t(noTopo ? 'p.volume.baixe' : 'p.volume', { alto, baixo, db: Math.abs(dif).toFixed(0) }),
         porque: t('p.volume.por'),
-        apontar: [{ id: `vol-${baixo}`, rotulo: t('p.volume.rot', { d: baixo }) }] };
+        apontar: noTopo
+          ? [{ id: `vol-${alto}`, rotulo: t('p.volume.rotBaixe', { d: alto }) }]
+          : [{ id: `vol-${baixo}`, rotulo: t('p.volume.rot', { d: baixo }) }],
+      };
     } },
 
   // ── trazer com o crossfader: mexe no som, então é risco ──

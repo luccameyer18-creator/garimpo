@@ -16,6 +16,8 @@
  */
 
 const PT = {
+  'p.volume.baixe': 'O deck {alto} está <b>{db} dB</b> mais alto e o {baixo} já está no máximo. <b>Baixe o {alto}</b>.',
+  'p.volume.rotBaixe': 'baixe o volume do {d}',
   'acervo.semeando': 'trazendo o acervo… {i}/{de}',
   'acervo.garimpar': 'garimpar mais',
   'acervo.parar': 'parar',
@@ -175,6 +177,8 @@ const PT = {
 };
 
 const EN = {
+  'p.volume.baixe': 'Deck {alto} is <b>{db} dB</b> louder and {baixo} is already maxed. <b>Bring {alto} down</b>.',
+  'p.volume.rotBaixe': 'bring {d} down',
   'acervo.semeando': 'loading the crate… {i}/{de}',
   'acervo.garimpar': 'dig for more',
   'acervo.parar': 'stop',
@@ -333,6 +337,8 @@ const EN = {
 };
 
 const ES = {
+  'p.volume.baixe': 'El deck {alto} está <b>{db} dB</b> más fuerte y el {baixo} ya está al máximo. <b>Bajá el {alto}</b>.',
+  'p.volume.rotBaixe': 'bajá el volumen del {d}',
   'acervo.semeando': 'trayendo el acervo… {i}/{de}',
   'acervo.garimpar': 'buscar más',
   'acervo.parar': 'parar',

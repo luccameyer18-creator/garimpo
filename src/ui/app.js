@@ -188,6 +188,9 @@ function montarVista(id) {
     v.dur.textContent = fmt(duration);
     v.capa.src = faixa.artwork || '';
     v.capa.style.visibility = faixa.artwork ? 'visible' : 'hidden';
+    // faixa vinda do acervo embarcado não traz capa (ver semente.js): busca uma
+    // só, agora que ela está de fato na tela
+    if (!faixa.artwork && faixa.id) buscarCapa(faixa, v);
     v.bpmVal.textContent = faixa.bpm ?? '—';
     v.tom.innerHTML = faixa.camelot ? `<b>${faixa.camelot}</b> ${faixa.key}` : '—';
     v.erro.hidden = true;
@@ -636,8 +639,26 @@ function rodarProfessor() {
   rodarAuto(est);
 
   const itens = plano(est);
-  const chave = itens.map((i) => i.id + i.fala).join('|');
-  if (chave === ultimaLista) return;          // só redesenha quando a lista muda
+  /**
+   * A chave de redesenho é a ESTRUTURA do plano, não o texto.
+   *
+   * Era `id + fala`, e a fala tem número vivo: "134 ms fora", "acaba em 18s",
+   * "em 12 tempos". Então a chave mudava a cada 220 ms, e a cada 220 ms o
+   * professor apagava e reacendia todas as luzes e etiquetas — a animação
+   * reiniciava e os botões pareciam tremer. Foi o que quem usa viu.
+   *
+   * Agora: se só o texto mudou, troca o texto no lugar e não mexe em classe
+   * nenhuma. Luz só apaga e acende quando muda QUAL ajuste está na lista.
+   */
+  const chave = itens.map((i) => i.id + ':' + (i.apontar || []).map((a) => a.id).join(',')).join('|');
+  if (chave === ultimaLista) {
+    const els = $('prof-plano').querySelectorAll('.item .txt');
+    itens.forEach((it, k) => {
+      const html = it.fala + (it.porque ? `<small>${it.porque}</small>` : '');
+      if (els[k] && els[k].innerHTML !== html) els[k].innerHTML = html;
+    });
+    return;
+  }
   ultimaLista = chave;
 
   const cx = $('prof-plano');
@@ -700,6 +721,10 @@ function montarEstado() {
     reducao: mixer?.reducao ?? 0,
     nivelA: mixer?.canal('A').nivel ?? 0,
     nivelB: mixer?.canal('B').nivel ?? 0,
+    // o medidor é PRÉ-fader; sem a posição do fader o professor não sabe o que
+    // de fato sai, e pedia "suba o volume" com o fader já no máximo
+    faderA: mixer?.canal('A').valores.fader ?? 1,
+    faderB: mixer?.canal('B').valores.fader ?? 1,
     // os dois decks contam o MESMO buraco (e da thread de audio, nao do deck),
     // entao somar contava duas vezes. O maximo e a contagem real.
     glitches: Math.max(decks.A?.transport.ultimoAnchor?.glitchCount || 0,
@@ -1056,7 +1081,7 @@ const PILHAS = [
  */
 async function daCrateOuRede(chave, daRede) {
   try {
-    const local = await crate.buscar({ pilha: chave, limite: 300 });
+    const local = await crate.buscar({ pilha: chave, limite: 150, amostrar: true });
     if (local.length >= 12) return local;
   } catch { /* sem IndexedDB: segue pela rede, como sempre foi */ }
   return daRede();
@@ -1757,15 +1782,16 @@ async function candidatasDoSet(pilhas) {
     const escolhidas = pilhas
       ? PILHAS_SET.filter((p) => pilhas.includes(p.nome)).map((p) => p.chave || p.nome)
       : null;
+    // AMOSTRA espalhada: as primeiras N do cursor eram sempre o mesmo canto
+    // do acervo, e um set de 60 min saiu inteiro entre 100 e 110 BPM
     const local = [];
+    const filtro = { bpmMin: 100, bpmMax: 150, amostrar: true };
     if (escolhidas?.length) {
-      for (const ch of escolhidas) local.push(...await crate.buscar({ pilha: ch, limite: 600 }));
+      for (const ch of escolhidas) local.push(...await crate.buscar({ ...filtro, pilha: ch, limite: 900 }));
     } else {
-      local.push(...await crate.buscar({ limite: 4000 }));
+      local.push(...await crate.buscar({ ...filtro, limite: 5000 }));
     }
-    // 100–150 BPM é o mesmo recorte que juntarCandidatas usa
-    const bons = local.filter((f) => f.bpm >= 100 && f.bpm <= 150 &&
-                                     f.duration >= 90 && f.duration <= 420);
+    const bons = local.filter((f) => f.duration >= 90 && f.duration <= 420);
     if (bons.length >= 40) return bons;
   } catch { /* sem acervo, vai pela rede */ }
   return juntarCandidatas({ pilhas });
@@ -1833,3 +1859,30 @@ $('b-garimpar').onclick = async () => {
 
 mostrarAcervo();
 window.addEventListener('idioma', mostrarAcervo);
+
+
+/**
+ * Busca a capa de uma faixa que veio sem ela.
+ *
+ * Uma requisição por faixa CARREGADA, não por faixa listada — é a diferença
+ * entre 1 e 26 mil. O resultado fica na própria faixa, então trocar de deck e
+ * voltar não busca de novo.
+ */
+const capasBuscadas = new Set();
+async function buscarCapa(faixa, v) {
+  if (capasBuscadas.has(faixa.id)) return;
+  capasBuscadas.add(faixa.id);
+  try {
+    const r = await fetch(`https://api.audius.co/v1/tracks/${faixa.id}?app_name=garimpo`);
+    if (!r.ok) return;
+    const d = (await r.json()).data;
+    const url = d?.artwork?.['480x480'] || d?.artwork?.['150x150'];
+    if (!url) return;
+    faixa.artwork = url;
+    // só pinta se esta faixa ainda for a que está no deck
+    if (v.capa && v.titulo.textContent === faixa.title) {
+      v.capa.src = url;
+      v.capa.style.visibility = 'visible';
+    }
+  } catch { /* sem capa é só estético; nunca vale quebrar o carregamento */ }
+}

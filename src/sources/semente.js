@@ -21,9 +21,18 @@
 
 import { guardar, contar } from './crate.js';
 
-/** Ordem dos campos no array posicional. Mudar aqui exige regerar o arquivo. */
+/**
+ * Ordem dos campos no array posicional. Mudar aqui exige regerar o arquivo.
+ *
+ * SEM `artwork` de propósito. As URLs de capa custam 99 bytes cada — em 26 mil
+ * faixas são 2,6 MB, quase metade do arquivo — e a lista de músicas nem mostra
+ * capa: só o deck mostra, e só depois que você carrega uma faixa. Então a capa
+ * é buscada sob demanda, uma faixa por vez, no momento em que ela aparece no
+ * deck. Pagar 2,6 MB adiantado pra 26 mil capas que ninguém vai ver seria
+ * cobrar do celular de quem abre o link.
+ */
 export const CAMPOS = ['id', 'title', 'artist', 'handle', 'duration', 'genre',
-                       'bpm', 'camelot', 'key', 'pilha', 'artwork'];
+                       'bpm', 'camelot', 'key', 'pilha'];
 
 const CHAVE_VERSAO = 'garimpo.sementeVersao';
 
