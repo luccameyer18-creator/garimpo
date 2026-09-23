@@ -23,6 +23,7 @@
 
 import { momentos } from './momentos.js';
 import { executar, escolherTecnica, caminharBpm, TECNICAS, ESTILOS } from './tecnicas.js';
+import { keyCompatible } from '../sources/audius.js';
 
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -180,9 +181,22 @@ export class Piloto extends EventTarget {
     const tempos = faixa?.tempos || Math.max(8, Math.round(TECNICAS[tecnica].tempos * est.escala / 4) * 4);
     this.ultimaTecnica = tecnica;
     this.#diz('tecnica', { tecnica: TECNICAS[tecnica].nome, tempos, porque: faixa?.porqueIA || null });
+    /**
+     * O PORQUÊ da técnica, com os fatos DESTA dupla de músicas: os tons casam
+     * ou brigam, quanto o andamento difere — e o que a técnica resolve. "Jev
+     * 95%" não explicava nada; isto explica.
+     */
+    const fa = d[sai].faixa, fb = faixa || d[entra].faixa;
+    const tomOk = fa?.camelot && fb?.camelot
+      ? keyCompatible({ camelot: fa.camelot }, { camelot: fb.camelot }).ok : null;
+    const dif = fa?.bpm && fb?.bpm ? Math.abs((fb.bpm / fa.bpm - 1) * 100).toFixed(1) : '?';
     this.#narra('n.tecnica', {
-      porque: faixa?.porqueIA ? null : 'n.tecnica.p',
-      vars: { t: TECNICAS[tecnica].nome, n: tempos, est: est.nome, q: TECNICAS[tecnica].quando, ia: faixa?.porqueIA || '' },
+      porque: tomOk === false ? 'n.tecnica.pBriga' : tomOk ? 'n.tecnica.pOk' : 'n.tecnica.p',
+      vars: {
+        t: TECNICAS[tecnica].nome, n: tempos, est: est.nome, q: TECNICAS[tecnica].quando,
+        a: fa?.camelot || '?', b: fb?.camelot || '?', d: dif,
+        ia: faixa?.porqueIA ? ` (${faixa.porqueIA})` : '',
+      },
     });
 
     const ok = await executar(tecnica, {

@@ -161,10 +161,11 @@ export async function varrer() {
   // ── DJ e tela ──
   await teste('modos do DJ', async () => { clicar(document.querySelector('#dj-modos [data-modo="sozinho"]')); const t1 = $('b-piloto').textContent; clicar(document.querySelector('#dj-modos [data-modo="juntos"]')); return { ok: t1 !== $('b-piloto').textContent, detalhe: `${t1} / ${$('b-piloto').textContent}` }; });
   await teste('tema all black', async () => { clicar($('b-tema')); const ok = document.documentElement.dataset.tema === 'black'; clicar($('b-tema')); return ok && !document.documentElement.dataset.tema; });
-  await teste('modo da janela e tela cheia', async () => {
-    const m = document.querySelector('.cena-modo'), t0 = m.textContent; clicar(m); const mudou = m.textContent !== t0; clicar(m); clicar(m);
-    clicar(document.querySelector('.cena-cheia')); const cheia = $('janela-pista').classList.contains('tela-cheia'); clicar(document.querySelector('.cena-cheia'));
-    return { ok: mudou && cheia, detalhe: `modo ${mudou}, tela cheia ${cheia}` };
+  await teste('modo da janela e viagem', async () => {
+    const m = document.querySelector('.cena-modo'), t0 = m.textContent; clicar(m); const mudou = m.textContent !== t0; clicar(m);
+    clicar(document.querySelector('.cena-viagem')); const liga = document.body.classList.contains('viagem');
+    clicar(document.querySelector('.cena-viagem')); const desliga = !document.body.classList.contains('viagem');
+    return { ok: mudou && liga && desliga, detalhe: `modo ${mudou}, viagem liga ${liga} desliga ${desliga}` };
   });
   await teste('ajuda abre', async () => { clicar($('b-ajuda')); await espera(80); const ok = $('ajuda').open; $('ajuda').close(); return ok; });
 

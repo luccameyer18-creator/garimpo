@@ -14,7 +14,18 @@ import { Transport } from '../audio/transport.js';
 import { resolveStreamUrl, urlAquecida } from '../sources/audius.js';
 import { analisar } from '../analysis/analyze.js';
 
-/** Picos min/max por bin, pra desenhar forma de onda sem guardar o PCM. */
+/**
+ * Picos min/max por bin, pra desenhar forma de onda sem guardar o PCM — e a
+ * energia de cada BANDA (grave, médio, agudo), pra onda colorida por
+ * frequência, como a de uma CDJ.
+ *
+ * As bandas saem de dois passa-baixas de 2 polos (200 Hz e 2,5 kHz) sobre o
+ * mono: grave = abaixo de 200, médio = entre um e outro, agudo = o resto.
+ * Filtro simples de propósito: é pra COLORIR, não pra medir; custa ~100 ms
+ * por música, uma vez. `ref*` é o percentil 98 de cada banda na faixa — a
+ * onda normaliza por ele, então uma faixa sem grave nenhum não pinta azul só
+ * porque o grave dela é "o maior que ela tem".
+ */
 export function calcularPicos(buffer, binsPorSegundo = 100) {
   const canais = Math.min(2, buffer.numberOfChannels);
   const total = Math.max(1, Math.floor(buffer.duration * binsPorSegundo));
@@ -38,7 +49,32 @@ export function calcularPicos(buffer, binsPorSegundo = 100) {
     }
     min[b] = lo; max[b] = hi; rms[b] = Math.sqrt(soma / Math.max(n, 1));
   }
-  return { min, max, rms, binsPorSegundo };
+
+  // bandas, sobre o mono
+  const esq = buffer.getChannelData(0), dir = canais > 1 ? buffer.getChannelData(1) : esq;
+  const coef = (fc) => 1 - Math.exp(-2 * Math.PI * fc / buffer.sampleRate);
+  const kG = coef(200), kM = coef(2500);
+  const grave = new Float32Array(total), medio = new Float32Array(total), agudo = new Float32Array(total);
+  let g1 = 0, g2 = 0, m1 = 0, m2 = 0;
+  for (let b = 0; b < total; b++) {
+    const ini = b * porBin, fim = Math.min(ini + porBin, buffer.length);
+    let sg = 0, sm = 0, sa = 0;
+    for (let i = ini; i < fim; i++) {
+      const x = (esq[i] + dir[i]) * 0.5;
+      g1 += kG * (x - g1); g2 += kG * (g1 - g2);
+      m1 += kM * (x - m1); m2 += kM * (m1 - m2);
+      const md = m2 - g2, ag = x - m2;
+      sg += g2 * g2; sm += md * md; sa += ag * ag;
+    }
+    const nn = Math.max(1, fim - ini);
+    grave[b] = Math.sqrt(sg / nn); medio[b] = Math.sqrt(sm / nn); agudo[b] = Math.sqrt(sa / nn);
+  }
+  const p98 = (arr) => {
+    const c = Float32Array.from(arr).sort();
+    return c[Math.floor(c.length * 0.98)] || 1e-6;
+  };
+  return { min, max, rms, grave, medio, agudo,
+           refG: p98(grave), refM: p98(medio), refA: p98(agudo), binsPorSegundo };
 }
 
 export class Deck extends EventTarget {
@@ -328,7 +364,9 @@ export class Deck extends EventTarget {
 
   // ─────────────────────────── controles ───────────────────────────
 
-  play() { this.transport.play(); }
+  // sem faixa não há o que tocar: PLAY num deck vazio deixava ele "tocando" e a
+  // pista, o mascote e o professor achavam que havia música
+  play() { if (this.faixa) this.transport.play(); }
   pause(opts) { this.transport.pause(opts); }
   alternar() { this.tocando ? this.pause() : this.play(); }
   seek(pos) { this.transport.seek(pos); }

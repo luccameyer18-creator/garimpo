@@ -20,6 +20,8 @@ import { decidirSet, aplicarDecisoes, julgarFaixas } from '../coach/jev.js';
 import { montarMascote } from './mascote.js';
 import { montarPista } from './pista.js';
 import { montarCena } from './cena.js';
+import { montarViagem } from './viagem.js';
+import { qualidade } from './qualidade.js';
 import * as bib from './biblioteca.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
@@ -199,6 +201,8 @@ function montarVista(id) {
 
   const q = (s) => no.querySelector(s);
   q('.browse').onclick = () => abrirBibPara(id);
+  q('.onda-modo').textContent = '≋ ' + t('onda.' + modoOnda);
+  q('.onda-modo').onclick = trocarModoOnda;
   const v = {
     raiz: no, titulo: q('.titulo'), artista: q('.artista'), capa: q('.capa'),
     bpmVal: q('.bpm-val'), tom: q('.tom'), onda: q('.onda'), mini: q('.mini'),
@@ -828,7 +832,7 @@ function rodarProfessor() {
   if (chave === ultimaLista) {
     const els = $('prof-plano').querySelectorAll('.item .txt');
     itens.forEach((it, k) => {
-      const html = it.fala + (it.porque ? `<small>${it.porque}</small>` : '');
+      const html = it.fala + (it.porque ? `<small data-por="${t('prof.porque')}">${it.porque}</small>` : '');
       if (els[k] && els[k].innerHTML !== html) els[k].innerHTML = html;
     });
     return;
@@ -840,7 +844,7 @@ function rodarProfessor() {
   const cx = $('prof-plano');
   cx.innerHTML = itens.length
     ? itens.map((it, k) => `<div class="item c-${it.cor}"><i>${k + 1}</i><div class="txt">${it.fala}` +
-        (it.porque ? `<small>${it.porque}</small>` : '') + '</div></div>').join('')
+        (it.porque ? `<small data-por="${t('prof.porque')}">${it.porque}</small>` : '') + '</div></div>').join('')
     : '<div class="item c-depois"><i>✓</i><div class="txt">Está tudo no lugar. ' +
       '<b>Ouça</b> e sinta a música.<small>Quando não há nada pra corrigir, o trabalho é escutar.</small></div></div>';
   $('prof').classList.toggle('azul', itens[0]?.cor === 'depois');
@@ -951,6 +955,30 @@ export function recalcularMomentos(id) {
   return momentosDe[id];
 }
 
+/**
+ * A ONDA COLORIDA POR FREQUÊNCIA. Três jeitos de ver, trocados no ≋ do deck
+ * (vale pros dois e fica guardado):
+ *   bandas   estilo rekordbox: grave azul atrás, médio âmbar, agudo branco na
+ *            frente — o grave aparecendo e sumindo é o que guia a troca de
+ *            graves, e aqui ele salta aos olhos
+ *   rgb      estilo Serato: uma cor por trecho, grave puxa pro vermelho,
+ *            médio pro verde, agudo pro azul
+ *   energia  a de antes: cor pela intensidade
+ */
+const MODOS_ONDA = ['bandas', 'rgb', 'energia'];
+let modoOnda = 'bandas';
+try { if (MODOS_ONDA.includes(localStorage.getItem('garimpo.onda'))) modoOnda = localStorage.getItem('garimpo.onda'); } catch {}
+const COR_BANDA = { grave: '#2f6bff', medio: '#ffa531', agudo: '#f2f4ff' };
+function trocarModoOnda() {
+  modoOnda = MODOS_ONDA[(MODOS_ONDA.indexOf(modoOnda) + 1) % MODOS_ONDA.length];
+  try { localStorage.setItem('garimpo.onda', modoOnda); } catch {}
+  for (const id of ['A', 'B']) {
+    const b = vistas[id]?.raiz.querySelector('.onda-modo');
+    if (b) b.textContent = '≋ ' + t('onda.' + modoOnda);
+    if (decks[id]) desenharMini(id);
+  }
+}
+
 function desenharOnda(id) {
   const d = decks[id], v = vistas[id];
   const dpr = ajustar(v.onda);
@@ -965,16 +993,40 @@ function desenharOnda(id) {
   }
 
   if (d.picos) {
-    const { min, max, rms, binsPorSegundo } = d.picos;
+    const { min, max, rms, binsPorSegundo, grave, medio, agudo } = d.picos;
     const meio = A / 2, pxSeg = L / SEG_VISIVEL, de = pos - SEG_VISIVEL / 2;
-    for (let x = 0; x < L; x++) {
-      const t = de + (x / L) * SEG_VISIVEL;
-      const b = Math.floor(t * binsPorSegundo);
-      if (b < 0 || b >= min.length) continue;
-      const hi = max[b] * meio * 0.95, lo = min[b] * meio * 0.95;
-      const e = Math.min(1, rms[b] * 3.2);
-      c.fillStyle = `hsl(${210 - e * 190} 85% ${34 + e * 26}%)`;
-      c.fillRect(x, meio - hi, 1, Math.max(1, hi - lo));
+    const binDe = (x) => Math.floor((de + (x / L) * SEG_VISIVEL) * binsPorSegundo);
+    const modo = grave ? modoOnda : 'energia';
+    if (modo === 'bandas') {
+      // uma passada por banda: 3 trocas de cor por quadro, não 3 por coluna
+      const { refG, refM, refA } = d.picos;
+      const bandas = [[grave, refG, 1, COR_BANDA.grave], [medio, refM, 0.78, COR_BANDA.medio], [agudo, refA, 0.5, COR_BANDA.agudo]];
+      for (const [arr, ref, teto, cor] of bandas) {
+        c.fillStyle = cor;
+        for (let x = 0; x < L; x++) {
+          const b = binDe(x);
+          if (b < 0 || b >= min.length) continue;
+          const amp = Math.max(max[b], -min[b]) * meio * 0.95;
+          const h = amp * teto * Math.min(1, arr[b] / ref);
+          if (h >= 0.5) c.fillRect(x, meio - h, 1, h * 2);
+        }
+      }
+    } else {
+      const { refG, refM, refA } = d.picos;
+      for (let x = 0; x < L; x++) {
+        const b = binDe(x);
+        if (b < 0 || b >= min.length) continue;
+        const hi = max[b] * meio * 0.95, lo = min[b] * meio * 0.95;
+        if (modo === 'rgb') {
+          const g = Math.min(1, grave[b] / refG), m = Math.min(1, medio[b] / refM), a = Math.min(1, agudo[b] / refA);
+          const s = Math.max(g, m, a, 0.001);
+          c.fillStyle = `rgb(${(g / s * 255) | 0},${(m / s * 235) | 0},${(a / s * 255) | 0})`;
+        } else {
+          const e = Math.min(1, rms[b] * 3.2);
+          c.fillStyle = `hsl(${210 - e * 190} 85% ${34 + e * 26}%)`;
+        }
+        c.fillRect(x, meio - hi, 1, Math.max(1, hi - lo));
+      }
     }
     // grid de batidas: é o que deixa ver se os dois decks estão alinhados
     if (d.grid?.bpm) {
@@ -1025,10 +1077,17 @@ function desenharMini(id) {
   const c = v.ctxMini, L = v.mini.width, A = v.mini.height;
   c.clearRect(0, 0, L, A);
   if (!d.picos) return;
-  const { min, max } = d.picos, meio = A / 2;
-  c.fillStyle = id === 'A' ? '#3d5a7a' : '#7a5f3d';
+  const { min, max, grave, medio, agudo, refG, refM, refA } = d.picos, meio = A / 2;
+  const porBanda = grave && modoOnda !== 'energia';
+  if (!porBanda) c.fillStyle = id === 'A' ? '#3d5a7a' : '#7a5f3d';
   for (let x = 0; x < L; x++) {
     const b = Math.floor((x / L) * min.length);
+    if (porBanda) {
+      // a cor do trecho é a mistura das três bandas, pesada pela energia de cada
+      const g = Math.min(1, grave[b] / refG), m = Math.min(1, medio[b] / refM), a = Math.min(1, agudo[b] / refA);
+      const s = g + m + a || 1;
+      c.fillStyle = `rgb(${((g * 47 + m * 255 + a * 242) / s) | 0},${((g * 107 + m * 165 + a * 244) / s) | 0},${((g * 255 + m * 49 + a * 255) / s) | 0})`;
+    }
     c.fillRect(x, meio - max[b] * meio, 1, Math.max(1, (max[b] - min[b]) * meio));
   }
 }
@@ -1731,6 +1790,7 @@ function pararPiloto() {
   $('b-piloto').classList.remove('lig');
   $('b-piloto').textContent = t('dj.b.' + modoDj);
   $('b-pular').hidden = true;
+  document.body.classList.remove('dj-tocando');
   piloto?.assumirControle?.();
 }
 
@@ -1740,7 +1800,7 @@ $('b-piloto').onclick = async () => {
   const b = $('b-piloto');
   // solo: ele só monta o set e sinaliza — não assume nada, então não vira "parar"
   const solo = modoDj === 'solo';
-  if (!solo) { b.classList.add('lig'); b.textContent = t('app.piloto.parar'); $('b-pular').hidden = false; }
+  if (!solo) { b.classList.add('lig'); b.textContent = t('app.piloto.parar'); $('b-pular').hidden = false; document.body.classList.add('dj-tocando'); }
   $('piloto-nota').style.color = 'var(--neon)';
   $('piloto-nota').textContent = 'garimpando faixas…';
   try {
@@ -1888,6 +1948,30 @@ traduzirDOM();
  * menu só pra navegar e pra dizer ao DJ o que tocar.
  */
 $('b-prefs').onclick = () => { $('prefs').hidden = !$('prefs').hidden; };
+
+/** Minimizar o painel do DJ: fica só a linha do botão grande. Lembra. */
+function minimizarDj(min) {
+  $('dj-painel').classList.toggle('min', min);
+  $('b-dj-min').textContent = min ? '▴' : '▾';
+  try { localStorage.setItem('garimpo.dj.min', min ? '1' : '0'); } catch {}
+}
+$('b-dj-min').onclick = () => minimizarDj(!$('dj-painel').classList.contains('min'));
+try { minimizarDj(localStorage.getItem('garimpo.dj.min') === '1'); } catch {}
+
+/**
+ * SÓ A VIAGEM: com a viagem ligada, esconde a CDJ inteira (a música segue) e
+ * deixa só o visual. Voltar: o mesmo botão, ou Esc. Desligar a viagem também
+ * volta.
+ */
+function soViagem(on) {
+  document.body.classList.toggle('so-viagem', on);
+  $('b-so-viagem').textContent = t(on ? 'viagem.voltar' : 'viagem.so');
+}
+$('b-so-viagem').onclick = () => soViagem(!document.body.classList.contains('so-viagem'));
+$('b-so-pular').onclick = () => $('b-pular').click();
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('so-viagem')) soViagem(false); });
+new MutationObserver(() => { if (!document.body.classList.contains('viagem')) soViagem(false); })
+  .observe(document.body, { attributes: true, attributeFilter: ['class'] });
 window.addEventListener('idioma', () => { pintarBiblioteca(); repintarLista(); });
 
 
@@ -2207,16 +2291,20 @@ montarPista({
   estilo: () => (piloto?.ativo ? piloto.estilo : $('pref-estilo').value) || 'pista',
 });
 
-// a janela da pista, embaixo do mixer: o que o DJ vê da cabine
+// a viagem da página inteira (🌀): MilkDrop de fundo, formas voando na frente
+const viagem = montarViagem({ audio: () => (ctx && saidaMaster ? { ctx, no: saidaMaster } : null) });
+
+// a janela da pista, na cabine: o que o DJ vê
 montarCena($('janela-pista'), {
+  viagem,
   // estável de propósito: muda quando o ESTADO muda (tocando, quebra, estilo),
   // nunca por contagem — número pulando no canto parecia mensagem aleatória
   rotulo: (e) => e.tocando
     ? `<span class="vivo"></span>${t(e.quebra ? 'cena.quebra' : 'cena.aoVivo')}${e.bpm ? ` · ${Math.round(e.bpm)} BPM` : ''}`
     : `<span class="vivo off"></span>${t('cena.vazia')}`,
-  nomeModo: (m) => t('cena.modo.' + m),
-  audio: () => (ctx && saidaMaster ? { ctx, no: saidaMaster } : null),
 });
+// o nível de efeitos e os fps medidos entram no diagnóstico (⚙ do topo)
+globalThis.__qualidade = qualidade;
 
 /**
  * A gaveta de músicas (ver "gaveta de músicas" no index.html).

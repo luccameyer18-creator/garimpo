@@ -173,9 +173,15 @@
      altura. os botoes ja estao protegidos por flex:none em .ctrl e .pitch, entao
      a onda pode engolir a folga toda — que e onde ela vale mais, porque e nela
      que se enxerga a batida */
-  canvas.onda { display:block; width:100%; flex:1 1 auto; min-height:46px; max-height:none;
-                background:rgba(6,4,13,.62);
-                border-top:1px solid var(--linha); border-bottom:1px solid var(--linha); }
+  .onda-cx { position:relative; flex:1 1 auto; min-height:46px; max-height:none;
+             background:rgba(6,4,13,.62);
+             border-top:1px solid var(--linha); border-bottom:1px solid var(--linha); }
+  canvas.onda { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  /* o ≋ que troca o jeito de ver a onda (bandas / rgb / energia) */
+  .onda-modo { position:absolute; top:4px; right:4px; z-index:2; padding:3px 7px; border-radius:6px;
+               font:800 9px ui-monospace,monospace; letter-spacing:.06em; text-transform:uppercase;
+               background:rgba(10,7,19,.7); border-color:rgba(255,255,255,.14); color:rgba(242,238,252,.75); }
+  .onda-modo:hover { color:#fff; border-color:var(--acc); }
   canvas.mini { display:block; width:100%; height:18px; background:rgba(6,4,13,.7); flex:none;
                 cursor:pointer; border-bottom:1px solid var(--linha); }
 
@@ -485,24 +491,57 @@
                font:800 9px ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase;
                background:rgba(10,7,19,.85); border-color:color-mix(in srgb, var(--neon) 45%, transparent); color:#fff; }
   .cena-modo:hover { color:#fff; border-color:var(--neon); }
-  .cena-rot { right:150px; }
-  .cena-cheia, .cena-troca { position:absolute; top:6px; z-index:3; padding:3px 8px; border-radius:20px; font-size:12px;
+  .cena-viagem, .cena-troca { position:absolute; top:6px; z-index:3; padding:3px 8px; border-radius:20px; font-size:12px;
                 background:rgba(10,7,19,.85); border-color:color-mix(in srgb, var(--neon) 45%, transparent); color:#fff; }
-  .janela-pista .cena-cheia { right:94px; }
-  .janela-pista .cena-troca { right:126px; }
-  .cena-cheia:hover { color:#fff; border-color:var(--neon); }
-  /* tela cheia: o visualizador vira a tela, o DJ flutua embaixo */
-  .janela-pista.tela-cheia { position:fixed; inset:0; z-index:55; margin:0; border-radius:0; border:none;
-                             align-items:center; padding:24px; }
-  .janela-pista.tela-cheia > .dj-painel { width:min(520px, 92vw); }
-  .janela-pista.tela-cheia .cena-rot { left:20px; top:16px; font-size:11px; }
-  .janela-pista.tela-cheia .cena-modo, .janela-pista.tela-cheia .cena-cheia { top:14px; }
-  .janela-pista.tela-cheia .cena-modo { right:16px; }
-  .janela-pista.tela-cheia .cena-cheia { right:106px; }
-  .janela-pista.tela-cheia .cena-troca { top:14px; right:140px; }
-  .janela-pista.tela-cheia .fila { max-height:30vh; }
-  body.viajando #luzes, body.viajando .aba-bib { display:none; }
-  .cena-rot { position:absolute; left:10px; top:8px; right:10px; display:flex; gap:6px; align-items:center;
+  .janela-pista .cena-viagem { right:94px; }
+  .janela-pista .cena-troca { right:190px; }
+  .cena-viagem:hover { color:#fff; border-color:var(--neon); }
+  .cena-viagem.lig { border-color:var(--neon); box-shadow:0 0 12px color-mix(in srgb, var(--neon) 55%, transparent); }
+
+  /* painel do DJ minimizado: só a linha do botão grande */
+  .dj-painel.min > :not(.dj-linha) { display:none !important; }
+  .janela-pista > .dj-painel.min { grid-template-areas:"linha linha"; }
+  body:has(.dj-painel.min) .janela-pista > .fila-cx { display:none; }
+
+  /* ───────── efeitos na tela toda, por cima da CDJ ───────── */
+  /* a camada da galera/lasers/confete (cena.js): pequena e ampliada, somando
+     luz sobre os painéis ("screen") — não tapa nem pega clique */
+  #cena-tela { position:fixed; inset:0; width:100vw; height:100vh; z-index:39; pointer-events:none;
+               mix-blend-mode:screen; }
+  .cena-drop { position:fixed !important; z-index:57 !important; }
+  /* nível de qualidade (qualidade.js): o que sai quando o aparelho engasga */
+  body.q2 #luzes .espelho { display:none; }
+  body.q1 #luzes .espelho, body.q1 #luzes .fachos, body.q1 #luzes .globo { display:none; }
+  body.q0 #luzes, body.q0 #cena-tela, body.q0 #viagem-frente { display:none !important; }
+  body.sem-efeitos #luzes, body.sem-efeitos #viagem-frente, body.sem-efeitos #viagem-fundo { display:none !important; }
+
+  /* ───────── VIAGEM: a página inteira ───────── */
+  /* Os efeitos passam POR CIMA da CDJ, na tela toda: o MilkDrop numa camada
+     só, na frente, com mistura "screen" — a luz do visual soma sobre os
+     painéis e o escuro deixa os controles aparecerem normais, legíveis. Uma
+     camada com blend a placa aguenta; eram as ~16 que travavam. As formas
+     voando vêm por cima dela. Os dois canvas desenham pequenos e a placa
+     amplia (ver viagem.js). Nada disso pega clique. */
+  #viagem-fundo, #viagem-frente { position:fixed; inset:0; width:100vw; height:100vh; display:none; pointer-events:none; }
+  #viagem-fundo { z-index:40; mix-blend-mode:screen; opacity:.62; }
+  #viagem-frente { z-index:41; opacity:.9; }
+  body.viagem #viagem-fundo, body.viagem #viagem-frente { display:block; }
+  body.viagem #pista, body.viagem #luzes { display:none; }
+  /* só a viagem: sem CDJ embaixo, o visual aparece inteiro */
+  body.so-viagem #viagem-fundo { mix-blend-mode:normal; opacity:1; }
+
+  /* SÓ A VIAGEM: a CDJ some (continua tocando), fica o visual e dois botões */
+  #so-viagem { position:fixed; right:14px; bottom:14px; z-index:58; display:none; gap:6px; }
+  body.viagem #so-viagem { display:flex; }
+  #so-viagem button { padding:10px 14px; border-radius:22px; font:800 12px ui-sans-serif,system-ui,sans-serif;
+                      background:rgba(10,6,20,.78); border-color:color-mix(in srgb, var(--neon) 55%, transparent); color:#fff;
+                      box-shadow:0 0 16px color-mix(in srgb, var(--neon) 35%, transparent); }
+  #b-so-pular { display:none; }
+  body.so-viagem.dj-tocando #b-so-pular { display:inline-block; }
+  body.so-viagem .topo, body.so-viagem .prof, body.so-viagem .palco, body.so-viagem .aba-bib {
+    opacity:0; pointer-events:none; transition:opacity .5s; }
+  body.viagem .topo, body.viagem .prof, body.viagem .palco { transition:opacity .5s; }
+  .cena-rot { position:absolute; left:10px; top:8px; right:230px; display:flex; gap:6px; align-items:center;
               font:800 9px ui-monospace,monospace; letter-spacing:.14em; color:rgba(242,238,252,.75);
               text-transform:uppercase; pointer-events:none; text-shadow:0 1px 4px #000; }
   .cena-rot .vivo { width:7px; height:7px; border-radius:50%; background:var(--bad); flex:none;
@@ -707,7 +746,10 @@
   .prof .plano:has(.item:nth-child(2)) { grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); }
   .prof .item:first-child { grid-row:1 / span 3; align-self:center; }
   .prof .item:first-child .txt { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
-  .prof .item:first-child .txt small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .prof .item:first-child .txt small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#c9c1e6; }
+  /* o PORQUÊ de cada coisa que ele faz ou pede, marcado — é a metade que ensina */
+  .prof .item .txt small::before { content:attr(data-por) " "; color:var(--ok); font-weight:800;
+    text-transform:uppercase; font-size:9.5px; letter-spacing:.08em; }
   .prof .item:nth-child(n+2) .txt { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
   /* ───────── gavetas de músicas (uma de cada lado) ───────── */
@@ -841,16 +883,62 @@
     .jog { width:84px; height:84px; } .jog .marca-jog { transform-origin:50% 36px; }
     .ctrl { padding:8px 10px; gap:9px; }
     .botoes button { padding:8px 6px; }
-    canvas.onda { min-height:34px; }
+    .onda-cx { min-height:34px; }
     .pitch { padding:0 10px 8px; }
     .faixa { padding:7px 10px 6px; }
     .janela-pista { min-height:130px; }
   }
-  /* e se nem assim couber, a página ROLA — controle cortado é pior que rolar */
+  /* tela MUITO baixa (notebook pequeno com zoom, ~600 px úteis): mais um aperto,
+     pra nada ficar cortado e a página continuar sem rolar */
+  @media (min-width:1041px) and (max-height:660px) {
+    .topo { padding:5px 12px; }
+    .prof { height:54px; padding-top:5px; padding-bottom:5px; }
+    .prof .gp { width:40px; height:40px; }
+    .jog { width:72px; height:72px; } .jog .marca-jog { transform-origin:50% 30px; }
+    .jog .visor .bpm { font-size:12px; }
+    .botoes button { padding:6px 5px; font-size:10.5px; }
+    .ctrl { padding:6px 9px; gap:7px; }
+    .tempo, .efeito { font-size:9px; }
+    .loops button { padding:3px 6px; }
+    .mixer { padding:6px 8px; gap:5px; }
+    .tiras { gap:5px; } .tira { gap:3px; }
+    .knob input[type=range] { height:12px; }
+    .mixer .rot { display:none; }
+    input.xf { height:20px; }
+    .fase { height:28px; }
+    .janela-pista { padding:28px 8px 6px; }
+    .dj-painel { gap:4px 8px; padding:6px; }
+    .dj-modos button { padding:5px 4px; }
+    .dj-generos button { padding:4px 9px; }
+    .piloto-op select { padding:4px; }
+    .dj-linha #b-piloto { padding:8px; }
+  }
+
+  /* ───────── a cabine embaixo, tudo numa tela ───────── */
+  /* A página NÃO rola: ela é o painel de uma cabine, tudo à vista. Linha de
+     cima: deck A · mixer · deck B (a onda dos decks é quem cede altura).
+     Linha de baixo: a cabine, de ponta a ponta — pista e visualizador ao
+     fundo, o DJ deitado por cima à esquerda, as próximas à direita. */
   @media (min-width:1041px) {
-    body { overflow-y:auto; }
-    .palco { min-height:460px; }
-    .col.mix { overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; }
+    .palco { grid-template-rows:minmax(0,1fr) auto; }
+    .col.cabine { grid-column:1 / 4; grid-row:2; }
+    body.bib-fixa .col.lib { grid-column:4; grid-row:1 / span 2; }
+    .col.mix .mixer { flex:1 1 auto; justify-content:space-between; }
+    .janela-pista { height:auto; min-height:0; flex:none; margin-top:0; background:rgba(12,8,24,.55);
+                    flex-direction:row; align-items:flex-end; justify-content:flex-start; gap:10px; padding:34px 10px 10px; }
+    .janela-pista > .dj-painel { width:min(660px, 58%); display:grid; align-content:end; gap:6px 10px;
+      grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);
+      grid-template-areas:"modos linha" "generos generos" "op nota" "prefs tecnica"; }
+    .dj-painel .dj-modos { grid-area:modos; }
+    .dj-painel .dj-linha { grid-area:linha; }
+    .dj-painel .dj-generos { grid-area:generos; }
+    .dj-painel .piloto-op { grid-area:op; }
+    .dj-painel #piloto-nota { grid-area:nota; align-self:center; }
+    .dj-painel #piloto-tecnica { grid-area:tecnica; }
+    .dj-painel .prefs { grid-area:prefs; }
+    .janela-pista > .fila-cx { margin-left:auto; width:min(380px, 34%); max-height:150px; position:relative; z-index:2;
+      display:flex; flex-direction:column; background:rgba(12,8,24,.84); }
+    .janela-pista > .fila-cx .fila { max-height:none; flex:1 1 auto; min-height:0; }
   }
 
   /* ───────── fluidez ───────── */
@@ -910,16 +998,18 @@
     .palco { grid-template-columns:1fr 1fr; height:auto; grid-template-rows:none; }
     .col { min-height:auto; }
     .deck { min-height:360px; }
-    canvas.onda { max-height:150px; }
+    .onda-cx { max-height:150px; }
     .col.mix { grid-column:1/-1; order:3; }
     /* altura por CONTEUDO, nao fixa. Com min-height:480px a lateral prendia
        590px de conteudo numa caixa de 480 e a lista e o botao de arquivo
        saiam pela base — medido. Quando o grid solta a linha, quem manda e o
        conteudo. */
-    .col.lib { grid-column:1/-1; order:4; min-height:auto; }
+    .col.lib { grid-column:1/-1; order:5; min-height:auto; }
+    .col.cabine { grid-column:1/-1; order:4; }
     .lateral { height:auto; }
     .mixer { min-height:280px; }
-    .janela-pista { flex:none; min-height:320px; }
+    .janela-pista { flex:none; min-height:0; flex-direction:column; justify-content:flex-end; }
+    .janela-pista > .fila-cx { margin-top:8px; }
     /* a lista e flex:1 dentro da lateral; com a linha do grid solta ela ficava
        com ALTURA ZERO — medido 528x0 numa janela de 585px. Aqui ela para de
        flexionar e passa a ter altura propria. */
@@ -932,7 +1022,7 @@
     .prof .plano:has(.item:nth-child(2)) { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
     .prof .item:first-child { grid-row:auto; grid-column:1 / -1; }
     .prof .item:first-child .txt { -webkit-line-clamp:2; }
-    .prof .item:first-child .txt small { display:none; }
+    .prof .item:first-child .txt small { font-size:10px; }
     .prof .item:nth-child(n+2) .txt { font-size:10.5px; }
     .prof .item:nth-child(n+4) { display:none; }
     .bib-cx { min-height:460px; }
@@ -1022,43 +1112,51 @@
         </div>
       </div>
     </div>
-    <div class="janela-pista" id="janela-pista">
-      <div class="cena-rot" aria-hidden="true"></div>
-      <div class="cena-drop" aria-hidden="true">DROP!</div>
-        <!-- o DJ mora DENTRO da pista: a cabine e a pista são uma coisa só -->
-      <section class="cartao piloto-cx dj-painel" id="dj-painel">
-        <!-- os três jeitos de tocar, sempre à vista (sem menu) -->
-        <div class="dj-modos" id="dj-modos">
-          <button data-modo="juntos" data-i18n="dj.m.juntos">🎧 junto</button>
-          <button data-modo="sozinho" data-i18n="dj.m.sozinho">▶ só DJ</button>
-          <button data-modo="solo" data-i18n="dj.m.solo">🎛 eu toco</button>
-        </div>
-        <!-- o que o DJ vai tocar: os mesmos gêneros da lista, numa fileira -->
-        <div class="dj-generos" id="dj-generos"></div>
-        <div class="dj-linha">
-          <button id="b-piloto" data-i18n-attr="title:app.piloto.dica" title="começar">▶ bora tocar junto</button>
-          <button id="b-pular" class="mini" data-i18n-attr="title:piloto.pular.dica" title="pular pra próxima" hidden>⏭</button>
-          <button id="b-prefs" class="mini" data-i18n-attr="title:pref.abrir" title="mais opções">⚙</button>
-        </div>
-        <div class="piloto-op">
-          <select id="pref-estilo" data-i18n-attr="title:estilo.dica" title="o jeito de tocar"></select>
-          <select id="pref-min" title="duração do set">
-            <option value="15" data-min="15">15 min</option>
-            <option value="30" selected data-min="30">30 min</option>
-            <option value="45" data-min="45">45 min</option>
-            <option value="60" data-min="60">60 min</option>
-          </select>
-          <select id="pref-energia" title="curva de energia">
-            <option value="subir" selected data-i18n="app.energia.subir">subindo</option>
-            <option value="estavel" data-i18n="app.energia.estavel">estável</option>
-            <option value="descer" data-i18n="app.energia.descer">descendo</option>
-          </select>
-        </div>
-        <div class="prefs" id="prefs" hidden>
-          <button id="b-esquecer" data-i18n="pref.esquecer">esquecer o que já tocou</button>
-        </div>
-        <div class="rot" id="piloto-nota" style="margin:0"></div>
-        <div id="piloto-tecnica"></div>
+  </div>
+
+  <div class="col"><div id="deckB"></div></div>
+
+  <!-- a CABINE: faixa de ponta a ponta embaixo dos decks. A pista e o
+       visualizador ao fundo; o DJ deitado por cima, à esquerda; as próximas à direita -->
+  <div class="col cabine">
+      <div class="janela-pista" id="janela-pista">
+        <div class="cena-rot" aria-hidden="true"></div>
+        <div class="cena-drop" aria-hidden="true">DROP!</div>
+        <section class="cartao piloto-cx dj-painel" id="dj-painel">
+          <!-- os três jeitos de tocar, sempre à vista (sem menu) -->
+          <div class="dj-modos" id="dj-modos">
+            <button data-modo="juntos" data-i18n="dj.m.juntos">🎧 junto</button>
+            <button data-modo="sozinho" data-i18n="dj.m.sozinho">▶ só DJ</button>
+            <button data-modo="solo" data-i18n="dj.m.solo">🎛 eu toco</button>
+          </div>
+          <!-- o que o DJ vai tocar: os mesmos gêneros da lista, numa fileira -->
+          <div class="dj-generos" id="dj-generos"></div>
+          <div class="dj-linha">
+            <button id="b-piloto" data-i18n-attr="title:app.piloto.dica" title="começar">▶ bora tocar junto</button>
+            <button id="b-pular" class="mini" data-i18n-attr="title:piloto.pular.dica" title="pular pra próxima" hidden>⏭</button>
+            <button id="b-prefs" class="mini" data-i18n-attr="title:pref.abrir" title="mais opções">⚙</button>
+            <button id="b-dj-min" class="mini" data-i18n-attr="title:dj.min" title="minimizar o painel">▾</button>
+          </div>
+          <div class="piloto-op">
+            <select id="pref-estilo" data-i18n-attr="title:estilo.dica" title="o jeito de tocar"></select>
+            <select id="pref-min" title="duração do set">
+              <option value="15" data-min="15">15 min</option>
+              <option value="30" selected data-min="30">30 min</option>
+              <option value="45" data-min="45">45 min</option>
+              <option value="60" data-min="60">60 min</option>
+            </select>
+            <select id="pref-energia" title="curva de energia">
+              <option value="subir" selected data-i18n="app.energia.subir">subindo</option>
+              <option value="estavel" data-i18n="app.energia.estavel">estável</option>
+              <option value="descer" data-i18n="app.energia.descer">descendo</option>
+            </select>
+          </div>
+          <div class="prefs" id="prefs" hidden>
+            <button id="b-esquecer" data-i18n="pref.esquecer">esquecer o que já tocou</button>
+          </div>
+          <div class="rot" id="piloto-nota" style="margin:0"></div>
+          <div id="piloto-tecnica"></div>
+        </section>
         <div class="fila-cx" id="fila-cx" hidden>
           <div class="fila-topo">
             <h2 style="margin:0" data-i18n="app.proximas">próximas</h2>
@@ -1067,11 +1165,8 @@
           </div>
           <div class="fila" id="fila"></div>
         </div>
-      </section>
-    </div>
+      </div>
   </div>
-
-  <div class="col"><div id="deckB"></div></div>
 
   <div class="col lib" id="col-lib">
     <div class="lateral">
@@ -1123,6 +1218,12 @@
 <button id="aba-B" class="aba-bib" data-lado="B" aria-controls="col-lib" data-i18n-attr="title:bib.abaB" title="músicas pro deck B">
   <span class="aba-ic">♫</span><span>B</span>
 </button>
+
+<!-- só a viagem: esconde a CDJ e deixa o visual; estes botões flutuam por cima -->
+<div id="so-viagem" aria-label="viagem">
+  <button id="b-so-viagem" data-i18n="viagem.so">👁 só a viagem</button>
+  <button id="b-so-pular" data-i18n-attr="title:piloto.pular.dica" title="pular pra próxima">⏭</button>
+</div>
 
 <div id="porta">
   <div class="porta-cx">
@@ -1197,7 +1298,10 @@
       <button class="lixo" data-i18n-attr="title:deck.lixo" title="isto não é música: tirar do garimpo">👎</button>
       <button class="browse" data-i18n="deck.browse" data-i18n-attr="title:deck.browse.dica" title="escolher a música deste deck">BROWSE</button>
     </div>
-    <canvas class="onda"></canvas>
+    <div class="onda-cx">
+      <canvas class="onda"></canvas>
+      <button class="onda-modo" data-i18n-attr="title:onda.dica" title="jeito de ver a onda">≋</button>
+    </div>
     <canvas class="mini"></canvas>
     <div class="ctrl">
       <div class="lado-jog">
@@ -1247,6 +1351,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260923i"></script>
+<script type="module" src="./src/ui/app.js?v=20260923l"></script>
 </body>
 </html>
