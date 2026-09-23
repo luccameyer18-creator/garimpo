@@ -80,6 +80,18 @@ export class Deck extends EventTarget {
   get nominalRate() { return this.transport?.nominalRate ?? 1; }
   get keylockAtivo() { return !!this.transport?.keylockAtivo; }
   get keylockPedido() { return !!this.transport?.keylockPedido; }
+
+  /**
+   * A faixa está INTEIRA e ANALISADA — o único "pronto" que vale pra tocar
+   * uma transição automática.
+   *
+   * Existia uma checagem espalhada (parcial, picos, onset, grade, cobertura do
+   * envelope) repetida em três lugares, e cada lugar esquecia um pedaço. Um
+   * getter só, e todo mundo pergunta a mesma coisa.
+   */
+  get pronta() {
+    return this.estado !== 'erro' && !this.parcial && this.analiseCompleta && !!this.grid?.bpm;
+  }
   get bpmEfetivo() { return this.faixa?.bpm ? this.faixa.bpm * this.nominalRate : null; }
 
   /** Rastro de passos: sem console no celular, e a unica forma de saber onde travou. */
@@ -154,6 +166,20 @@ export class Deck extends EventTarget {
 
     this.faixa = faixa;
     this.picos = null;
+    /**
+     * Zera TUDO que descreve a faixa anterior, na hora — não só os picos.
+     *
+     * Grade, envelope e `parcial` ficavam com os valores da faixa velha até a
+     * nova terminar de carregar. Quem perguntava "o deck está pronto?" logo
+     * depois de pedir a faixa ouvia SIM, com os dados da faixa errada. O piloto
+     * seguia, começava a transição com a nova carregando só o prefixo de 52 s,
+     * e ela parava exatamente nos 52 s. Medido: deck parado em 52,3 s numa
+     * faixa de 160 s.
+     */
+    this.grid = null;
+    this.onset = null;
+    this.parcial = true;
+    this.analiseCompleta = false;
     this.erro = null;
     this.progresso = 0;
     this.passos = [];
@@ -186,7 +212,10 @@ export class Deck extends EventTarget {
       // Analise em segundo plano: NUNCA bloqueia o play. A faixa fica tocavel
       // primeiro e o grid chega depois — esperar a analise pra soltar o som
       // seria trocar 2 s de espera por nada.
-      this.#analisar(buf, faixa, ac);
+      this.#analisar(buf, faixa, ac).then(() => {
+        // sem prefixo (arquivo pequeno), esta ja e a analise da faixa inteira
+        if (!ac.signal.aborted && !this.parcial) this.analiseCompleta = true;
+      });
 
       // troca pelo arquivo inteiro quando ele chegar, sem interromper o som
       if (res.completo) {
@@ -224,7 +253,9 @@ export class Deck extends EventTarget {
            * quadros (52 s) numa faixa de 201 s, e a medicao simplesmente nao
            * tinha dado pra ler. Custa uma passada de worker em segundo plano.
            */
-          this.#analisar(cheio, faixa, ac);
+          this.#analisar(cheio, faixa, ac).then(() => {
+            if (!ac.signal.aborted) this.analiseCompleta = true;
+          });
         }).catch((e) => {
           if (!ac.signal.aborted) console.warn('[deck] troca pelo completo falhou:', e.message);
         });

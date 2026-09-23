@@ -22,6 +22,7 @@
  */
 
 import { momentos } from './momentos.js';
+import { executar, escolherTecnica, caminharBpm, TECNICAS, ESTILOS } from './tecnicas.js';
 
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -41,6 +42,8 @@ export class Piloto extends EventTarget {
     this.parar = false;
     this.pularAgora = false;
     this.passo = '';
+    this.estilo = 'pista';
+    this.ultimaTecnica = null;
   }
 
   /**
@@ -103,8 +106,44 @@ export class Piloto extends EventTarget {
     return true;
   }
 
-  /** Uma transição completa de `sai` para `entra`. */
-  async transicao(sai, entra, { segundos = 8 } = {}) {
+  /**
+   * As ações que um roteiro de técnica pode pedir, embrulhadas nos métodos que
+   * a mão do usuário usaria. Um adaptador só: se o motor mudar, muda aqui.
+   */
+  #acoes() {
+    const mx = this.mixer, d = this.decks;
+    const emitirXf = () => this.dispatchEvent(new CustomEvent('crossfader', { detail: { x: mx.crossfader } }));
+    return {
+      kill: (id, banda, on) => this.#kill(id, banda, on),
+      eq: (id, banda, v) => mx.canal(id).setEq(banda, v),
+      filtro: (id, k) => mx.canal(id).setFiltro(k),
+      fader: (id, v) => mx.canal(id).setFader(v),
+      eco: (id, v) => mx.setEco(id, v),
+      ecoDivisao: (id, div) => mx.setEcoTempo(id, d[id].bpmEfetivo, div),
+      xf: (x) => { mx.setCrossfader(x); emitirXf(); },
+      loop: (id, n) => d[id].loopDeTempos(n),
+      semLoop: (id) => d[id].clearLoop(),
+      parar: (id) => d[id].pause({ brake: 1.2 }),
+      rampa: (alvo, v) => {
+        if (alvo === 'xf') { mx.setCrossfader(v); emitirXf(); return; }
+        const [tipo, id, banda] = alvo.split(':');
+        if (tipo === 'fader') mx.canal(id).setFader(v);
+        else if (tipo === 'filtro') mx.canal(id).setFiltro(v);
+        else if (tipo === 'eq') mx.canal(id).setEq(banda, v);
+        else if (tipo === 'eco') mx.setEco(id, v);
+      },
+    };
+  }
+
+  /**
+   * Uma transição completa de `sai` para `entra`, com a técnica escolhida.
+   *
+   * Antes era sempre a mesma: troca de graves com 8 s de crossfade. Agora a
+   * técnica vem da faixa na fila (quem decidiu foi o Jev, ou o escolhedor por
+   * estilo, se não houver IA), e a duração é em TEMPOS — a análise de 20.765
+   * transições reais (Kim et al., ISMIR 2020) mostra pico a cada 32 tempos.
+   */
+  async transicao(sai, entra, { faixa = null, anterior = null } = {}) {
     const d = this.decks;
     this.#diz('sincronizando', { deck: entra });
     this.sincronizar(entra);
@@ -113,43 +152,38 @@ export class Piloto extends EventTarget {
     d[entra].seek(this.#entrada(d[entra]));
     d[entra].play();
     this.#diz('entrando', { deck: entra, faixa: d[entra].faixa?.title });
-    if (!await this.#dorme(2200)) return false;
-
-    this.#kill(entra, 'grave', true);
-    this.#diz('grave cortado', { deck: entra });
-    if (!await this.#dorme(500)) return false;
+    if (!await this.#dorme(1800)) return false;
 
     this.encaixar();
     this.#diz('encaixando');
-    if (!await this.#dorme(1500)) return false;
+    if (!await this.#dorme(1200)) return false;
 
-    // crossfade: metade do curso antes da troca de graves, metade depois
-    const de = sai === 'A' ? 0 : 1, para = 1 - de;
-    const n = 32, dt = (segundos * 1000) / (2 * n);
-    for (let k = 1; k <= n; k++) {
-      this.mixer.setCrossfader(de + (para - de) * (k / (2 * n)));
-      this.dispatchEvent(new CustomEvent('crossfader', { detail: { x: this.mixer.crossfader } }));
-      if (!await this.#dorme(dt)) return false;
+    const tecnica = faixa?.tecnica && TECNICAS[faixa.tecnica]
+      ? faixa.tecnica
+      : escolherTecnica({ saiFaixa: d[sai].faixa, entraFaixa: faixa || d[entra].faixa,
+                          anterior, estilo: this.estilo });
+    const est = ESTILOS[this.estilo] || ESTILOS.pista;
+    const tempos = faixa?.tempos || Math.max(8, Math.round(TECNICAS[tecnica].tempos * est.escala / 4) * 4);
+    this.ultimaTecnica = tecnica;
+    this.#diz('tecnica', { tecnica: TECNICAS[tecnica].nome, tempos, porque: faixa?.porqueIA || null });
+
+    const ok = await executar(tecnica, {
+      m: this.#acoes(), dorme: (ms) => this.#dorme(ms),
+      sai, entra, bpm: d[entra].bpmEfetivo, tempos,
+      aoPasso: ({ tempo, de }) => this.dispatchEvent(new CustomEvent('progresso', { detail: { tempo, de, tecnica } })),
+    });
+    if (!ok) return false;
+
+    // arruma a casa: quem saiu volta neutro, pra entrar limpo na próxima vez
+    const m = this.#acoes();
+    for (const b of ['grave', 'medio', 'agudo']) { this.#kill(sai, b, false); m.eq(sai, b, 0.5); }
+    m.filtro(sai, 0); m.eco(sai, 0); m.fader(sai, 1);
+
+    // o andamento volta devagar pro natural da faixa que entrou
+    if (est.caminha) {
+      this.#diz('bpm caminhando', { deck: entra });
+      if (!await caminharBpm(d[entra], { dorme: (ms) => this.#dorme(ms) })) return false;
     }
-    this.#diz('os dois no ar');
-
-    this.#kill(sai, 'grave', true);
-    this.#kill(entra, 'grave', false);
-    this.#diz('troca de graves');
-    if (!await this.#dorme(800)) return false;
-
-    for (let k = n + 1; k <= 2 * n; k++) {
-      this.mixer.setCrossfader(de + (para - de) * (k / (2 * n)));
-      this.dispatchEvent(new CustomEvent('crossfader', { detail: { x: this.mixer.crossfader } }));
-      if (!await this.#dorme(dt * 0.75)) return false;
-    }
-
-    d[sai].pause({ brake: 1.2 });
-    this.#diz('freio de vinil', { deck: sai });
-    if (!await this.#dorme(1500)) return false;
-    // devolve o grave de quem saiu, senão a próxima vez que este deck entrar
-    // ele entra sem fundo — foi exatamente esse esquecimento que me pegaram
-    this.#kill(sai, 'grave', false);
     return true;
   }
 
@@ -192,7 +226,7 @@ export class Piloto extends EventTarget {
           }
         }
         this.pularAgora = false;
-        if (!await this.transicao(noAr, entra, { segundos })) return;
+        if (!await this.transicao(noAr, entra, { faixa: fila[i], anterior: this.ultimaTecnica })) return;
         this.dispatchEvent(new CustomEvent('tocou', { detail: { faixa: fila[i] } }));
         noAr = entra;
         this.#diz('transição pronta', { noAr, resta: fila.length - i - 1 });

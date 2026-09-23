@@ -12,6 +12,7 @@
 import { createServer } from 'node:http';
 import { readFile, stat, writeFile, mkdir } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
+import { homedir } from 'node:os';
 
 const ROOT = resolve(import.meta.dirname);
 const PORT = Number(process.argv[2] || 8080);
@@ -53,6 +54,37 @@ const server = createServer(async (req, res) => {
       console.log(`LOG  .dev-out/${name}.txt  (${Buffer.concat(chunks).length} bytes)`);
       res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
       res.end('ok');
+      return;
+    }
+
+    // POST /_jev — proxy pro Jev da TypeSafe, SÓ no desenvolvimento local.
+    //
+    // A TypeSafe recusa chamada vinda do navegador (o preflight de CORS volta
+    // sem Access-Control-Allow-Origin), e a chave não pode ir pra página: o
+    // site é público. Então a página fala com /_jev, e é ESTE processo, na
+    // máquina do dono, que lê a chave de ~/.garimpo e chama a API.
+    //
+    // O Worker da Cloudflare faz o mesmo papel no site publicado, com a mesma
+    // interface — por isso o cliente só troca o endereço.
+    if (req.method === 'POST' && url.pathname === '/_jev') {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      let chave = '';
+      try { chave = (await readFile(join(homedir(), '.garimpo', 'typesafe-key.txt'), 'utf8')).trim(); } catch {}
+      if (!chave) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ erro: 'sem chave em ~/.garimpo/typesafe-key.txt' }));
+        return;
+      }
+      const r = await fetch('https://api.typesafe.ai/v1/systemone', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + chave, 'Content-Type': 'application/json' },
+        body: Buffer.concat(chunks),
+      });
+      const corpo = await r.text();
+      console.log(`JEV  ${r.status}  ${corpo.length} bytes`);
+      res.writeHead(r.status, { 'Content-Type': 'application/json' });
+      res.end(corpo);
       return;
     }
 

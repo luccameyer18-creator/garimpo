@@ -14,6 +14,9 @@ import * as crate from '../sources/crate.js';
 import { garimpar } from '../sources/garimpar.js';
 import { carregarSemente } from '../sources/semente.js';
 import { Piloto } from '../coach/piloto.js';
+import { ESTILOS } from '../coach/tecnicas.js';
+import { decidirSet, aplicarDecisoes } from '../coach/jev.js';
+import { montarMascote } from './mascote.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
   keyCompatible, resolveStreamUrl, CRATES, crateBr,
@@ -622,6 +625,8 @@ function quadro() {
 }
 
 let ultimoProf = 0, ultimaLista = '', apontados = [];
+// declarado aqui e montado no fim do arquivo: o professor roda antes disso
+let mascote = null;
 
 /**
  * Desenha o plano do professor e ACENDE os controles, na cor e com o numero.
@@ -639,6 +644,15 @@ function rodarProfessor() {
   rodarAuto(est);
 
   const itens = plano(est);
+
+  // o Garimpeiro: lâmpada na cor do conselho mais urgente, e dança no BPM
+  // do deck que está no ar — sem precisar ler texto
+  if (mascote) {
+    mascote.humor(itens[0]?.cor || null);
+    const noAr = decks.A?.tocando && (mixer?.crossfader ?? 0.5) <= 0.5 ? decks.A
+               : decks.B?.tocando ? decks.B : decks.A?.tocando ? decks.A : null;
+    mascote.batida(noAr?.bpmEfetivo || 0);
+  }
   /**
    * A chave de redesenho é a ESTRUTURA do plano, não o texto.
    *
@@ -1392,8 +1406,7 @@ function garantirPiloto() {
         if (d.estado === 'erro') return false;
         // espera a analise cobrir a faixa INTEIRA, nao so o prefixo: e a grade
         // da faixa toda que faz a fase fechar
-        if (!d.parcial && d.picos && d.onset && d.grid?.bpm &&
-            d.onset.v.length / d.onset.taxa > d.duration * 0.9) return true;
+        if (d.pronta) return true;   // inteira e analisada: ver Deck.pronta
         await new Promise((r) => setTimeout(r, 600));
       }
       return false;
@@ -1412,6 +1425,23 @@ function garantirPiloto() {
   });
   piloto.addEventListener('crossfader', (e) => { $('xf').value = e.detail.x; });
   piloto.addEventListener('tocou', (e) => registrarTocada(e.detail.faixa));
+  /**
+   * Mostra QUAL técnica ele está fazendo e QUEM decidiu (Jev ou o estilo).
+   * Ver o nome da técnica enquanto ela acontece é metade do valor pra quem
+   * está aprendendo: ouve o filtro abrindo e lê "varredura de filtro".
+   */
+  piloto.addEventListener('passo', (e) => {
+    if (e.detail.passo !== 'tecnica') return;
+    const { tecnica, tempos, porque } = e.detail;
+    $('piloto-tecnica').innerHTML =
+      `${tecnica} · ${tempos} ${t('piloto.tempos')}` +
+      (porque ? ` <span class="ia">· Jev: ${porque}</span>` : ` · ${t('piloto.porEstilo')}`) +
+      `<span class="barra"><i id="piloto-barra" style="width:0%"></i></span>`;
+  });
+  piloto.addEventListener('progresso', (e) => {
+    const b = document.getElementById('piloto-barra');
+    if (b) b.style.width = Math.min(100, (e.detail.tempo / e.detail.de) * 100) + '%';
+  });
   return piloto;
 }
 
@@ -1442,6 +1472,22 @@ $('b-piloto').onclick = async () => {
       semente: fixas.length ? null : (referencia()?.bpm ? referencia() : null),
     });
     if (s.fila.length < 2) throw new Error(t('pref.poucas'));
+
+    /**
+     * O Jev decide o set INTEIRO num pedido só — técnica e duração de cada
+     * transição. Sem proxy, sem chave ou sem rede, devolve null e o piloto usa
+     * o escolhedor por estilo: a IA melhora o set, a falta dela não o impede.
+     */
+    const estilo = $('pref-estilo').value || 'pista';
+    $('piloto-nota').textContent = t('jev.pensando', { n: s.fila.length - 1 });
+    const decisao = await decidirSet(s.fila, estilo).catch(() => null);
+    if (decisao) s.fila = aplicarDecisoes(s.fila, decisao);
+    $('piloto-tecnica').textContent = decisao
+      ? t('jev.decidiu', { n: decisao.decisoes.filter((d) => d.tecnica).length,
+                          ms: decisao.ms, tok: decisao.tokens?.input_tokens ?? '?' })
+      : t('jev.semIA');
+    garantirPiloto().estilo = estilo;
+
     fila = s.fila;
     desenharFila();
     const resumo = resumoSet(s) + (s.naoCoube?.length
@@ -1886,3 +1932,33 @@ async function buscarCapa(faixa, v) {
     }
   } catch { /* sem capa é só estético; nunca vale quebrar o carregamento */ }
 }
+
+
+// ─────────────────────────── estilo do DJ ───────────────────────────
+
+/**
+ * O jeito de tocar: cada escola prefere técnicas diferentes (ver tecnicas.js).
+ * Fica lembrado entre visitas — quem gosta de techno hipnótico não quer
+ * escolher de novo toda vez.
+ */
+$('pref-estilo').innerHTML = Object.entries(ESTILOS).map(([id, e]) =>
+  `<option value="${id}" title="${e.escola} — ${e.como}">${e.nome}</option>`).join('');
+try { $('pref-estilo').value = localStorage.getItem('garimpo.estilo') || 'pista'; } catch {}
+$('pref-estilo').onchange = () => {
+  try { localStorage.setItem('garimpo.estilo', $('pref-estilo').value); } catch {}
+  if (piloto) piloto.estilo = $('pref-estilo').value;
+};
+
+
+// ─────────────────────────── o Garimpeiro ───────────────────────────
+
+/**
+ * O mascote do professor mora à esquerda da lista de conselhos. Ver
+ * mascote.js: ele traduz o estado em corpo — cor, dança, picareta — pra quem
+ * está de olho nos controles e não no texto.
+ */
+mascote = montarMascote($('prof'));
+
+// cava enquanto o garimpo roda
+new MutationObserver(() => mascote.cavando($('b-garimpar').classList.contains('lig')))
+  .observe($('b-garimpar'), { attributes: true, attributeFilter: ['class'] });

@@ -16,6 +16,12 @@
  */
 
 const PT = {
+  'estilo.dica': 'o jeito de tocar — cada escola de DJ prefere técnicas diferentes',
+  'piloto.tempos': 'tempos',
+  'piloto.porEstilo': 'escolhido pelo estilo',
+  'jev.pensando': 'o Jev está decidindo {n} transições…',
+  'jev.decidiu': 'Jev decidiu {n} transições em {ms} ms ({tok} tokens)',
+  'jev.semIA': 'sem IA agora — técnicas escolhidas pelo estilo',
   'p.volume.baixe': 'O deck {alto} está <b>{db} dB</b> mais alto e o {baixo} já está no máximo. <b>Baixe o {alto}</b>.',
   'p.volume.rotBaixe': 'baixe o volume do {d}',
   'acervo.semeando': 'trazendo o acervo… {i}/{de}',
@@ -177,6 +183,12 @@ const PT = {
 };
 
 const EN = {
+  'estilo.dica': 'the way it plays — each DJ school prefers different techniques',
+  'piloto.tempos': 'beats',
+  'piloto.porEstilo': 'picked by the style',
+  'jev.pensando': 'Jev is deciding {n} transitions…',
+  'jev.decidiu': 'Jev decided {n} transitions in {ms} ms ({tok} tokens)',
+  'jev.semIA': 'no AI right now — techniques picked by the style',
   'p.volume.baixe': 'Deck {alto} is <b>{db} dB</b> louder and {baixo} is already maxed. <b>Bring {alto} down</b>.',
   'p.volume.rotBaixe': 'bring {d} down',
   'acervo.semeando': 'loading the crate… {i}/{de}',
@@ -337,6 +349,12 @@ const EN = {
 };
 
 const ES = {
+  'estilo.dica': 'la forma de tocar — cada escuela de DJ prefiere técnicas distintas',
+  'piloto.tempos': 'tiempos',
+  'piloto.porEstilo': 'elegido por el estilo',
+  'jev.pensando': 'Jev está decidiendo {n} transiciones…',
+  'jev.decidiu': 'Jev decidió {n} transiciones en {ms} ms ({tok} tokens)',
+  'jev.semIA': 'sin IA ahora — técnicas elegidas por el estilo',
   'p.volume.baixe': 'El deck {alto} está <b>{db} dB</b> más fuerte y el {baixo} ya está al máximo. <b>Bajá el {alto}</b>.',
   'p.volume.rotBaixe': 'bajá el volumen del {d}',
   'acervo.semeando': 'trayendo el acervo… {i}/{de}',
