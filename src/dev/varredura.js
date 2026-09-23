@@ -162,7 +162,9 @@ export async function varrer() {
   await teste('modos do DJ', async () => { clicar(document.querySelector('#dj-modos [data-modo="sozinho"]')); const t1 = $('b-piloto').textContent; clicar(document.querySelector('#dj-modos [data-modo="juntos"]')); return { ok: t1 !== $('b-piloto').textContent, detalhe: `${t1} / ${$('b-piloto').textContent}` }; });
   await teste('tema all black', async () => { clicar($('b-tema')); const ok = document.documentElement.dataset.tema === 'black'; clicar($('b-tema')); return ok && !document.documentElement.dataset.tema; });
   await teste('modo da janela e viagem', async () => {
-    const m = document.querySelector('.cena-modo'), t0 = m.textContent; clicar(m); const mudou = m.textContent !== t0; clicar(m);
+    const m = document.querySelector('.cena-modo'), t0 = m.textContent;
+    clicar(m); const mudou = m.textContent !== t0;
+    for (let i = 0; i < 4 && m.textContent !== t0; i++) clicar(m);   // volta ao modo de antes
     clicar(document.querySelector('.cena-viagem')); const liga = document.body.classList.contains('viagem');
     clicar(document.querySelector('.cena-viagem')); const desliga = !document.body.classList.contains('viagem');
     return { ok: mudou && liga && desliga, detalhe: `modo ${mudou}, viagem liga ${liga} desliga ${desliga}` };

@@ -23,9 +23,9 @@
 import { estadoPista as E } from './pista.js';
 import { qualidade as Q, aoMudarQualidade } from './qualidade.js';
 
-// por nível de qualidade: fração da tela que o MilkDrop desenha, e quantas formas
-const DIVISOR = { 3: 3, 2: 4, 1: 5, 0: 6 };
-const MAX_FORMAS = { 3: 40, 2: 24, 1: 12, 0: 6 };
+// o MilkDrop desenha 1/3 da tela (menos, se o medidor baixar a resolução);
+// quantas formas voam depende do modo escolhido (leve, médio, bombando)
+const MAX_FORMAS = { 3: 40, 2: 24, 1: 12, 0: 12 };
 
 const FORMAS = ['anel', 'estrela', 'olho', 'espiral', 'flor', 'mandala'];
 const hsl = (h, s, l) => `hsl(${((h % 360) + 360) % 360},${s}%,${l}%)`;
@@ -51,7 +51,7 @@ export function montarViagem({ audio }) {
 
   function medir() {
     // fundo a ~1/3, frente a ~1/2 da resolução da tela (em pixels CSS)
-    const dv = DIVISOR[Q.nivel] ?? 3;
+    const dv = 3 / Q.escala;
     FW = Math.max(200, Math.round(innerWidth / dv)); FH = Math.max(120, Math.round(innerHeight / dv));
     W = Math.max(320, Math.round(innerWidth / 2)); H = Math.max(180, Math.round(innerHeight / 2));
     fundo.width = FW; fundo.height = FH;

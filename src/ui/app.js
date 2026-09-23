@@ -997,23 +997,32 @@ function desenharOnda(id) {
     const meio = A / 2, pxSeg = L / SEG_VISIVEL, de = pos - SEG_VISIVEL / 2;
     const binDe = (x) => Math.floor((de + (x / L) * SEG_VISIVEL) * binsPorSegundo);
     const modo = grave ? modoOnda : 'energia';
+    /**
+     * Um passo por pixel de TELA, não por pixel do canvas: numa tela de alta
+     * densidade são 2 pixels de canvas por pixel visível, e desenhar os dois
+     * é trabalho que o olho não vê. E cada banda vira UM desenho (um path com
+     * todos os retângulos, um fill só) em vez de centenas de fillRect.
+     * É a conta que mais se repete por quadro: 3 bandas x 2 decks x cada coluna.
+     */
+    const passo = Math.max(1, Math.round(dpr));
     if (modo === 'bandas') {
-      // uma passada por banda: 3 trocas de cor por quadro, não 3 por coluna
       const { refG, refM, refA } = d.picos;
       const bandas = [[grave, refG, 1, COR_BANDA.grave], [medio, refM, 0.78, COR_BANDA.medio], [agudo, refA, 0.5, COR_BANDA.agudo]];
       for (const [arr, ref, teto, cor] of bandas) {
-        c.fillStyle = cor;
-        for (let x = 0; x < L; x++) {
+        c.beginPath();
+        for (let x = 0; x < L; x += passo) {
           const b = binDe(x);
           if (b < 0 || b >= min.length) continue;
           const amp = Math.max(max[b], -min[b]) * meio * 0.95;
           const h = amp * teto * Math.min(1, arr[b] / ref);
-          if (h >= 0.5) c.fillRect(x, meio - h, 1, h * 2);
+          if (h >= 0.5) c.rect(x, meio - h, passo, h * 2);
         }
+        c.fillStyle = cor;
+        c.fill();
       }
     } else {
       const { refG, refM, refA } = d.picos;
-      for (let x = 0; x < L; x++) {
+      for (let x = 0; x < L; x += passo) {
         const b = binDe(x);
         if (b < 0 || b >= min.length) continue;
         const hi = max[b] * meio * 0.95, lo = min[b] * meio * 0.95;
@@ -1025,7 +1034,7 @@ function desenharOnda(id) {
           const e = Math.min(1, rms[b] * 3.2);
           c.fillStyle = `hsl(${210 - e * 190} 85% ${34 + e * 26}%)`;
         }
-        c.fillRect(x, meio - hi, 1, Math.max(1, hi - lo));
+        c.fillRect(x, meio - hi, passo, Math.max(1, hi - lo));
       }
     }
     // grid de batidas: é o que deixa ver se os dois decks estão alinhados

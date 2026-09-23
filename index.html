@@ -513,11 +513,12 @@
   #cena-tela { position:fixed; inset:0; width:100vw; height:100vh; z-index:39; pointer-events:none;
                mix-blend-mode:screen; }
   .cena-drop { position:fixed !important; z-index:57 !important; }
-  /* nível de qualidade (qualidade.js): o que sai quando o aparelho engasga */
-  body.q2 #luzes .espelho { display:none; }
-  body.q1 #luzes .espelho, body.q1 #luzes .fachos, body.q1 #luzes .globo { display:none; }
-  body.q0 #luzes, body.q0 #cena-tela, body.q0 #viagem-frente { display:none !important; }
-  body.sem-efeitos #luzes, body.sem-efeitos #viagem-frente, body.sem-efeitos #viagem-fundo { display:none !important; }
+  /* o modo de efeitos escolhido no ✨ (qualidade.js): médio sem os reflexos,
+     leve só com névoa, globo e confete, off sem nada. A 🎉 pista mostra tudo. */
+  body.q2:not(.pista-cheia) #luzes .espelho { display:none; }
+  body.q1:not(.pista-cheia) #luzes .espelho, body.q1:not(.pista-cheia) #luzes .fachos { display:none; }
+  body.q0:not(.pista-cheia) #luzes, body.q0:not(.pista-cheia) #cena-tela { display:none !important; }
+  body.q0 #viagem-frente, body.q0 #viagem-fundo { display:none !important; }
 
   /* 🎉 PISTA: o club completo por cima da CDJ — globo grande, névoa densa */
   .cena-pista { position:absolute; top:6px; right:190px; z-index:3; padding:3px 9px; border-radius:20px; font-size:11px;
@@ -1378,6 +1379,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260923o"></script>
+<script type="module" src="./src/ui/app.js?v=20260923p"></script>
 </body>
 </html>

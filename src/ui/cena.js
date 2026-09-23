@@ -30,7 +30,7 @@
  */
 
 import { estadoPista as E } from './pista.js';
-import { qualidade as Q, aoMudarQualidade } from './qualidade.js';
+import { qualidade as Q, aoMudarQualidade, definirModo } from './qualidade.js';
 
 /** Paleta por estilo do DJ: cor-base e quanto ela passeia. */
 const VISUAL = {
@@ -42,8 +42,9 @@ const VISUAL = {
   festival:     { hue: 0,   faixa: 360 },
 };
 const CONFETE = ['#ff4ecd', '#4cc9f0', '#ffb347', '#2ee6a8', '#c77dff', '#fff2b3'];
-// resolução da camada em relação à tela, por nível de qualidade (qualidade.js)
-const ESCALA = { 3: 0.5, 2: 0.35, 1: 0.3, 0: 0.3 };
+// resolução da camada: metade da tela, vezes o degrau do medidor (qualidade.js)
+const ESCALA = 0.5;
+const NOME_MODO = { 0: 'off', 1: 'leve', 2: 'médio', 3: 'bombando' };
 
 const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 const hsl = (h, s, l, a = 1) => `hsla(${((h % 360) + 360) % 360},${s}%,${l}%,${a})`;
@@ -64,24 +65,16 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
   const selo = el.querySelector('.cena-drop');
   if (selo) document.body.appendChild(selo);      // o "DROP!" aparece no meio da TELA
 
-  // ✨ efeitos ligados/desligados (lembra)
-  let ativos = true;
-  try { ativos = localStorage.getItem('garimpo.efeitos') !== '0'; } catch {}
+  // ✨ o modo de efeitos, escolhido pela pessoa: leve → médio → bombando → off
   const bEfeitos = document.createElement('button');
   bEfeitos.className = 'cena-modo';
   bEfeitos.type = 'button';
   const pintarEfeitos = () => {
-    bEfeitos.textContent = ativos ? `✨ ${Q.nivel}/3` : '✨ off';
-    bEfeitos.title = `efeitos: nível ${Q.nivel} de 3, ajustado sozinho pra não travar (${Q.fps || '—'} fps)`;
-    bEfeitos.classList.toggle('lig', ativos);
-    cv.style.display = ativos ? 'block' : 'none';
-    document.body.classList.toggle('sem-efeitos', !ativos);
+    bEfeitos.textContent = '✨ ' + NOME_MODO[Q.nivel];
+    bEfeitos.title = 'efeitos: leve, médio, bombando ou off (toque pra trocar)';
+    bEfeitos.classList.toggle('lig', Q.nivel > 0);
   };
-  bEfeitos.onclick = () => {
-    ativos = !ativos;
-    try { localStorage.setItem('garimpo.efeitos', ativos ? '1' : '0'); } catch {}
-    pintarEfeitos();
-  };
+  bEfeitos.onclick = () => definirModo(Q.nivel === 0 ? 1 : Q.nivel === 3 ? 0 : Q.nivel + 1);
   el.appendChild(bEfeitos);
 
   // 🌀 a viagem da página inteira; ↻ troca o visual dela
@@ -160,7 +153,7 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
   }
 
   function ajustar() {
-    const esc = ESCALA[Q.nivel] ?? 0.5;
+    const esc = ESCALA * Q.escala;
     const w = Math.round(innerWidth * esc), h = Math.round(innerHeight * esc);
     if (w === W && h === H) return;
     W = cv.width = w; H = cv.height = h;
@@ -259,7 +252,7 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
       const tx = rotulo(E);
       if (tx !== textoAntes) { textoAntes = tx; rot.innerHTML = tx; }
     }
-    if (!ativos || Q.nivel === 0) { if (tAntes) { c.clearRect(0, 0, W, H); tAntes = 0; } return; }
+    if (Q.nivel === 0 && !modoPista) { if (tAntes) { c.clearRect(0, 0, W, H); tAntes = 0; } return; }
     if (agora - tAntes < (E.tocando || confete.length ? 33 : 66)) return;   // 30 fps; 15 sem música
     if (E.reduzido && agora - tAntes < 500) return;
     const dt = Math.min(0.1, (agora - tAntes) / 1000);
@@ -277,8 +270,8 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
     c.globalCompositeOperation = 'source-over';
     c.clearRect(0, 0, W, H);
     c.globalCompositeOperation = 'lighter';
-    // nível 1: só confete e DROP; do 2 pra cima, lasers e galera. No modo
-    // 🎉 pista, que a pessoa PEDIU, desde o 1 (em resolução menor)
+    // leve: só confete e DROP; médio e bombando: lasers e galera. A 🎉 pista
+    // mostra tudo, em qualquer modo — ela é o show que a pessoa pediu
     if (Q.nivel >= 2 || modoPista) {
       if (!viagem?.ligada) lasers(pal, luz);
       galera(pal, dt, luz);
