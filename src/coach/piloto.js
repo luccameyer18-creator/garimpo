@@ -50,6 +50,17 @@ export class Piloto extends EventTarget {
   }
 
   /**
+   * Troca as PRÓXIMAS do set com ele tocando — a que está no ar continua.
+   * É o que acontece quando a pessoa marca outros gêneros no meio do set:
+   * antes nada mudava até o set acabar.
+   */
+  substituirProximas(novas) {
+    if (!this.ativo || !this.fila || !novas?.length) return false;
+    this.fila.splice(this.indice + 1, Infinity, ...novas);
+    return true;
+  }
+
+  /**
    * Pula a espera e faz a transição já.
    *
    * O piloto espera a quebra da faixa no ar pra sair no lugar certo, e essa
@@ -237,6 +248,7 @@ export class Piloto extends EventTarget {
   async tocar(fila, { segundos = 8 } = {}) {
     if (this.ativo || !fila?.length) return;
     this.ativo = true; this.parar = false;
+    this.fila = fila; this.indice = 0;
     const d = this.decks;
     try {
       this.#diz('carregando', { faixa: fila[0].title });
@@ -250,6 +262,7 @@ export class Piloto extends EventTarget {
 
       let noAr = 'A';
       for (let i = 1; i < fila.length && !this.parar; i++) {
+        this.indice = i - 1;               // a que está no ar (ver substituirProximas)
         const entra = noAr === 'A' ? 'B' : 'A';
         this.#diz('carregando', { deck: entra, faixa: fila[i].title, resta: fila.length - i });
         if (!await this.carregar(entra, fila[i])) { this.#diz('pulou', { faixa: fila[i].title }); continue; }

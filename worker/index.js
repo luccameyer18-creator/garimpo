@@ -16,6 +16,9 @@
  *                   NUNCA passa por aqui — seria redistribuir música sem
  *                   direito.
  *
+ *   GET/POST /lixo  votos de "isto não é música" (👎 e reprovação do Jev)
+ *   POST /feedback  sugestões e bugs do 💬 — só escrita, quem lê é o dono
+ *
  * PROTEÇÕES, porque a chave é do dono e qualquer um com o link chama isto:
  *   - só aceita a origem do site (CORS fechado)
  *   - só aceita o modelo jev-latest e no máximo 60 perguntas por pedido — o
@@ -157,6 +160,23 @@ async function lixoGet(env, origem) {
   return json({ ids: results.map((r) => r.id) }, 200, origem);
 }
 
+/**
+ * Sugestões e bugs do 💬 do app. Só ESCRITA: não existe GET — quem lê é o
+ * dono, pelo painel do D1 ou pelo wrangler. Texto até 2000 caracteres, nome
+ * opcional até 80; o limite por IP dos POSTs vale aqui também.
+ */
+async function feedbackPost(req, env, origem) {
+  let corpo;
+  try { corpo = JSON.parse(await req.text()); } catch { return json({ erro: 'json inválido' }, 400, origem); }
+  const texto = typeof corpo?.texto === 'string' ? corpo.texto.trim().slice(0, 2000) : '';
+  if (texto.length < 2) return json({ erro: 'vazio' }, 400, origem);
+  const nome = typeof corpo?.nome === 'string' ? corpo.nome.trim().slice(0, 80) : null;
+  const idioma = typeof corpo?.idioma === 'string' ? corpo.idioma.slice(0, 8) : null;
+  await env.DB.prepare('INSERT INTO feedback (texto, nome, idioma, criada) VALUES (?1, ?2, ?3, ?4)')
+    .bind(texto, nome || null, idioma, Date.now()).run();
+  return json({ ok: true }, 200, origem);
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -172,6 +192,7 @@ export default {
       if (req.method === 'POST' && url.pathname === '/acervo') return await acervoPost(req, env, origem);
       if (req.method === 'GET' && url.pathname === '/acervo') return await acervoGet(url, env, origem);
       if (req.method === 'POST' && url.pathname === '/lixo') return await lixoPost(req, env, origem);
+      if (req.method === 'POST' && url.pathname === '/feedback') return await feedbackPost(req, env, origem);
       if (req.method === 'GET' && url.pathname === '/lixo') return await lixoGet(env, origem);
       if (url.pathname === '/') return json({ garimpo: 'ok' }, 200, origem);
       return json({ erro: 'não achei' }, 404, origem);

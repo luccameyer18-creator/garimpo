@@ -595,6 +595,9 @@
   @keyframes porta-chama { 0%,100% { box-shadow:0 0 0 0 rgba(255,78,205,.55), 0 10px 30px rgba(255,78,205,.35) }
                            50% { box-shadow:0 0 0 14px rgba(255,78,205,0), 0 10px 30px rgba(255,78,205,.35) } }
   #porta small { color:var(--fraco); font-size:11px; }
+  .porta-stories { color:var(--acc); font:700 13px ui-sans-serif,system-ui,sans-serif; text-decoration:none;
+                   padding:6px 12px; border-radius:20px; border:1px solid color-mix(in srgb, var(--acc) 45%, transparent); }
+  .porta-stories:hover { background:color-mix(in srgb, var(--acc) 14%, transparent); }
   #porta .erro-porta { color:var(--bad); font-size:12px; min-height:16px; }
   @media (prefers-reduced-motion: reduce) { #b-entrar { animation:none; } }
 
@@ -1259,6 +1262,7 @@
     <h1>GARIM<span>PO</span></h1>
     <p data-i18n="porta.sub">A pista tá cheia e o som tá esperando você. O professor te ensina a mixar, ou toca o set pra você ouvir.</p>
     <button id="b-entrar" data-i18n="porta.entrar">entrar na pista</button>
+    <a class="porta-stories" href="apresentacao.html" data-i18n="porta.stories">▶ o que é o Garimpo? (stories, 45s)</a>
     <div class="erro-porta" id="porta-erro"></div>
     <small data-i18n="porta.nota">milhares de músicas liberadas · nada pra baixar · funciona no celular</small>
   </div>
@@ -1266,7 +1270,7 @@
 
 <dialog id="sugestoes">
   <h3 data-i18n="sug.titulo">O que você acha que falta?</h3>
-  <div class="sub" data-i18n="sug.sub">Escreva e toque em enviar. Abre o seu WhatsApp, e-mail ou o que você preferir — nada sai daqui sozinho.</div>
+  <div class="sub" data-i18n="sug.sub">Escreva e toque em enviar: chega direto em quem faz o Garimpo. Sem conta, sem e-mail.</div>
   <textarea id="sug-texto" rows="5" data-i18n-attr="placeholder:sug.exemplo"
             placeholder="ex: queria um botão de loop, ou um gênero que não tem aqui…"></textarea>
   <div class="sug-quem">
@@ -1379,6 +1383,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260923p"></script>
+<script type="module" src="./src/ui/app.js?v=20260923t"></script>
 </body>
 </html>

@@ -31,3 +31,12 @@ CREATE TABLE IF NOT EXISTS lixo (
   votos  INTEGER NOT NULL DEFAULT 1,
   criada INTEGER NOT NULL
 );
+
+-- sugestões e bugs do 💬 do app; só o dono lê (não há rota de leitura)
+CREATE TABLE IF NOT EXISTS feedback (
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  texto  TEXT NOT NULL,
+  nome   TEXT,
+  idioma TEXT,
+  criada INTEGER NOT NULL
+);

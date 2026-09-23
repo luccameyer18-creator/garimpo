@@ -28,6 +28,17 @@ export async function votarLixo(ids, origem = 'gente') {
     });
   } catch {}
 }
+/** Manda uma sugestão/bug pra quem faz o Garimpo. Devolve true se chegou. */
+export async function enviarFeedback({ texto, nome = null, idioma = null }) {
+  try {
+    const r = await fetch(`${WORKER}/feedback`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texto, nome, idioma }),
+    });
+    return r.ok;
+  } catch { return false; }
+}
+
 export async function puxarLixo() {
   try {
     const r = await fetch(`${WORKER}/lixo`);

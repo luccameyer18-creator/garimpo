@@ -43,8 +43,8 @@ export const ORDENS = ['embaralhar', 'favoritas', 'bpm', 'tom', 'nome', 'combina
 const ler = (k, padrao) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? padrao; } catch { return padrao; } };
 const gravar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
-/** Gêneros marcados. Vazio = tudo. */
-let selecionadas = new Set(ler('garimpo.bib.generos', ['gen:House']));
+/** Gêneros marcados. Vazio = tudo — e é o padrão: sem preferência até a pessoa escolher. */
+let selecionadas = new Set(ler('garimpo.bib.generos', []));
 let ordem = ler('garimpo.bib.ordem', 'embaralhar');
 let decrescente = ler('garimpo.bib.desc', false);
 let favoritas = ler('garimpo.favoritas', []);   // objetos completos: tocam sem rede
@@ -151,12 +151,42 @@ async function doAcervo({ bpmMin = null, bpmMax = null, porPilha = 250, tudo = 1
     if (!selecionadas.size) somar(await crate.buscar({ ...f, limite: tudo }));
     else somar(await crate.buscarPilhas([...selecionadas], { bpmMin, bpmMax, porPilha }));
   } catch { /* sem IndexedDB: segue pela rede abaixo */ }
+
+  /**
+   * GÊNERO COM POUCA MÚSICA NO ACERVO VAI À REDE — cada um, não o conjunto.
+   *
+   * Antes a conta era do conjunto: com House (1.500 no acervo) e Megafunk
+   * (zero) marcados, "já tem música suficiente" e o Megafunk nunca era
+   * buscado — o set saía só de House e parecia que a troca de gênero não
+   * funcionava. Agora cada pilha marcada com menos de 30 faixas no acervo é
+   * buscada na rede, e o que vem fica GUARDADO com a pilha certa: da próxima
+   * vez já está no acervo.
+   */
+  if (selecionadas.size) {
+    const porPilhaAchada = {};
+    for (const t of fora) {
+      for (const s of selecionadas) {
+        if (s === t.pilha || (s.startsWith('gen:') && t.genre === s.slice(4))) porPilhaAchada[s] = (porPilhaAchada[s] || 0) + 1;
+      }
+    }
+    const faltam = TODAS.filter((i) => selecionadas.has(i.chave) && (porPilhaAchada[i.chave] || 0) < 30);
+    await Promise.all(faltam.slice(0, 6).map(async (it) => {
+      try {
+        const novas = (await it.rede()).filter((t) => !t.isLongMix)
+          .filter((t) => (bpmMin == null || t.bpm >= bpmMin) && (bpmMax == null || t.bpm <= bpmMax));
+        for (const t of novas) t.pilha = t.pilha || it.chave;
+        somar(novas);
+        crate.guardar(novas, it.chave).catch(() => {});
+      } catch {}
+    }));
+  }
   return fora;
 }
 
 async function daRede() {
   const fora = [];
-  const alvo = selecionadas.size ? TODAS.filter((i) => selecionadas.has(i.chave)) : [TODAS.find((i) => i.chave === 'gen:House')];
+  // sem gênero marcado: três pilhas SORTEADAS (antes era sempre House)
+  const alvo = selecionadas.size ? TODAS.filter((i) => selecionadas.has(i.chave)) : embaralhar(TODAS).slice(0, 3);
   for (const it of alvo.slice(0, 6)) {
     try { fora.push(...await it.rede()); } catch {}
   }
@@ -209,5 +239,35 @@ export async function candidatasDoSet() {
   // 70–180 BPM: com 100–150, boombap (~90) nunca entrava num set
   let lista = await doAcervo({ bpmMin: 70, bpmMax: 180, porPilha: 900, tudo: 5000 });
   if (lista.length < 40) lista = lista.concat(await daRede());
-  return lista.filter((f) => f.bpm && f.camelot && f.duration >= 90 && f.duration <= 420 && !ehLixo(f.id));
+  lista = lista.filter((f) => f.bpm && f.camelot && f.duration >= 90 && f.duration <= 420 && !ehLixo(f.id));
+  // sem repetidas: o que veio do acervo e o que veio da rede se sobrepõem, e a
+  // mesma música às vezes foi enviada duas vezes (mesmo título e artista)
+  const vistas = new Set();
+  lista = lista.filter((f) => {
+    const k1 = 'id:' + f.id, k2 = 'tt:' + `${f.title}|${f.artist}`.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (vistas.has(k1) || vistas.has(k2)) return false;
+    vistas.add(k1); vistas.add(k2);
+    return true;
+  });
+  /**
+   * EQUILÍBRIO: nenhum gênero domina por ter mais faixas guardadas.
+   *   - com gêneros marcados: no máximo 150 de cada um, sorteadas. Sem isto,
+   *     House (900 no acervo) + Megafunk (25) dava um set só de House
+   *   - com TUDO: no máximo 80 de cada gênero, sorteadas — o set sai aleatório
+   *     de verdade, sem preferência nenhuma, até a pessoa escolher
+   */
+  const grupos = {};
+  const marcadas = [...selecionadas];
+  for (const t of lista) {
+    const k = marcadas.length
+      ? marcadas.find((s) => s === t.pilha || (s.startsWith('gen:') && t.genre === s.slice(4))) || 'outro'
+      : t.pilha || ('gen:' + (t.genre || '?'));
+    (grupos[k] ||= []).push(t);
+  }
+  // com gêneros marcados, o maior fica em no máximo o DOBRO do menor (piso 40):
+  // Megafunk com 24 faixas não some no meio de 900 de House
+  const tamanhos = marcadas.map((s) => grupos[s]?.length || 0).filter((n) => n > 0);
+  const teto = marcadas.length ? Math.min(150, Math.max(40, 2 * Math.min(...tamanhos, 75))) : 80;
+  lista = Object.entries(grupos).flatMap(([k, g]) => embaralhar(g).slice(0, k === 'outro' ? 60 : teto));
+  return lista;
 }

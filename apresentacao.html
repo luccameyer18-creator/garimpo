@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Garimpo — stories</title>
+<meta name="description" content="Garimpo: garimpe músicas novas, mixe sozinho, junto com um professor, ou deixe o Garimpeiro tocar o set inteiro. De graça.">
+<style>
+  /*
+   * A apresentação do Garimpo em formato de STORIES: vertical 9:16, barrinhas
+   * no topo (uma por cena), toque na direita avança, na esquerda volta,
+   * segurar pausa. No celular ocupa a tela; no computador fica no centro,
+   * como um celular em pé.
+   *
+   * Mesma paleta do app. Tudo CSS + um canvas pequeno de lasers; a batida é
+   * sintetizada na hora com Web Audio (nenhum arquivo de áudio) e só toca
+   * depois do primeiro toque — navegador não deixa som começar sozinho.
+   * As medidas usam cqw (largura do story), então o texto cabe igual em
+   * qualquer tamanho.
+   */
+  :root { --fundo:#07040f; --fg:#f2eefc; --mut:#b3a8d6; --neon:#ff4ecd; --acc:#4cc9f0; --cue:#ffb347;
+          --ok:#2ee6a8; --lock:#c77dff; --b:0; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; margin:0; }
+  body { background:radial-gradient(80% 60% at 50% 30%, #1d1033, #050309); color:var(--fg); overflow:hidden;
+         display:grid; place-items:center; user-select:none;
+         font:16px/1.35 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing:antialiased; }
+
+  .story { position:relative; width:min(100vw, 56.25dvh); height:min(100dvh, 177.78vw); overflow:hidden;
+           background:#07040f; container-type:inline-size; border-radius:0; }
+  @media (min-width:700px) { .story { border-radius:22px; box-shadow:0 30px 90px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.08);
+                                      height:min(94dvh, 177.78vw); width:min(100vw, 52.9dvh); } }
+  #lasers { position:absolute; inset:0; width:100%; height:100%; }
+
+  /* barrinhas do topo */
+  .barras { position:absolute; top:10px; left:10px; right:10px; z-index:6; display:flex; gap:4px; }
+  .barras span { flex:1; height:3px; border-radius:2px; background:rgba(255,255,255,.28); overflow:hidden; }
+  .barras i { display:block; height:100%; width:0; background:#fff; }
+  .topo { position:absolute; top:20px; left:12px; right:12px; z-index:6; display:flex; align-items:center; gap:8px; }
+  .topo .quem { display:flex; align-items:center; gap:8px; font:800 13px ui-sans-serif, system-ui; }
+  .topo .quem .av { width:30px; height:30px; } .topo .quem .av .gp { width:100%; height:100%; }
+  .topo .quem small { color:rgba(255,255,255,.6); font-weight:600; }
+  .topo button { margin-left:auto; background:none; border:none; color:#fff; font-size:20px; padding:6px; cursor:pointer; }
+  .topo button + button { margin-left:0; }
+
+  /* toque: metade esquerda volta, direita avança */
+  .toque { position:absolute; top:0; bottom:0; z-index:4; }
+  .toque.esq { left:0; width:32%; } .toque.dir { right:0; width:68%; }
+
+  /* cenas */
+  .cena { position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center;
+          gap:4cqw; padding:18cqw 7cqw 12cqw; text-align:center; opacity:0; visibility:hidden;
+          transition:opacity .5s ease, visibility .5s; pointer-events:none; }
+  .cena.ativa { opacity:1; visibility:visible; }
+  .cena.ativa .entra { animation:entra .7s cubic-bezier(.2,.8,.2,1) both; }
+  .cena.ativa .entra:nth-child(2) { animation-delay:.35s; }
+  .cena.ativa .entra:nth-child(3) { animation-delay:.8s; }
+  .cena.ativa .entra:nth-child(4) { animation-delay:1.3s; }
+  .cena.ativa .entra:nth-child(5) { animation-delay:1.8s; }
+  @keyframes entra { from { opacity:0; transform:translateY(5cqw); filter:blur(6px); } to { opacity:1; transform:none; filter:none; } }
+  h1, h2 { margin:0; font-weight:900; line-height:1.05; }
+  h1 { font-size:15cqw; letter-spacing:.12em; }
+  h2 { font-size:9cqw; }
+  .sub { margin:0; color:var(--mut); font-size:4.6cqw; }
+  .neon { color:var(--acc); text-shadow:0 0 6cqw rgba(76,201,240,.7); }
+  .rosa { color:var(--neon); text-shadow:0 0 6cqw rgba(255,78,205,.7); }
+  .ambar { color:var(--cue); text-shadow:0 0 6cqw rgba(255,179,71,.6); }
+  .verde { color:var(--ok); text-shadow:0 0 6cqw rgba(46,230,168,.6); }
+
+  /* 1 — garimpo */
+  .mascote-g { width:38cqw; height:38cqw; } .mascote-g .gp { width:100%; height:100%; }
+  .pepitas { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+  .pepita { position:absolute; bottom:-8cqw; font-size:6cqw; color:var(--cue); text-shadow:0 0 4cqw var(--cue); opacity:0; }
+  .cena.ativa .pepita { animation:sobe 3.4s ease-in infinite; }
+  @keyframes sobe { 0% { opacity:0; transform:translateY(0) scale(.6); } 15% { opacity:1; }
+                    100% { opacity:0; transform:translateY(-150cqw) scale(1.2) rotate(40deg); } }
+
+  /* 2 — descobrir */
+  .contador { font:900 20cqw/1 ui-monospace, monospace; color:var(--cue); text-shadow:0 0 10cqw rgba(255,179,71,.6); }
+  .chuva { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+  .chip { position:absolute; top:-12cqw; padding:2cqw 4cqw; border-radius:8cqw; font-weight:800; font-size:4cqw; white-space:nowrap;
+          border:1px solid var(--neon); background:rgba(255,78,205,.16); box-shadow:0 0 4cqw rgba(255,78,205,.4); }
+  .cena.ativa .chip { animation:cai 5.2s linear both; }
+  @keyframes cai { from { transform:translateY(0) rotate(-6deg); } to { transform:translateY(200cqw) rotate(8deg); } }
+
+  /* 3 — ♥ e 👎 */
+  .cartas { position:relative; width:86cqw; height:30cqw; }
+  .carta { position:absolute; inset:0; display:flex; align-items:center; gap:4cqw; padding:4cqw; border-radius:5cqw;
+           background:linear-gradient(135deg, #2a1d4a, #150e27); border:1px solid rgba(255,255,255,.12);
+           box-shadow:0 5cqw 14cqw rgba(0,0,0,.6); text-align:left; }
+  .carta .capa { width:20cqw; height:20cqw; border-radius:3cqw; flex:none;
+                 background:conic-gradient(from 40deg, var(--neon), var(--lock), var(--acc), var(--neon)); }
+  .carta b { display:block; font-size:5cqw; } .carta small { color:var(--mut); font:700 3.6cqw ui-monospace, monospace; }
+  .selo { position:absolute; right:4cqw; top:50%; transform:translateY(-50%) scale(0); font-size:12cqw; }
+  .c2 { opacity:0; }
+  .cena.ativa .c1 .selo { animation:pop .6s 1.1s cubic-bezier(.3,1.8,.5,1) both; }
+  .cena.ativa .c1 { animation:sai .6s 2.5s ease-in both; }
+  .cena.ativa .c2 { animation:entraCarta .6s 2.7s ease-out both; }
+  .cena.ativa .c2 .selo { animation:pop .5s 3.6s cubic-bezier(.3,1.8,.5,1) both; }
+  .cena.ativa .c2 .corpo { animation:some .8s 4.4s ease-in both; }
+  @keyframes pop { to { transform:translateY(-50%) scale(1); } }
+  @keyframes sai { to { transform:translateX(130%) rotate(12deg); opacity:0; } }
+  @keyframes entraCarta { from { opacity:0; transform:translateY(8cqw) scale(.9); } to { opacity:1; transform:none; } }
+  @keyframes some { to { opacity:0; transform:scale(.6) rotate(-14deg); filter:blur(8px) grayscale(1); } }
+  .corpo { display:flex; align-items:center; gap:4cqw; }
+
+  /* 4 — três jeitos */
+  .modos { display:flex; flex-direction:column; gap:3cqw; width:88cqw; }
+  .modo { display:flex; gap:4cqw; align-items:center; padding:4cqw; border-radius:5cqw; text-align:left;
+          background:rgba(22,14,40,.88); border:1px solid rgba(255,255,255,.12); }
+  .modo .ic { font-size:9cqw; flex:none; }
+  .modo b { display:block; font-size:5cqw; } .modo span { color:var(--mut); font-size:3.6cqw; }
+  .modo.r { border-color:var(--neon); box-shadow:0 0 8cqw rgba(255,78,205,.35); }
+
+  /* 5 — professor */
+  .cdj { display:grid; grid-template-columns:1fr 18cqw 1fr; gap:2.4cqw; width:90cqw; }
+  .deck { height:34cqw; border-radius:3cqw; background:rgba(16,10,30,.92); border:1px solid rgba(76,201,240,.5); overflow:hidden; position:relative; }
+  .deck.b { border-color:rgba(255,179,71,.5); }
+  .deck::after { content:""; position:absolute; left:50%; top:0; bottom:0; width:2px; background:#fff; }
+  .onda { position:absolute; inset:4cqw 0; display:flex; align-items:center; gap:1px; width:200%; }
+  .onda i { flex:none; width:1.2cqw; border-radius:1px; }
+  .cena.ativa .onda { animation:corre 6s linear infinite; }
+  @keyframes corre { to { transform:translateX(-50%); } }
+  .mix { border-radius:3cqw; background:rgba(16,10,30,.92); border:1px solid rgba(199,125,255,.5); position:relative; }
+  .mix .kill { position:absolute; top:4cqw; width:6cqw; height:6cqw; border-radius:1.6cqw; border:1px solid var(--neon);
+               display:grid; place-items:center; font-size:3.2cqw; color:var(--neon); }
+  .mix .kill.a { left:2cqw; } .mix .kill.b { right:2cqw; }
+  .cena.ativa .mix .kill { animation:acende 1s 1.4s ease-in-out 3 both; }
+  @keyframes acende { 50% { background:var(--neon); color:#2b0420; box-shadow:0 0 5cqw var(--neon); } }
+  .mix .trilho { position:absolute; left:2cqw; right:2cqw; bottom:5cqw; height:1.4cqw; border-radius:1cqw; background:#1a1230; }
+  .mix .tampa { position:absolute; bottom:3.2cqw; left:2cqw; width:6cqw; height:5cqw; border-radius:1.2cqw; background:linear-gradient(180deg, #f4f0ff, #8d84a8); }
+  .cena.ativa .mix .tampa { animation:xf 6s ease-in-out infinite; }
+  @keyframes xf { 0%, 20% { left:2cqw; } 60%, 100% { left:calc(100% - 8cqw); } }
+  .balao { display:flex; gap:3cqw; align-items:center; width:90cqw; padding:3.4cqw; border-radius:4cqw; text-align:left;
+           background:rgba(22,14,40,.92); border:1px solid rgba(46,230,168,.5); font-size:4cqw; }
+  .balao .mini { width:15cqw; height:15cqw; flex:none; } .balao .mini .gp { width:100%; height:100%; }
+  .balao b { color:var(--ok); }
+  .balao small { display:block; margin-top:1cqw; color:var(--mut); font-size:3.4cqw; }
+  .balao small::before { content:"POR QUÊ: "; color:var(--ok); font-weight:800; font-size:3cqw; letter-spacing:.06em; }
+
+  /* 6 — pista */
+  .galera { position:absolute; left:0; right:0; bottom:0; height:40cqw; display:flex; justify-content:space-around;
+            align-items:flex-end; padding:0 2cqw; pointer-events:none; }
+  .pessoa { width:9cqw; height:24cqw; border-radius:50% 50% 3cqw 3cqw / 30% 30% 3cqw 3cqw; border:2px solid var(--c, var(--neon));
+            border-bottom:none; box-shadow:0 0 4cqw var(--c, var(--neon)); position:relative;
+            transform:translateY(calc(var(--b) * var(--s, 4) * -1cqw)); }
+  .pessoa::before { content:""; position:absolute; left:50%; top:-32%; width:64%; aspect-ratio:1; transform:translateX(-50%);
+                    border-radius:50%; border:2px solid var(--c, var(--neon)); box-shadow:0 0 3cqw var(--c, var(--neon)); }
+  .globo { width:22cqw; height:22cqw; border-radius:50%; background:
+    radial-gradient(circle at 34% 28%, #fff 0 6%, transparent 22%),
+    linear-gradient(90deg, rgba(10,6,20,.55) 1px, transparent 1px) 0 0 / 3cqw 3cqw,
+    linear-gradient(0deg, rgba(10,6,20,.55) 1px, transparent 1px) 0 0 / 3cqw 3cqw,
+    radial-gradient(circle, #e6e0f6, #5e5680 75%);
+    box-shadow:0 0 calc(6cqw + var(--b) * 8cqw) rgba(255,255,255,.4); }
+  .drop { font:900 24cqw/1 ui-sans-serif, system-ui; color:#fff; text-shadow:0 0 8cqw var(--neon), 0 0 18cqw var(--acc);
+          transform:scale(calc(1 + var(--b) * .07)); }
+  .confete { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+  .confete i { position:absolute; top:-5cqw; width:2cqw; height:3.4cqw; border-radius:.5cqw; }
+  .cena.ativa .confete i { animation:cai 3s linear both; }
+
+  /* 7 — feedback */
+  .barra-app { width:90cqw; display:flex; align-items:center; gap:3cqw; padding:3cqw 4cqw; border-radius:3cqw;
+               background:linear-gradient(180deg, #1d1633, #120d20); border:1px solid #332750; font-size:4cqw; }
+  .barra-app .marca { font-weight:900; letter-spacing:.1em; font-size:3.6cqw; } .barra-app .marca span { color:var(--acc); }
+  .barra-app .ics { margin-left:auto; display:flex; gap:3cqw; color:#8a7fa8; font-size:5cqw; }
+  .barra-app .alvo { position:relative; color:#fff; }
+  .cena.ativa .barra-app .alvo { animation:pulsa 1.1s ease-in-out infinite; }
+  @keyframes pulsa { 50% { text-shadow:0 0 5cqw var(--neon), 0 0 10cqw var(--neon); transform:scale(1.25); } }
+  .seta { font-size:10cqw; color:var(--neon); text-shadow:0 0 5cqw var(--neon); margin-top:-2cqw; }
+  .cena.ativa .seta { animation:aponta .8s ease-in-out infinite alternate; }
+  @keyframes aponta { to { transform:translateY(-3cqw); } }
+  .caixa-sug { width:90cqw; padding:4cqw; border-radius:4cqw; background:rgba(22,14,40,.92); border:1px solid rgba(255,78,205,.45);
+               text-align:left; font-size:4cqw; }
+  .caixa-sug .digita { display:block; min-height:12cqw; padding:3cqw; border-radius:2.4cqw; background:#07040f;
+                       border:1px solid #332750; color:#e8e2f8; font-size:3.8cqw; }
+  .caixa-sug .enviar { display:inline-block; margin-top:3cqw; padding:2.4cqw 6cqw; border-radius:6cqw; border:1px solid var(--ok);
+                       color:var(--ok); font-weight:800; }
+
+  /* 8 — convite */
+  .cta { pointer-events:auto; display:inline-block; padding:4.6cqw 10cqw; border-radius:12cqw; text-decoration:none;
+         font:900 4.8cqw/1 ui-sans-serif, system-ui; letter-spacing:.1em; text-transform:uppercase; color:#2b0420;
+         background:linear-gradient(90deg, #ff7ad9, var(--neon) 40%, #c77dff);
+         box-shadow:0 0 0 0 rgba(255,78,205,.6), 0 4cqw 12cqw rgba(255,78,205,.4); animation:chama 2s ease-in-out infinite; }
+  @keyframes chama { 50% { box-shadow:0 0 0 4cqw rgba(255,78,205,0), 0 4cqw 12cqw rgba(255,78,205,.4); } }
+  .creditos { color:#7f74a3; font-size:3cqw; }
+  .cena:last-of-type { pointer-events:none; }
+  .cena:last-of-type .cta, .cena:last-of-type .rever { pointer-events:auto; }
+  .rever { background:none; border:1px solid rgba(255,255,255,.25); color:var(--mut); border-radius:6cqw; padding:2.4cqw 5cqw;
+           font:700 3.6cqw ui-sans-serif, system-ui; cursor:pointer; }
+
+  /* começo: o toque que libera o som */
+  #comeco { position:absolute; inset:0; z-index:8; display:flex; flex-direction:column; align-items:center; justify-content:center;
+            gap:4cqw; text-align:center; padding:8cqw; background:radial-gradient(70% 60% at 50% 45%, rgba(29,16,51,.5), rgba(7,4,15,.97)); }
+  #comeco .bt { padding:4.4cqw 9cqw; border-radius:10cqw; border:none; cursor:pointer; color:#2b0420;
+                font:900 4.6cqw ui-sans-serif, system-ui; letter-spacing:.08em; text-transform:uppercase;
+                background:linear-gradient(90deg, #ff7ad9, var(--neon) 40%, #c77dff); box-shadow:0 4cqw 12cqw rgba(255,78,205,.4); }
+  #comeco .sem { background:none; border:none; color:var(--mut); font:600 3.6cqw ui-sans-serif, system-ui; cursor:pointer; text-decoration:underline; }
+  .pausado-aviso { position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); z-index:7; font-size:14cqw; opacity:0;
+                   transition:opacity .2s; pointer-events:none; }
+  .story.pausado .pausado-aviso { opacity:.8; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+<main class="story" id="story" aria-label="Apresentação do Garimpo em stories">
+  <canvas id="lasers" aria-hidden="true"></canvas>
+  <div class="barras" id="barras"></div>
+  <div class="topo">
+    <div class="quem"><div class="av" id="av"></div><div>garimpo <small>· agora</small></div></div>
+    <button id="b-som" title="som">🔊</button>
+    <button id="b-fechar" title="entrar no garimpo">✕</button>
+  </div>
+  <div class="toque esq" id="t-esq" aria-hidden="true"></div>
+  <div class="toque dir" id="t-dir" aria-hidden="true"></div>
+  <div class="pausado-aviso" aria-hidden="true">⏸</div>
+
+  <!-- 1 — o garimpo -->
+  <section class="cena" data-ms="5500">
+    <div class="pepitas" id="pepitas" aria-hidden="true"></div>
+    <div class="mascote-g entra" id="m1"></div>
+    <h2 class="entra">Toda noite tem <span class="ambar">música boa escondida.</span></h2>
+    <p class="sub entra">O Garimpo cava por você.</p>
+  </section>
+
+  <!-- 2 — descobrir -->
+  <section class="cena" data-ms="6000">
+    <div class="chuva" id="chuva" aria-hidden="true"></div>
+    <div class="contador entra" id="contador">0</div>
+    <h2 class="entra">faixas livres pra <span class="neon">descobrir.</span></h2>
+    <p class="sub entra">House, techno, disco, funk, megafunk, psy, boombap, amapiano… sempre uma que você nunca ouviu.</p>
+  </section>
+
+  <!-- 3 — ♥ e 👎 -->
+  <section class="cena" data-ms="6500">
+    <h2 class="entra">Gostou? <span class="rosa">♥</span><br>Não curtiu? <span class="ambar">👎</span></h2>
+    <div class="cartas entra">
+      <div class="carta c1"><div class="capa"></div><div><b>faixa garimpada</b><small>House · 124 BPM · 8A</small></div><span class="selo">♥</span></div>
+      <div class="carta c2"><div class="corpo"><div class="capa" style="filter:hue-rotate(120deg)"></div><div><b>outra faixa</b><small>??? · 97 BPM · 3B</small></div></div><span class="selo">👎</span></div>
+    </div>
+    <p class="sub entra">A favorita fica com você. A que não presta sai do garimpo — de todo mundo.</p>
+  </section>
+
+  <!-- 4 — três jeitos -->
+  <section class="cena" data-ms="6500">
+    <h2 class="entra">Três jeitos de tocar.</h2>
+    <div class="modos">
+      <div class="modo entra"><div class="ic">🎛</div><div><b>Eu toco</b><span>Você mixa. O Garimpeiro só sinaliza a hora e o botão.</span></div></div>
+      <div class="modo r entra"><div class="ic">🎧</div><div><b>Junto com o professor</b><span>Ele conduz e te passa a vez nos gestos que importam.</span></div></div>
+      <div class="modo entra"><div class="ic">▶</div><div><b>Deixa ele tocar</b><span>O Garimpeiro toca o set inteiro, explicando cada virada.</span></div></div>
+    </div>
+  </section>
+
+  <!-- 5 — o professor -->
+  <section class="cena" data-ms="7000">
+    <h2 class="entra">Aprende <span class="verde">tocando.</span></h2>
+    <div class="cdj entra">
+      <div class="deck"><div class="onda" id="ondaA"></div></div>
+      <div class="mix"><div class="kill a">×</div><div class="kill b">×</div><div class="trilho"></div><div class="tampa"></div></div>
+      <div class="deck b"><div class="onda" id="ondaB"></div></div>
+    </div>
+    <div class="balao entra">
+      <div class="mini" id="m2"></div>
+      <div>🎧 Troca de graves no <b>1 da frase</b>: corta o grave do A, solta o do B.
+        <small>dois graves juntos viram lama — é aí que a pista sente a música nova.</small></div>
+    </div>
+  </section>
+
+  <!-- 6 — a pista -->
+  <section class="cena" data-ms="6000">
+    <div class="confete" id="confete" aria-hidden="true"></div>
+    <div class="globo entra"></div>
+    <div class="drop entra">DROP!</div>
+    <h2 class="entra">Lasers, globo, galera <span class="rosa">e viagem.</span></h2>
+    <div class="galera" id="galera" aria-hidden="true"></div>
+  </section>
+
+  <!-- 7 — feedback -->
+  <section class="cena" data-ms="7000">
+    <h2 class="entra">Tem ideia? <span class="ambar">Achou um bug?</span></h2>
+    <div class="barra-app entra"><span class="marca">GARIM<span>PO</span></span>
+      <span class="ics"><span>◐</span><span class="alvo">💬</span><span>?</span><span>⚙</span></span></div>
+    <div class="seta entra">⬆</div>
+    <div class="caixa-sug entra">Toca no <b>💬</b> lá em cima do app e escreve:
+      <span class="digita" id="digita"></span><span class="enviar">enviar ✓</span></div>
+    <p class="sub entra">Chega direto em quem faz o Garimpo. Sem conta, sem e-mail.</p>
+  </section>
+
+  <!-- 8 — o convite -->
+  <section class="cena" data-ms="0">
+    <h1 class="entra">GARIM<span class="neon">PO</span></h1>
+    <h2 class="entra">Tudo de graça.<br>Sem conta, sem baixar nada.</h2>
+    <p class="sub entra"><span class="verde">Divirtam-se.</span></p>
+    <div class="entra" style="display:flex;flex-direction:column;align-items:center;gap:3cqw">
+      <a class="cta" href="./">entrar no garimpo</a>
+      <button class="rever" id="b-rever">↺ ver de novo</button>
+      <p class="creditos">Músicas do Audius, de artistas independentes, sob a Open Music License.</p>
+    </div>
+  </section>
+
+  <div id="comeco">
+    <div class="mascote-g" id="m0"></div>
+    <h1>GARIM<span class="neon">PO</span></h1>
+    <p class="sub">8 stories · 45 segundos</p>
+    <button class="bt" id="b-comecar">▶ toque pra ver</button>
+    <button class="sem" id="b-sem-som">ver sem som</button>
+  </div>
+</main>
+
+<script type="module">
+  import { montarMascote } from './src/ui/mascote.js';
+
+  const BPM = 124, TEMPO = 60 / BPM;
+  const $ = (id) => document.getElementById(id);
+  const story = $('story');
+  const cenas = [...document.querySelectorAll('.cena')];
+  const reduzido = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // o Garimpeiro: no avatar, cavando na primeira, falando no professor
+  for (const [id, fn] of [['m0', (m) => m.humor(null)], ['av', (m) => m.humor(null)],
+                          ['m1', (m) => m.cavando(true)], ['m2', (m) => m.humor('agora')]]) {
+    const m = montarMascote($(id)); m.batida(BPM); fn(m);
+  }
+
+  // ── enfeites ──
+  for (let i = 0; i < 14; i++) {
+    const p = document.createElement('span');
+    p.className = 'pepita'; p.textContent = ['✦', '◆', '♪', '✧'][i % 4];
+    p.style.left = (Math.random() * 90 + 4) + '%'; p.style.animationDelay = (Math.random() * 3.4) + 's';
+    $('pepitas').appendChild(p);
+  }
+  ['House', 'Techno', 'Disco', 'Megafunk', 'Psy', 'Boombap', 'Amapiano', 'Deep House', 'Funk', 'Minimal',
+   'Brega funk', 'Mega Disco', 'Trance', 'Pagodão', 'Axé', 'Reggaeton'].forEach((g, i) => {
+    const c = document.createElement('span');
+    c.className = 'chip'; c.textContent = g;
+    c.style.left = ((i * 29) % 78 + 2) + '%'; c.style.animationDelay = (i * 0.3) + 's';
+    $('chuva').appendChild(c);
+  });
+  for (const id of ['ondaA', 'ondaB']) {
+    for (let i = 0; i < 160; i++) {
+      const b = document.createElement('i');
+      const e = Math.abs(Math.sin(i * 0.37) * Math.cos(i * 0.11)) * 0.8 + 0.15;
+      b.style.height = (e * 100) + '%';
+      b.style.background = i % 4 === 0 ? '#2f6bff' : i % 3 === 0 ? '#f2f4ff' : '#ffa531';
+      $(id).appendChild(b);
+    }
+  }
+  const CORES = ['#ff4ecd', '#4cc9f0', '#ffb347', '#2ee6a8', '#c77dff'];
+  for (let i = 0; i < 8; i++) {
+    const p = document.createElement('div');
+    p.className = 'pessoa';
+    p.style.setProperty('--c', CORES[i % CORES.length]);
+    p.style.setProperty('--s', String(2 + (i * 3) % 5));
+    $('galera').appendChild(p);
+  }
+  for (let i = 0; i < 50; i++) {
+    const q = document.createElement('i');
+    q.style.left = Math.random() * 100 + '%'; q.style.background = CORES[i % CORES.length];
+    q.style.animationDelay = (Math.random() * 1.5) + 's';
+    $('confete').appendChild(q);
+  }
+
+  // ── barrinhas ──
+  for (let i = 0; i < cenas.length; i++) $('barras').insertAdjacentHTML('beforeend', '<span><i></i></span>');
+  const barras = [...$('barras').querySelectorAll('i')];
+
+  // ── contador e "digitando" ──
+  function contar() {
+    const alvo = 39287, t0 = performance.now();
+    const passo = (t) => {
+      const k = Math.min(1, (t - t0) / 2000);
+      $('contador').textContent = Math.round(alvo * (1 - Math.pow(1 - k, 3))).toLocaleString('pt-BR');
+      if (k < 1 && atual === 1) requestAnimationFrame(passo);
+    };
+    requestAnimationFrame(passo);
+  }
+  let digitando = null;
+  function digitar() {
+    const texto = 'queria um modo só de funk 150 bpm 🔥';
+    let i = 0; $('digita').textContent = '';
+    clearInterval(digitando);
+    setTimeout(() => { digitando = setInterval(() => {
+      $('digita').textContent = texto.slice(0, ++i);
+      if (i >= texto.length) clearInterval(digitando);
+    }, 55); }, 1600);
+  }
+
+  // ── a batida (Web Audio): bumbo, chimbal, palma, baixo ──
+  let ctx = null, mestre = null, proxBatida = 0, nBatida = 0, timerSom = null, mudo = false;
+  function ligarSom() {
+    ctx = new AudioContext();
+    mestre = ctx.createGain(); mestre.gain.value = 0.5; mestre.connect(ctx.destination);
+    const bumbo = (t) => { const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.14);
+      g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      o.connect(g).connect(mestre); o.start(t); o.stop(t + 0.4); };
+    const ruido = (t, dur, vol, hp) => { const n = ctx.createBufferSource(), b = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+      const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      n.buffer = b; const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+      const g = ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      n.connect(f).connect(g).connect(mestre); n.start(t); };
+    const baixo = (t, nota) => { const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+      o.type = 'sawtooth'; o.frequency.value = nota; f.type = 'lowpass'; f.frequency.value = 420;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.26, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + TEMPO * 0.45);
+      o.connect(f).connect(g).connect(mestre); o.start(t); o.stop(t + TEMPO * 0.5); };
+    const NOTAS = [55, 55, 65.4, 49];
+    proxBatida = ctx.currentTime + 0.1;
+    timerSom = setInterval(() => {
+      if (ctx.state !== 'running') return;
+      while (proxBatida < ctx.currentTime + 0.25) {
+        const t = proxBatida;
+        bumbo(t); ruido(t + TEMPO / 2, 0.05, 0.2, 7000);
+        if (nBatida % 2 === 1) ruido(t, 0.18, 0.32, 1500);
+        baixo(t + TEMPO / 2, NOTAS[Math.floor(nBatida / 4) % 4]);
+        proxBatida += TEMPO; nBatida++;
+      }
+    }, 50);
+  }
+  $('b-som').onclick = (e) => {
+    e.stopPropagation();
+    if (!ctx) { ligarSom(); mudo = false; }
+    else { mudo = !mudo; mestre.gain.value = mudo ? 0 : 0.5; }
+    $('b-som').textContent = mudo ? '🔇' : '🔊';
+  };
+
+  // ── lasers no fundo do story ──
+  const cv = $('lasers'), c = cv.getContext('2d');
+  const ajustar = () => { const r = story.getBoundingClientRect(); cv.width = Math.round(r.width / 2); cv.height = Math.round(r.height / 2); };
+  addEventListener('resize', ajustar); ajustar();
+  const t0 = performance.now();
+  const INTENS = [0.35, 0.45, 0.4, 0.5, 0.5, 1, 0.45, 0.7];
+  function quadro(agora) {
+    requestAnimationFrame(quadro);
+    const bat = ctx ? nBatida - (proxBatida - ctx.currentTime) / TEMPO : (agora - t0) / 1000 / TEMPO;
+    const pulso = reduzido ? 0 : Math.exp(-(((bat % 1) + 1) % 1) * 5);
+    story.style.setProperty('--b', pulso.toFixed(3));
+    const W = cv.width, H = cv.height, I = INTENS[Math.max(0, atual)] ?? 0.4;
+    c.clearRect(0, 0, W, H);
+    c.globalCompositeOperation = 'lighter';
+    const varre = Math.sin(bat * Math.PI / 8), hue = (Math.floor(bat / 16) * 67) % 360, n = 2 + Math.round(I * 5);
+    for (const [x0, base, h] of [[0, 1.0 + varre * 0.3, hue], [W, Math.PI - 1.0 - varre * 0.3, hue + 150]]) {
+      c.strokeStyle = `hsl(${h},90%,62%)`;
+      for (let k = 0; k < n; k++) {
+        const th = base + (k - (n - 1) / 2) * (0.05 + I * 0.05), x2 = x0 + Math.cos(th) * (W + H), y2 = Math.sin(th) * (W + H);
+        c.globalAlpha = (0.12 + pulso * 0.2) * I; c.lineWidth = 4; c.beginPath(); c.moveTo(x0, 0); c.lineTo(x2, y2); c.stroke();
+        c.globalAlpha = (0.4 + pulso * 0.4) * I; c.lineWidth = 1; c.beginPath(); c.moveTo(x0, 0); c.lineTo(x2, y2); c.stroke();
+      }
+    }
+    // barrinha da cena atual enchendo
+    if (atual >= 0 && !pausado) {
+      const ms = Number(cenas[atual].dataset.ms);
+      const k = ms ? Math.min(1, (agora - inicio) / ms) : 1;
+      barras[atual].style.width = (k * 100) + '%';
+      if (ms && k >= 1) ir(atual + 1);
+    }
+  }
+
+  // ── navegação: toque, segurar, teclado ──
+  let atual = -1, inicio = 0, pausado = false, pausouEm = 0;
+  function ir(i) {
+    if (i < 0) i = 0;
+    if (i >= cenas.length) return;
+    atual = i; inicio = performance.now();
+    cenas.forEach((s, k) => s.classList.toggle('ativa', k === i));
+    barras.forEach((b, k) => { b.style.width = k < i ? '100%' : '0%'; });
+    if (i === 1) contar();
+    if (i === 6) digitar();
+  }
+  function pausar(on) {
+    if (on === pausado || atual < 0) return;
+    pausado = on;
+    story.classList.toggle('pausado', on);
+    if (on) { pausouEm = performance.now(); ctx?.suspend(); }
+    else { inicio += performance.now() - pausouEm; ctx?.resume(); }
+  }
+  // segurar pausa; toque curto navega
+  let apertou = 0, segurando = null;
+  for (const [el, passo] of [[$('t-esq'), -1], [$('t-dir'), 1]]) {
+    el.addEventListener('pointerdown', () => { apertou = performance.now(); segurando = setTimeout(() => pausar(true), 220); });
+    el.addEventListener('pointerup', () => {
+      clearTimeout(segurando);
+      if (pausado) { pausar(false); return; }
+      if (performance.now() - apertou < 220) ir(atual + passo);
+    });
+    el.addEventListener('pointerleave', () => { clearTimeout(segurando); if (pausado) pausar(false); });
+  }
+  addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') ir(atual + 1);
+    if (e.key === 'ArrowLeft') ir(atual - 1);
+    if (e.key === ' ') { e.preventDefault(); pausar(!pausado); }
+    if (e.key === 'Escape') location.href = './';
+  });
+  $('b-fechar').onclick = (e) => { e.stopPropagation(); location.href = './'; };
+  $('b-rever').onclick = () => ir(0);
+
+  function comecar(comSom) {
+    $('comeco').remove();
+    if (comSom) ligarSom(); else { mudo = true; $('b-som').textContent = '🔇'; }
+    ir(0);
+    requestAnimationFrame(quadro);
+  }
+  $('b-comecar').onclick = () => comecar(true);
+  $('b-sem-som').onclick = () => comecar(false);
+</script>
+</body>
+</html>

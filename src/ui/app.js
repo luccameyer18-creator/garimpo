@@ -13,7 +13,7 @@ import { montarSet, resumoSet } from '../coach/setlist.js';
 import * as crate from '../sources/crate.js';
 import { garimpar } from '../sources/garimpar.js';
 import { carregarSemente } from '../sources/semente.js';
-import { puxar as puxarGalera, votarLixo, puxarLixo } from '../sources/galera.js';
+import { puxar as puxarGalera, votarLixo, puxarLixo, enviarFeedback } from '../sources/galera.js';
 import { Piloto } from '../coach/piloto.js';
 import { ESTILOS, TECNICAS } from '../coach/tecnicas.js';
 import { decidirSet, aplicarDecisoes, julgarFaixas } from '../coach/jev.js';
@@ -125,7 +125,7 @@ async function ligar() {
       pronto = true;
       // handle de depuracao: sem isto so da pra inspecionar o estado pelo
       // diagnostico, que e lento pra iterar
-      globalThis.__garimpo = { decks, mixer, vistas, get ctx() { return ctx; } };
+      globalThis.__garimpo = { decks, mixer, vistas, get ctx() { return ctx; }, get piloto() { return piloto; } };
       fase = 'pronto';
 
       const comLock = decks.A.temKeylock;
@@ -1409,7 +1409,66 @@ $('dj-generos').addEventListener('click', (e) => {
   }
   try { localStorage.setItem('garimpo.dj.fonte', fonteDj); } catch {}
   recarregar();
+  refazerProximas();
 });
+
+/**
+ * Marcou outros gêneros com o DJ tocando: as PRÓXIMAS do set são refeitas a
+ * partir da música que está no ar (o encaixe de tom e BPM continua valendo),
+ * e o Garimpeiro avisa. Espera 1,5 s de calma: quem marca três gêneros
+ * seguidos não precisa de três sets.
+ */
+let tRefazer = null;
+function avisarTroca(chave, vars = {}) {
+  narracao = { diz: chave, vars: { g: $('gen-resumo').textContent, ...vars }, k: ++nNarracao };
+  ultimoProf = 0;
+}
+function refazerProximas() {
+  if (!piloto?.ativo || modoDj === 'solo') return;
+  clearTimeout(tRefazer);
+  tRefazer = setTimeout(async () => {
+    try {
+      const soFav = fonteDj === 'favoritas';
+      const cands = soFav ? bib.favoritasParaSet() : await bib.candidatasDoSet();
+      const noAr = piloto.fila?.[piloto.indice];
+      if (!noAr) return;
+      const pote = cands.filter((f) => f.id !== noAr.id);
+      if (pote.length < 2) { avisarTroca('n.trocouNada'); return; }
+      /**
+       * Trocar de gênero é virar o clima: o set novo NÃO precisa casar BPM com
+       * a que está tocando (psy a 140 depois de um samba a 95 nunca casaria, e
+       * a troca não acontecia). Ele começa pela faixa do gênero novo de BPM
+       * mais PERTO da atual — a virada fica a menor possível — e segue
+       * encadeado dali.
+       */
+      const bpmAgora = noAr.bpm || 120;
+      const ponte = pote.reduce((m, f) => (Math.abs(f.bpm - bpmAgora) < Math.abs(m.bpm - bpmAgora) ? f : m));
+      const s = montarSet(pote, {
+        minutos: Number($('pref-min').value), energia: $('pref-energia').value,
+        semente: ponte, recentes: soFav ? jaTocadas : [...jaTocadas, ...jaSugeridas], variar: !soFav,
+      });
+      let novas = s.fila.filter((f) => f.id !== noAr.id);
+      // pouca corrente (o gênero novo mora longe no BPM, psy a 140): completa
+      // com as dele em ordem de BPM a partir da ponte — o andamento sobe aos
+      // poucos até o clima novo, em vez de parar numa faixa só
+      if (novas.length < 4) {
+        const ja = new Set(novas.map((f) => f.id));
+        const resto = pote.filter((f) => !ja.has(f.id))
+          .sort((a, b) => Math.abs(a.bpm - ponte.bpm) - Math.abs(b.bpm - ponte.bpm));
+        novas = [...novas, ...resto].slice(0, 10);
+      }
+      if (novas.length < 1) { avisarTroca('n.trocouNada'); return; }
+      const decisao = await decidirSet([noAr, ...novas], piloto.estilo).catch(() => null);
+      if (decisao) novas = aplicarDecisoes([noAr, ...novas], decisao).slice(1);
+      if (!piloto?.ativo || !piloto.substituirProximas(novas)) return;
+      if (!soFav) registrarSugeridas(novas);
+      fila = piloto.fila.slice(piloto.indice);
+      desenharFila();
+      narracao = { diz: 'n.trocou', porque: 'n.trocou.p', vars: { n: novas.length, g: $('gen-resumo').textContent }, k: ++nNarracao };
+      ultimoProf = 0;
+    } catch {}
+  }, 1500);
+}
 // roda do mouse rola a fileira pro lado
 $('dj-generos').addEventListener('wheel', (e) => {
   if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
@@ -1443,6 +1502,7 @@ $('crates').addEventListener('click', (e) => {
   // escolher gênero sai do modo favoritas: a pessoa quer ver o gênero
   if (bib.estado.ordem === 'favoritas') bib.escolherOrdem('embaralhar');
   recarregar();
+  refazerProximas();       // com o DJ tocando, as próximas seguem os gêneros novos
 });
 
 $('ordem').addEventListener('click', (e) => {
@@ -2090,6 +2150,17 @@ $('b-sug-enviar').onclick = async () => {
   if (!txt) { $('sug-nota').textContent = t('sug.escreva'); return; }
   sugestoes.unshift({ texto: $('sug-texto').value.trim(), quando: new Date().toLocaleDateString() });
   guardarSugestoes(); desenharSugestoes();
+  // direto pra quem faz o Garimpo (Worker). Sem rede: cai no compartilhar/copiar
+  const chegou = await enviarFeedback({
+    texto: $('sug-texto').value.trim(), nome: $('sug-nome').value.trim() || null,
+    idioma: document.documentElement.lang || null,
+  });
+  if (chegou) {
+    $('sug-nota').textContent = t('sug.chegou');
+    $('sug-nota').style.color = 'var(--ok)';
+    $('sug-texto').value = '';
+    return;
+  }
   try {
     if (navigator.share) { await navigator.share({ text: txt }); $('sug-nota').textContent = t('sug.enviada'); }
     else { await navigator.clipboard.writeText(txt); $('sug-nota').textContent = t('sug.copiada'); }
