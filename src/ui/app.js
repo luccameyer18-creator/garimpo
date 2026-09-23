@@ -44,13 +44,25 @@ const decks = {};        // { A: Deck, B: Deck }
 const vistas = {};       // { A: {...elementos}, B: {...} }
 let medidor = null, bufMed = null, picoMaster = 0;
 // espectro do master pra pista, o visualizador e o mascote (grave/médio/agudo)
-let analisador = null, bufEsp = null;
+let analisador = null, bufEsp = null, saidaMaster = null;
 function lerEspectro() {
   if (!analisador) return null;
   analisador.getByteFrequencyData(bufEsp);
   return bufEsp;
 }
 let fila = [];   // sequencia sugerida do set
+/**
+ * Como o DJ toca e de onde. Declarados aqui em cima porque a pintura da
+ * biblioteca (que roda cedo) já lê a fonte.
+ *   modoDj   'juntos' (padrão: ele conduz e te passa a vez) | 'sozinho' (só o
+ *            DJ) | 'solo' (você toca; ele monta o set e só sinaliza)
+ *   fonteDj  'generos' (os marcados) | 'favoritas' (o que tem ♥)
+ */
+let modoDj = 'juntos', fonteDj = 'generos';
+try {
+  modoDj = localStorage.getItem('garimpo.dj.modo') || 'juntos';
+  fonteDj = localStorage.getItem('garimpo.dj.fonte') || 'generos';
+} catch {}
 
 // ─────────────────────────── ligar o áudio ───────────────────────────
 
@@ -96,6 +108,7 @@ async function ligar() {
       analisador.smoothingTimeConstant = 0.55;
       bufEsp = new Uint8Array(analisador.frequencyBinCount);
       saida.connect(analisador);
+      saidaMaster = saida;              // o MilkDrop escuta daqui
       saida.connect(ctx.destination);
       mixer = new Mixer(ctx, { destination: saida });
 
@@ -352,6 +365,9 @@ function montarVista(id) {
   // BPM editável: o do Audius é detectado por máquina e erra oitava
   const setBpm = (val) => {
     if (!d.faixa || !isFinite(val) || val <= 0) return;
+    // ÷2, ×2 ou digitado: a grade de batidas escala junto, senão o SYNC e o
+    // ENCAIXAR continuariam no andamento errado
+    if (d.grid?.bpm && d.faixa.bpm) d.grid.bpm *= val / d.faixa.bpm;
     d.faixa.bpm = Math.round(val * 100) / 100;
     v.bpmVal.textContent = d.faixa.bpm;
     v.visorBpm.textContent = d.bpmEfetivo ? d.bpmEfetivo.toFixed(2) : '—';
@@ -364,15 +380,23 @@ function montarVista(id) {
     const inp = document.createElement('input');
     inp.value = d.faixa.bpm ?? ''; inp.inputMode = 'decimal';
     v.bpmVal.replaceWith(inp); inp.focus(); inp.select();
+    /**
+     * Fecha UMA vez. O Enter aplica direto — antes ele só chamava blur(), e se
+     * o campo nunca tinha pegado o foco (outro campo roubou, janela sem foco)
+     * o blur não disparava: o campo ficava preso na tela e o BPM não mudava.
+     */
+    let fechado = false;
     const fechar = (aplicar) => {
+      if (fechado) return;
+      fechado = true;
       const val = parseFloat(inp.value.replace(',', '.'));
       inp.replaceWith(v.bpmVal);
       if (aplicar) setBpm(val);
     };
     inp.onblur = () => fechar(true);
     inp.onkeydown = (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
-      if (e.key === 'Escape') { inp.onblur = null; fechar(false); }
+      if (e.key === 'Enter') { e.preventDefault(); fechar(true); }
+      if (e.key === 'Escape') fechar(false);
     };
   };
 
@@ -415,12 +439,13 @@ function efeitoDoTom(id) {
 function sincronizar(id) {
   const outro = id === 'A' ? 'B' : 'A';
   const a = decks[id], b = decks[outro];
-  if (!a?.faixa?.bpm || !b?.faixa?.bpm) {
+  if (!a?.bpmNatural || !b?.bpmNatural) {
     qd('dica').textContent = 'SYNC precisa de BPM nos dois decks';
     return;
   }
+  // pelo andamento MEDIDO dos dois (ver Deck.bpmNatural), não pelo do Audius
   const alvo = b.bpmEfetivo;
-  let razao = alvo / a.faixa.bpm;
+  let razao = alvo / a.bpmNatural;
   while (razao > 1.5) razao /= 2;
   while (razao < 0.67) razao *= 2;
   const pitch = razao - 1;
@@ -622,13 +647,53 @@ function rodarAuto(est) {
 
 // ─────────────────────────── mixer ───────────────────────────
 
+/**
+ * A TELA ESPELHA O MOTOR, ~15 vezes por segundo.
+ *
+ * Os controles só mudavam quando a MÃO mexia. Quando o DJ automático cortava
+ * um grave ou girava um EQ, o som mudava e a tela não — ele dizia "troquei os
+ * agudos" e o knob ficava parado, e o × do grave cortado continuava apagado.
+ * Pra quem estava olhando, ele mentia. Agora a tela lê do motor: o que se vê
+ * é o que se ouve. O controle que a pessoa está arrastando não é tocado.
+ */
+let tEspelho = 0, arrastado = null;
+setInterval(() => { if (!document.hidden || globalThis.__varrendo) espelharMixer(performance.now()); }, 80);
+addEventListener('pointerdown', (e) => { if (e.target?.type === 'range') arrastado = e.target; }, true);
+addEventListener('pointerup', () => { arrastado = null; }, true);
+addEventListener('pointercancel', () => { arrastado = null; }, true);
+function espelharMixer(agora) {
+  if (!mixer || agora - tEspelho < 66) return;
+  tEspelho = agora;
+  const igualar = (el, v) => {
+    if (!el || v == null || el === arrastado) return;
+    if (Math.abs(Number(el.value) - v) > 0.004) el.value = v;
+  };
+  for (const d of ['A', 'B']) {
+    const c = mixer.canal(d);
+    for (const b of ['grave', 'medio', 'agudo']) {
+      $(`kill-${d}-${b}`)?.classList.toggle('lig', c.eq.morto(b));
+      igualar($(`eq-${d}-${b}`), c.eq.posicao(b));
+    }
+    igualar($(`fil-${d}`), c.filtro?.k);
+    igualar($(`vol-${d}`), c.valores.fader);
+    igualar($(`eco-${d}`), c.valores.eco);
+  }
+  igualar($('xf'), mixer.crossfader);
+  for (const d of ['A', 'B']) {
+    const dk = decks[d], faixa = dk?.transport?.pitchRange;
+    if (faixa) igualar($('pitch-' + d), -dk.pitch / faixa);
+  }
+}
+
 function ligarMixer() {
   document.querySelectorAll('[data-eq]').forEach((el) => {
     el.oninput = () => mixer.canal(el.dataset.d).setEq(el.dataset.eq, Number(el.value));
   });
   document.querySelectorAll('[data-kill]').forEach((b) => {
     b.onclick = () => {
-      const on = !b.classList.contains('lig');
+      // lê o MOTOR, não a cor do botão: se o DJ cortou o grave, o botão pode
+      // estar desatualizado, e inverter a cor cortava de novo em vez de soltar
+      const on = !mixer.canal(b.dataset.d).eq.morto(b.dataset.kill);
       b.classList.toggle('lig', on);
       mixer.canal(b.dataset.d).setKill(b.dataset.kill, on);
     };
@@ -724,7 +789,12 @@ function rodarProfessor() {
   // com o DJ automático tocando, a barra vira a NARRAÇÃO dele: o que acabou
   // de fazer, por quê, e o controle aceso. As regras do professor ficam
   // quietas — senão ele reclamaria dos graves que o próprio DJ está trocando.
-  if (piloto?.ativo && narracao) itens = [itemNarracao(narracao)];
+  if (piloto?.ativo && narracao) {
+    // o que é URGENTE continua aparecendo, mesmo com o DJ no comando: grave
+    // cortado no deck que toca sozinho, som estourando, áudio caído
+    const urgentes = itens.filter((i) => ['grave-esquecido', 'limitador', 'audio'].includes(i.id));
+    itens = [...urgentes, itemNarracao(narracao)].slice(0, 3);
+  }
 
   // o Garimpeiro: lâmpada na cor do conselho mais urgente, e dança no BPM
   // do deck que está no ar — sem precisar ler texto
@@ -1203,7 +1273,7 @@ function recarregar() {
 
 function pintarBiblioteca() {
   const sel = new Set(bib.estado.selecionadas);
-  for (const b of $('crates').querySelectorAll('button[data-pilha]')) {
+  for (const b of document.querySelectorAll('#crates button[data-pilha], #dj-generos button[data-pilha]')) {
     b.classList.toggle('lig', b.dataset.pilha === '*' ? !sel.size : sel.has(b.dataset.pilha));
   }
   for (const b of $('ordem').querySelectorAll('button[data-ordem]')) {
@@ -1212,6 +1282,9 @@ function pintarBiblioteca() {
     b.dataset.seta = ativo && ['bpm', 'tom', 'nome'].includes(b.dataset.ordem)
       ? (bib.estado.decrescente ? '↓' : '↑') : '';
   }
+  const fav = fonteDj === 'favoritas';
+  $('dj-generos').querySelector('.fav')?.classList.toggle('lig', fav);
+  $('dj-generos').classList.toggle('so-fav', fav);
   const n = sel.size;
   const nomes = bib.GRUPOS.flatMap((g) => g.itens).filter((i) => sel.has(i.chave)).map((i) => i.nome);
   $('gen-resumo').textContent = nomes.length ? nomes.join(', ') : t('bib.tudoChip');
@@ -1238,6 +1311,53 @@ function abrirGeneros(aberto) {
 }
 $('b-generos').onclick = () => abrirGeneros($('crates').hidden);
 try { abrirGeneros(localStorage.getItem('garimpo.bib.generosAbertos') === '1'); } catch { abrirGeneros(false); }
+
+/**
+ * A fileira de gêneros do DJ: os MESMOS chips da lista (marcar aqui marca lá),
+ * mais o ♥ que troca a fonte pra favoritas. Tudo à vista, sem menu.
+ */
+$('dj-generos').innerHTML =
+  `<button class="fav" data-fonte="favoritas">♥ ${t('dj.fav')}</button>` +
+  `<button data-pilha="*" class="chip-tudo">${t('bib.tudoChip')}</button>` +
+  bib.GRUPOS.flatMap((g) => g.itens).map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('');
+$('dj-generos').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.fonte) {
+    fonteDj = fonteDj === 'favoritas' ? 'generos' : 'favoritas';
+  } else {
+    fonteDj = 'generos';
+    bib.alternarGenero(b.dataset.pilha);
+    if (bib.estado.ordem === 'favoritas') bib.escolherOrdem('embaralhar');
+  }
+  try { localStorage.setItem('garimpo.dj.fonte', fonteDj); } catch {}
+  recarregar();
+});
+// roda do mouse rola a fileira pro lado
+$('dj-generos').addEventListener('wheel', (e) => {
+  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+  e.currentTarget.scrollLeft += e.deltaY;
+  e.preventDefault();
+}, { passive: false });
+
+/** Os três modos do DJ, em botões. O texto do botão grande diz o que vai acontecer. */
+function pintarModoDj() {
+  for (const b of $('dj-modos').querySelectorAll('button')) b.classList.toggle('lig', b.dataset.modo === modoDj);
+  if (!piloto?.ativo) {
+    $('b-piloto').textContent = t('dj.b.' + modoDj);
+    $('piloto-nota').textContent = t('dj.d.' + modoDj);
+    $('piloto-nota').style.color = 'var(--mut)';
+  }
+}
+$('dj-modos').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-modo]');
+  if (!b) return;
+  modoDj = b.dataset.modo;
+  try { localStorage.setItem('garimpo.dj.modo', modoDj); } catch {}
+  if (piloto?.ativo) piloto.juntos = modoDj === 'juntos';
+  pintarModoDj();
+});
+window.addEventListener('idioma', pintarModoDj);
 
 $('crates').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-pilha]');
@@ -1600,7 +1720,7 @@ function garantirPiloto() {
 
 function pararPiloto() {
   $('b-piloto').classList.remove('lig');
-  $('b-piloto').textContent = t('app.piloto');
+  $('b-piloto').textContent = t('dj.b.' + modoDj);
   $('b-pular').hidden = true;
   piloto?.assumirControle?.();
 }
@@ -1609,13 +1729,14 @@ $('b-piloto').onclick = async () => {
   if (piloto?.ativo) { pararPiloto(); $('piloto-nota').textContent = 'piloto desligado'; return; }
   await garantirRodando();
   const b = $('b-piloto');
-  b.classList.add('lig'); b.textContent = t('app.piloto.parar');
-  $('b-pular').hidden = false;
+  // solo: ele só monta o set e sinaliza — não assume nada, então não vira "parar"
+  const solo = modoDj === 'solo';
+  if (!solo) { b.classList.add('lig'); b.textContent = t('app.piloto.parar'); $('b-pular').hidden = false; }
   $('piloto-nota').style.color = 'var(--neon)';
   $('piloto-nota').textContent = 'garimpando faixas…';
   try {
     // o DJ toca do MESMO lugar que a lista mostra: gêneros marcados, ou favoritas
-    const soFavoritas = $('pref-fonte').value === 'favoritas';
+    const soFavoritas = fonteDj === 'favoritas';
     const cands = soFavoritas ? bib.favoritasParaSet() : await bib.candidatasDoSet();
     if (cands.length < 2) throw new Error(t(soFavoritas ? 'dj.poucasFav' : 'pref.semFaixas'));
     const s = montarSet(cands, {
@@ -1646,7 +1767,7 @@ $('b-piloto').onclick = async () => {
                           ms: decisao.ms, tok: decisao.tokens?.input_tokens ?? '?' })
       : t('jev.semIA');
     garantirPiloto().estilo = estilo;
-    piloto.juntos = $('pref-modo').value === 'juntos';
+    piloto.juntos = modoDj === 'juntos';
 
     fila = s.fila;
     desenharFila();
@@ -1657,6 +1778,16 @@ $('b-piloto').onclick = async () => {
     if (s.naoCoube?.length) {
       $('piloto-nota').style.color = 'var(--cue)';
       $('piloto-nota').title = s.naoCoube.map((x) => `${x.title}: ${x.porque}`).join('\n');
+    }
+    if (solo) {
+      // você toca: a primeira já vai pro deck A (ou pro livre), e daqui pra
+      // frente o professor sinaliza — a lista "próximas" mostra a ordem e a
+      // técnica sugerida de cada passagem
+      const alvo = decks.A?.tocando ? deckLivre() : 'A';
+      decks[alvo].carregarAudius(s.fila[0]);
+      $('piloto-nota').textContent = t('dj.soloPronto', { d: alvo });
+      $('piloto-nota').style.color = 'var(--ok)';
+      return;
     }
     await garantirPiloto().tocar(s.fila);
   } catch (e) {
@@ -2046,10 +2177,10 @@ montarCena($('janela-pista'), {
   // estável de propósito: muda quando o ESTADO muda (tocando, quebra, estilo),
   // nunca por contagem — número pulando no canto parecia mensagem aleatória
   rotulo: (e) => e.tocando
-    ? `<span class="vivo"></span>${t(e.quebra ? 'cena.quebra' : 'cena.aoVivo')}` +
-      `<span class="dir">${Math.round(e.bpm)} BPM · ${ESTILOS[e.estilo]?.nome || ''}</span>`
+    ? `<span class="vivo"></span>${t(e.quebra ? 'cena.quebra' : 'cena.aoVivo')}${e.bpm ? ` · ${Math.round(e.bpm)} BPM` : ''}`
     : `<span class="vivo off"></span>${t('cena.vazia')}`,
   nomeModo: (m) => t('cena.modo.' + m),
+  audio: () => (ctx && saidaMaster ? { ctx, no: saidaMaster } : null),
 });
 
 /**
@@ -2145,6 +2276,8 @@ $('b-tema').onclick = () => {
   else delete document.documentElement.dataset.tema;
   try { localStorage.setItem('garimpo.tema', black ? 'black' : ''); } catch {}
 };
+
+pintarModoDj();
 
 // o Garimpeiro recebe na porta, já dançando
 const mascotePorta = montarMascote($('porta-masc'));

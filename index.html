@@ -456,8 +456,11 @@
   /* a janela da pista É a cabine do DJ: o visualizador ocupa o fundo e o
      painel do DJ fica por cima, embaixo. Altura mínima = a do painel, pra
      que a pista sempre apareça pelo menos atrás dele. */
-  .janela-pista { flex:1 1 auto; min-height:150px; margin-top:9px; display:flex; flex-direction:column;
-                  justify-content:flex-end; padding:8px; position:relative; overflow:hidden;
+  /* flex:1 0 auto: cresce pra caber o painel do DJ, nunca encolhe por baixo
+     dele (encolhendo, o painel vazava pra CIMA, por cima do rótulo). Se a
+     coluna não comportar, ela rola. */
+  .janela-pista { flex:1 0 auto; min-height:150px; margin-top:9px; display:flex; flex-direction:column;
+                  justify-content:safe flex-end; padding:36px 8px 8px; position:relative; overflow:hidden;
                   border-radius:var(--r); border:1px solid var(--linha); background:#07040f;
                   box-shadow:inset 0 0 0 1px rgba(255,255,255,.03), 0 8px 28px rgba(0,0,0,.45); }
   .janela-pista canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
@@ -466,14 +469,15 @@
     border-color:color-mix(in srgb, var(--neon) 40%, transparent); }
   :root[data-tema="black"] .janela-pista > .dj-painel { background:linear-gradient(180deg, rgba(0,0,0,.5), rgba(0,0,0,.86)); }
   .cena-rot, .cena-drop { z-index:2; }
-  .cena-modo { position:absolute; top:6px; right:6px; z-index:3; padding:4px 8px; border-radius:20px;
+  .cena-modo { position:absolute; top:6px; right:6px; z-index:3; padding:4px 8px; border-radius:20px; width:82px;
                font:800 9px ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase;
-               background:rgba(10,7,19,.55); border-color:rgba(255,255,255,.14); color:rgba(242,238,252,.8); }
+               background:rgba(10,7,19,.85); border-color:color-mix(in srgb, var(--neon) 45%, transparent); color:#fff; }
   .cena-modo:hover { color:#fff; border-color:var(--neon); }
-  .cena-rot { right:140px; }
-  .cena-cheia { position:absolute; top:6px; right:auto; z-index:3; padding:3px 8px; border-radius:20px; font-size:12px;
-                background:rgba(10,7,19,.55); border-color:rgba(255,255,255,.14); color:rgba(242,238,252,.8); }
-  .janela-pista .cena-cheia { right:96px; }
+  .cena-rot { right:150px; }
+  .cena-cheia, .cena-troca { position:absolute; top:6px; z-index:3; padding:3px 8px; border-radius:20px; font-size:12px;
+                background:rgba(10,7,19,.85); border-color:color-mix(in srgb, var(--neon) 45%, transparent); color:#fff; }
+  .janela-pista .cena-cheia { right:94px; }
+  .janela-pista .cena-troca { right:126px; }
   .cena-cheia:hover { color:#fff; border-color:var(--neon); }
   /* tela cheia: o visualizador vira a tela, o DJ flutua embaixo */
   .janela-pista.tela-cheia { position:fixed; inset:0; z-index:55; margin:0; border-radius:0; border:none;
@@ -482,8 +486,10 @@
   .janela-pista.tela-cheia .cena-rot { left:20px; top:16px; font-size:11px; }
   .janela-pista.tela-cheia .cena-modo, .janela-pista.tela-cheia .cena-cheia { top:14px; }
   .janela-pista.tela-cheia .cena-modo { right:16px; }
-  .janela-pista.tela-cheia .cena-cheia { right:110px; }
-  body.viajando #luzes { display:none; }
+  .janela-pista.tela-cheia .cena-cheia { right:106px; }
+  .janela-pista.tela-cheia .cena-troca { top:14px; right:140px; }
+  .janela-pista.tela-cheia .fila { max-height:30vh; }
+  body.viajando #luzes, body.viajando .aba-bib { display:none; }
   .cena-rot { position:absolute; left:10px; top:8px; right:10px; display:flex; gap:6px; align-items:center;
               font:800 9px ui-monospace,monospace; letter-spacing:.14em; color:rgba(242,238,252,.75);
               text-transform:uppercase; pointer-events:none; text-shadow:0 1px 4px #000; }
@@ -567,7 +573,7 @@
   .fila-cx { flex:none; border:1px solid rgba(199,125,255,.35); border-radius:10px; padding:8px;
              background:linear-gradient(180deg,rgba(199,125,255,.09),transparent); }
   .fila-topo { display:flex; align-items:center; gap:7px; margin-bottom:6px; }
-  .fila-topo h2 { color:var(--lock); }
+  .fila-topo h2 { color:var(--lock); font-size:10px; letter-spacing:.08em; text-transform:uppercase; font-weight:800; }
   .fila-topo .ic { margin-left:auto; background:none; border:none; color:var(--fraco);
                    cursor:pointer; width:20px; height:20px; border-radius:5px; box-shadow:none; }
   .fila { display:flex; flex-direction:column; gap:4px; max-height:172px; overflow-y:auto; }
@@ -756,12 +762,80 @@
   .dj-painel .piloto-op select { font-size:10.5px; padding:6px 4px; }
   .piloto-op.dois { grid-template-columns:1fr 1fr; }
   .dj-painel .fila-cx { margin-top:2px; }
-  .dj-painel .fila { max-height:140px; }
+  .dj-painel .fila { max-height:96px; }
   /* ♥ no deck: favoritar a música que está nele, sem ir atrás dela na lista */
   .faixa .fav { flex:none; width:30px; height:28px; padding:0; border-radius:8px; font-size:15px; line-height:1;
                 color:var(--mut); transition:transform .2s cubic-bezier(.3,1.6,.5,1), color .15s; }
   .faixa .fav.lig { color:var(--neon); border-color:var(--neon); box-shadow:0 0 12px color-mix(in srgb, var(--neon) 45%, transparent); }
   .faixa .fav.pulou { transform:scale(1.35); }
+
+  /* ───────── DJ: modos e gêneros à vista ───────── */
+  .dj-modos { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:4px; }
+  .dj-modos button { padding:8px 4px; font:800 10.5px/1.1 ui-sans-serif,system-ui,sans-serif; border-radius:9px;
+                     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--mut); }
+  .dj-modos button.lig { color:#fff; border-color:var(--neon);
+                         background:linear-gradient(180deg, color-mix(in srgb, var(--neon) 38%, var(--sup2)), var(--sup));
+                         box-shadow:0 0 14px color-mix(in srgb, var(--neon) 45%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--neon) 60%, transparent); }
+  /* uma fileira que rola pro lado (a roda do mouse também rola) — as bordas
+     somem em degradê pra deixar claro que tem mais */
+  .dj-generos { display:flex; gap:5px; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; padding:2px 1px;
+                -webkit-mask:linear-gradient(90deg, #000 88%, transparent); mask:linear-gradient(90deg, #000 88%, transparent); }
+  .dj-generos::-webkit-scrollbar { display:none; }
+  .dj-generos button { flex:none; padding:6px 11px; border-radius:20px; font:700 11px ui-sans-serif,system-ui,sans-serif; }
+  .dj-generos button.lig { background:linear-gradient(180deg,#ffa2e6,var(--neon)); border-color:var(--neon); color:#2b0420;
+                           box-shadow:0 0 12px color-mix(in srgb, var(--neon) 50%, transparent); }
+  .dj-generos button.fav.lig { background:linear-gradient(180deg,#ff9ab8,var(--bad)); border-color:var(--bad); }
+  .dj-generos.so-fav button[data-pilha] { opacity:.35; }
+
+  /* ───────── NEON: o que se aperta, brilha ───────── */
+  /* Quem nunca viu uma CDJ precisa achar os botões de olho. Cada ação tem a
+     SUA cor, sempre a mesma: tocar verde, cue âmbar, sync ciano, key lock
+     violeta, cortar vermelho. O deck tem a borda na cor dele. */
+  .deck { border-color:color-mix(in srgb, var(--a) 45%, var(--linha));
+          box-shadow:0 0 22px color-mix(in srgb, var(--a) 14%, transparent); }
+  .deck[data-d="B"] { border-color:color-mix(in srgb, var(--b) 45%, var(--linha));
+                      box-shadow:0 0 22px color-mix(in srgb, var(--b) 14%, transparent); }
+  .botoes button { border-width:1.5px; font-weight:800; letter-spacing:.06em; }
+  .botoes .play:not(.lig) { border-color:var(--ok); color:var(--ok);
+    box-shadow:0 0 12px color-mix(in srgb, var(--ok) 35%, transparent), inset 0 0 12px color-mix(in srgb, var(--ok) 12%, transparent); }
+  .botoes .cue:not(.aceso) { border-color:color-mix(in srgb, var(--cue) 70%, transparent); color:var(--cue);
+    box-shadow:0 0 10px color-mix(in srgb, var(--cue) 22%, transparent); }
+  .botoes .sync:not(.lig) { border-color:color-mix(in srgb, var(--acc) 70%, transparent); color:var(--acc);
+    box-shadow:0 0 10px color-mix(in srgb, var(--acc) 22%, transparent); }
+  .botoes .keylock:not(.lig) { border-color:color-mix(in srgb, var(--lock) 60%, transparent); color:var(--lock); }
+  .deck[data-d="A"] .jog { box-shadow:inset 0 2px 10px rgba(0,0,0,.55), 0 0 0 2px color-mix(in srgb, var(--a) 40%, transparent), 0 0 18px color-mix(in srgb, var(--a) 22%, transparent); }
+  .deck[data-d="B"] .jog { box-shadow:inset 0 2px 10px rgba(0,0,0,.55), 0 0 0 2px color-mix(in srgb, var(--b) 40%, transparent), 0 0 18px color-mix(in srgb, var(--b) 22%, transparent); }
+  .knob .kill:not(.lig) { border-color:color-mix(in srgb, var(--bad) 50%, var(--linha)); color:var(--bad); }
+  .knob label { color:var(--mut); }
+  #b-encaixar:not(:disabled) { border-color:var(--ok); color:var(--ok); box-shadow:0 0 10px color-mix(in srgb, var(--ok) 30%, transparent); }
+  .tira .fone:not(.lig) { border-color:color-mix(in srgb, var(--cue) 45%, var(--linha)); color:var(--cue); }
+  .loops .lp:not(.lig) { border-color:color-mix(in srgb, var(--cue) 40%, var(--linha)); color:var(--cue); }
+  .topo .ic { color:var(--mut); }
+  :root[data-tema="black"] .botoes .play:not(.lig) { box-shadow:none; }
+
+  /* ───────── tela baixa ───────── */
+  /* Notebook com zoom do Windows fica com ~550–700 px de altura útil. Aqui
+     tudo aperta um pouco pra o deck caber INTEIRO, com a linha do pitch. */
+  @media (min-width:1041px) and (max-height:820px) {
+    .prof { height:62px; }
+    .fase { height:34px; }
+    .mixer { padding:8px; gap:7px; }
+    .knob input[type=range] { height:13px; }
+    .tiras { gap:6px; } .tira { gap:4px; }
+    .jog { width:84px; height:84px; } .jog .marca-jog { transform-origin:50% 36px; }
+    .ctrl { padding:8px 10px; gap:9px; }
+    .botoes button { padding:8px 6px; }
+    canvas.onda { min-height:34px; }
+    .pitch { padding:0 10px 8px; }
+    .faixa { padding:7px 10px 6px; }
+    .janela-pista { min-height:130px; }
+  }
+  /* e se nem assim couber, a página ROLA — controle cortado é pior que rolar */
+  @media (min-width:1041px) {
+    body { overflow-y:auto; }
+    .palco { min-height:460px; }
+    .col.mix { overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; }
+  }
 
   /* ───────── fluidez ───────── */
   button { transition:border-color .12s, color .12s, background .15s, box-shadow .15s, transform .1s; }
@@ -780,7 +854,9 @@
   /* mixer e painel crescem com a tela em vez de ficarem presos em 246/290 px;
      os decks levam o resto. Em monitor grande o jog cresce junto. */
   .palco { grid-template-columns:minmax(0,1fr) clamp(236px, 17vw, 340px) minmax(0,1fr) clamp(290px, 23vw, 430px); }
-  @media (min-width:1600px) {
+  /* só cresce em tela GRANDE nos dois sentidos: numa tela larga e baixa
+     (notebook com zoom) crescer cortava a linha do PITCH dos decks */
+  @media (min-width:1600px) and (min-height:900px) {
     .jog { width:124px; height:124px; }
     .jog .marca-jog { transform-origin:50% 56px; }
     .botoes button { padding:14px 8px; font-size:12.5px; }
@@ -935,38 +1011,35 @@
       <div class="cena-drop" aria-hidden="true">DROP!</div>
         <!-- o DJ mora DENTRO da pista: a cabine e a pista são uma coisa só -->
       <section class="cartao piloto-cx dj-painel" id="dj-painel">
+        <!-- os três jeitos de tocar, sempre à vista (sem menu) -->
+        <div class="dj-modos" id="dj-modos">
+          <button data-modo="juntos" data-i18n="dj.m.juntos">🎧 junto</button>
+          <button data-modo="sozinho" data-i18n="dj.m.sozinho">▶ só DJ</button>
+          <button data-modo="solo" data-i18n="dj.m.solo">🎛 eu toco</button>
+        </div>
+        <!-- o que o DJ vai tocar: os mesmos gêneros da lista, numa fileira -->
+        <div class="dj-generos" id="dj-generos"></div>
         <div class="dj-linha">
-          <button id="b-piloto" data-i18n="app.piloto" data-i18n-attr="title:app.piloto.dica" title="o professor monta e toca um set inteiro">▶ o professor toca</button>
+          <button id="b-piloto" data-i18n-attr="title:app.piloto.dica" title="começar">▶ bora tocar junto</button>
           <button id="b-pular" class="mini" data-i18n-attr="title:piloto.pular.dica" title="pular pra próxima" hidden>⏭</button>
           <button id="b-prefs" class="mini" data-i18n-attr="title:pref.abrir" title="mais opções">⚙</button>
         </div>
         <div class="piloto-op">
-          <select id="pref-modo" data-i18n-attr="title:dj.modo.dica" title="ele toca sozinho, ou toca junto e te passa a vez">
-            <option value="sozinho" data-i18n="dj.modo.sozinho">ele toca</option>
-            <option value="juntos" data-i18n="dj.modo.juntos">tocar junto</option>
-          </select>
-          <select id="pref-fonte" data-i18n-attr="title:dj.fonte.dica" title="de onde vêm as músicas do set">
-            <option value="generos" data-i18n="dj.fonte.generos">dos gêneros</option>
-            <option value="favoritas" data-i18n="dj.fonte.fav">♥ favoritas</option>
-          </select>
           <select id="pref-estilo" data-i18n-attr="title:estilo.dica" title="o jeito de tocar"></select>
+          <select id="pref-min" title="duração do set">
+            <option value="15" data-min="15">15 min</option>
+            <option value="30" selected data-min="30">30 min</option>
+            <option value="45" data-min="45">45 min</option>
+            <option value="60" data-min="60">60 min</option>
+          </select>
+          <select id="pref-energia" title="curva de energia">
+            <option value="subir" selected data-i18n="app.energia.subir">subindo</option>
+            <option value="estavel" data-i18n="app.energia.estavel">estável</option>
+            <option value="descer" data-i18n="app.energia.descer">descendo</option>
+          </select>
         </div>
         <div class="prefs" id="prefs" hidden>
-          <div class="piloto-op dois">
-            <select id="pref-min" title="duração do set">
-              <option value="15" data-min="15">15 min</option>
-              <option value="30" selected data-min="30">30 min</option>
-              <option value="45" data-min="45">45 min</option>
-              <option value="60" data-min="60">60 min</option>
-            </select>
-            <select id="pref-energia" title="curva de energia">
-              <option value="subir" selected data-i18n="app.energia.subir">subindo</option>
-              <option value="estavel" data-i18n="app.energia.estavel">estável</option>
-              <option value="descer" data-i18n="app.energia.descer">descendo</option>
-            </select>
-          </div>
           <button id="b-esquecer" data-i18n="pref.esquecer">esquecer o que já tocou</button>
-          <div class="dica-bib" data-i18n="bib.djUsaLista">o DJ toca do que está selecionado na lista de músicas</div>
         </div>
         <div class="rot" id="piloto-nota" style="margin:0"></div>
         <div id="piloto-tecnica"></div>
@@ -1157,6 +1230,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260923e"></script>
+<script type="module" src="./src/ui/app.js?v=20260923h"></script>
 </body>
 </html>

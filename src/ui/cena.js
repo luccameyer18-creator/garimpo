@@ -2,10 +2,16 @@
  * A janela da pista — o que o DJ vê da cabine. Três modos:
  *
  *   PISTA    a galera, o globo, os lasers e a névoa
- *   VIAGEM   visualizador à moda do Windows Media Player: o quadro anterior é
- *            redesenhado levemente ampliado e girado, então tudo que se pinta
- *            escorre pra fora num túnel; por cima, um anel de espectro em
- *            caleidoscópio que respira com o grave
+ *   VIAGEM   o MilkDrop — o visualizador do Winamp, via Butterchurn (MIT,
+ *            WebGL, carregado sob demanda do jsDelivr). São 100 presets; ele
+ *            troca a cada 32 tempos (64 no estilo hipnótico) com fusão de 2,7 s,
+ *            e na hora do drop marcado. ↻ troca na mão. Sem WebGL ou sem rede,
+ *            cai no túnel próprio (o quadro anterior redesenhado ampliado e
+ *            girado, com um anel de espectro em caleidoscópio)
+ *            Por cima, na viagem: formas psicodélicas (anéis, estrelas, olhos,
+ *            espirais, flores, mandalas) que nascem no fundo do túnel e voam
+ *            na direção de quem olha, crescendo em perspectiva até sair da
+ *            tela — nascem no bumbo, correm com o grave, revoada no drop
  *   MISTURA  a viagem no fundo, a galera e os lasers por cima (o padrão)
  *
  * NADA aqui é loop de animação fingindo acompanhar a música. Tudo lê
@@ -53,10 +59,15 @@ const hsl = (h, s, l, a = 1) => `hsla(${((h % 360) + 360) % 360},${s}%,${l}%,${a
  * @param {function} [op.rotulo]   (estado) => html do rótulo
  * @param {function} [op.nomeModo] (modo) => texto do botão de modo
  */
-export function montarCena(el, { rotulo = null, nomeModo = (m) => m } = {}) {
+export function montarCena(el, { rotulo = null, nomeModo = (m) => m, audio = () => null } = {}) {
   const cv = document.createElement('canvas');
   cv.setAttribute('aria-hidden', 'true');
   el.prepend(cv);
+  // o MilkDrop desenha num canvas WebGL por trás; o 2D (galera, lasers) por cima
+  const gl = document.createElement('canvas');
+  gl.setAttribute('aria-hidden', 'true');
+  gl.style.display = 'none';
+  el.prepend(gl);
   const c = cv.getContext('2d');
   // o buffer do túnel: guarda o quadro anterior pra ser redesenhado ampliado
   const buf = document.createElement('canvas');
@@ -100,10 +111,56 @@ export function montarCena(el, { rotulo = null, nomeModo = (m) => m } = {}) {
   bCheia.onclick = () => cheia(!el.classList.contains('tela-cheia'));
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && el.classList.contains('tela-cheia')) cheia(false); });
   el.appendChild(bCheia);
+
+  // ─────────────── MilkDrop (Butterchurn) ───────────────
+  let milk = null, milkEstado = 'nada', presets = null, nomes = [], presetAtual = -1, trocaEm = 0;
+  const bTroca = document.createElement('button');
+  bTroca.className = 'cena-troca';
+  bTroca.type = 'button';
+  bTroca.textContent = '↻';
+  bTroca.hidden = true;
+  const trocar = (fusao = 2.7) => {
+    if (!milk || !nomes.length) return;
+    let i = Math.floor(Math.random() * nomes.length);
+    if (i === presetAtual) i = (i + 1) % nomes.length;
+    presetAtual = i;
+    try { milk.loadPreset(presets[nomes[i]], fusao); } catch {}
+  };
+  bTroca.onclick = () => trocar(1.2);
+  el.appendChild(bTroca);
+
+  /** Carrega o Butterchurn na primeira vez que precisar. Falhou? Fica no túnel próprio. */
+  async function iniciarMilk() {
+    const a = audio();
+    if (!a?.ctx || !a?.no) return;                 // o áudio ainda não ligou
+    milkEstado = 'carregando';
+    try {
+      if (!document.createElement('canvas').getContext('webgl2')) throw new Error('sem webgl2');
+      const [m1, m2] = await Promise.all([
+        import('https://cdn.jsdelivr.net/npm/butterchurn@2.6.7/+esm'),
+        import('https://cdn.jsdelivr.net/npm/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js/+esm'),
+      ]);
+      const bc = m1.default?.default || m1.default || m1;
+      const pr = m2.default?.getPresets ? m2.default : m2.default?.default || m2;
+      presets = pr.getPresets();
+      nomes = Object.keys(presets);
+      milk = bc.createVisualizer(a.ctx, gl, { width: Math.max(1, W), height: Math.max(1, H), pixelRatio: 1, textureRatio: 1 });
+      milk.connectAudio(a.no);
+      trocar(0);
+      milkEstado = 'ok';
+      bTroca.hidden = false;
+    } catch (e) {
+      milkEstado = 'falhou';
+      console.warn('MilkDrop indisponível, usando o túnel próprio:', e.message);
+    }
+  }
   window.addEventListener('idioma', pintarModo);
 
   let gente = [];
   const confete = [];
+  const voadores = [];
+  const FORMAS = ['anel', 'estrela', 'olho', 'espiral', 'flor', 'mandala'];
+  let batidaVoo = -1;
   const reflexos = Array.from({ length: 36 }, (_, i) => ({
     a: hash(i) * Math.PI * 2, y: 0.05 + hash(i + 99) * 0.6, r: 0.6 + hash(i + 7) * 0.9, c: i % 2,
   }));
@@ -144,7 +201,8 @@ export function montarCena(el, { rotulo = null, nomeModo = (m) => m } = {}) {
     const livre = h - Math.round((painel?.offsetHeight || 0) * dpr) - 8 * dpr;
     const novoChao = Math.max(h * 0.45, livre);
     if (w === W && h === H && novoChao === chao) return;
-    W = cv.width = buf.width = w; H = cv.height = buf.height = h;
+    W = cv.width = buf.width = gl.width = w; H = cv.height = buf.height = gl.height = h;
+    try { milk?.setRendererSize(w, h); } catch {}
     chao = novoChao;
     u = Math.max(0.6, Math.min(W, chao * 1.3) / 300);
     montarGente();
@@ -169,7 +227,7 @@ export function montarCena(el, { rotulo = null, nomeModo = (m) => m } = {}) {
     c.fillRect(0, 0, W, H);
     const z = v.zoom + E.grave * 0.02 + E.dropV * 0.03;
     tunel += dt * v.giro * (E.tocando ? 1 : 0.3) * (1 + E.medio * 0.8);
-    c.globalAlpha = v.rastro - E.agudo * 0.05;
+    c.globalAlpha = Math.min(0.88, v.rastro) - E.agudo * 0.05;
     c.translate(cx, cy);
     c.rotate(Math.sin(tunel) * 0.012 + v.giro * 0.01);
     c.scale(z, z);
@@ -179,12 +237,12 @@ export function montarCena(el, { rotulo = null, nomeModo = (m) => m } = {}) {
     // 2. o anel de espectro, espelhado (caleidoscópio de 6 pétalas)
     const esp = E.espectro;
     const hueBase = v.hue + (v.faixa >= 360 ? E.batida * 12 : Math.sin(E.batida / 16) * v.faixa / 2);
-    const luz = black ? 45 : 62;
-    c.globalCompositeOperation = 'lighter';
+    const luz = black ? 40 : 55;
+    c.globalCompositeOperation = 'source-over';
     const r0 = m * (0.10 + E.pulso * 0.05 + E.grave * 0.06);
     const N = 24;
     c.lineCap = 'round';
-    c.globalAlpha = 0.55;
+    c.globalAlpha = 0.4;
     for (let i = 0; i < N; i++) {
       // escala quase logarítmica: o grave perto do eixo, o agudo na ponta
       const b = esp ? esp[Math.min(esp.length - 1, 1 + Math.floor(Math.pow(i / N, 1.8) * 180))] / 255 : 0;
@@ -211,7 +269,7 @@ export function montarCena(el, { rotulo = null, nomeModo = (m) => m } = {}) {
       c.beginPath(); c.arc(cx, cy, r0 * 0.8, 0, 6.283); c.stroke();
     }
     // 4. o miolo: uma flor que abre com o médio
-    c.globalAlpha = 0.3 + E.medio * 0.4;
+    c.globalAlpha = 0.2 + E.medio * 0.3;
     c.fillStyle = hsl(hueBase + 40, 85, luz);
     c.beginPath();
     for (let k = 0; k <= 64; k++) {
@@ -226,6 +284,80 @@ export function montarCena(el, { rotulo = null, nomeModo = (m) => m } = {}) {
     bc.globalCompositeOperation = 'copy';
     bc.globalAlpha = 1;
     bc.drawImage(cv, 0, 0);
+  }
+
+  // ─────────────── formas voando em 3D (viagem) ───────────────
+  /**
+   * Perspectiva de verdade: cada forma tem uma profundidade z (1 = lá no fundo,
+   * 0 = no seu rosto). A posição na tela é o centro + direção / z, e o
+   * tamanho é base / z — então ela acelera e cresce ao chegar perto, como
+   * coisa vindo na sua direção. Sai de cena quando passa da tela.
+   */
+  function soltar(n, cx, cy) {
+    for (let i = 0; i < n && voadores.length < 46; i++) {
+      voadores.push({
+        forma: FORMAS[Math.floor(Math.random() * FORMAS.length)],
+        a: Math.random() * Math.PI * 2, // direção
+        d: 0.15 + Math.random() * 0.85, // quão longe do eixo
+        z: 1, giro: (Math.random() - 0.5) * 3, rot: Math.random() * 6.28,
+        h: Math.random() * 360, cx, cy,
+      });
+    }
+  }
+  function forma(q, x, y, r, cor, t) {
+    c.save();
+    c.translate(x, y); c.rotate(q.rot);
+    c.strokeStyle = cor; c.fillStyle = cor;
+    c.lineWidth = Math.max(1, r * 0.12);
+    c.beginPath();
+    if (q.forma === 'anel') { c.arc(0, 0, r, 0, 6.283); c.stroke(); c.beginPath(); c.arc(0, 0, r * 0.6, 0, 6.283); c.stroke(); }
+    else if (q.forma === 'estrela') {
+      for (let k = 0; k <= 10; k++) { const rr = k % 2 ? r * 0.45 : r; const a = (k / 10) * Math.PI * 2; k ? c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : c.moveTo(rr, 0); }
+      c.stroke();
+    } else if (q.forma === 'olho') {
+      c.moveTo(-r, 0); c.quadraticCurveTo(0, -r * 0.8, r, 0); c.quadraticCurveTo(0, r * 0.8, -r, 0); c.stroke();
+      c.beginPath(); c.arc(0, 0, r * 0.32, 0, 6.283); c.fill();
+    } else if (q.forma === 'espiral') {
+      for (let k = 0; k <= 40; k++) { const a = k * 0.45 + t; const rr = (k / 40) * r; k ? c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : c.moveTo(0, 0); }
+      c.stroke();
+    } else if (q.forma === 'flor') {
+      for (let k = 0; k < 6; k++) { c.moveTo(0, 0); c.ellipse(Math.cos(k * 1.047) * r * 0.5, Math.sin(k * 1.047) * r * 0.5, r * 0.5, r * 0.2, k * 1.047, 0, 6.283); }
+      c.stroke();
+    } else {
+      for (let k = 0; k < 8; k++) { c.moveTo(0, 0); c.lineTo(Math.cos(k * 0.785) * r, Math.sin(k * 0.785) * r); }
+      c.stroke(); c.beginPath(); c.arc(0, 0, r * 0.7, 0, 6.283); c.stroke();
+    }
+    c.restore();
+  }
+  function voar(dt, black) {
+    const cx = W / 2, cy = chao * 0.5;
+    // nasce no bumbo: 1 por tempo, 2 no 1 do compasso, mais com energia
+    const bi = Math.floor(E.batida);
+    if (E.tocando && bi !== batidaVoo) {
+      batidaVoo = bi;
+      soltar((E.compasso === 0 ? 2 : 1) + Math.round(E.energia * 1.5), cx, cy);
+    }
+    if (!E.tocando && Math.random() < dt * 0.6) soltar(1, cx, cy);
+    const m = Math.min(W, chao);
+    const vel = (0.22 + E.grave * 0.55 + E.dropV * 0.9) * (E.bpm ? E.bpm / 120 : 0.6);
+    c.globalCompositeOperation = 'lighter';
+    for (let i = voadores.length - 1; i >= 0; i--) {
+      const q = voadores[i];
+      q.z -= dt * vel * (0.35 + (1 - q.z));          // acelera ao chegar perto
+      q.rot += q.giro * dt;
+      if (q.z <= 0.06) { voadores.splice(i, 1); continue; }
+      const esc = 1 / q.z;
+      const x = cx + Math.cos(q.a) * q.d * m * 0.12 * esc;
+      const y = cy + Math.sin(q.a) * q.d * m * 0.12 * esc;
+      const r = m * 0.018 * esc;
+      if (x < -r * 2 || x > W + r * 2 || y < -r * 2 || y > H + r * 2) { voadores.splice(i, 1); continue; }
+      // aparece do fundo, some ao encostar na câmera
+      c.globalAlpha = Math.min(1, (1 - q.z) * 3) * Math.min(1, (q.z - 0.06) * 4) * 0.75;
+      const cor = hsl(q.h + E.batida * 8, 95, black ? 45 : 60);
+      forma(q, x, y, r, cor, E.batida);
+    }
+    // drop marcado: revoada
+    if (E.dropV > 0.95) soltar(10, cx, cy);
   }
 
   // ─────────────── a pista ───────────────
@@ -388,7 +520,20 @@ export function montarCena(el, { rotulo = null, nomeModo = (m) => m } = {}) {
     const v = VISUAL[E.estilo] || VISUAL.pista;
     if (!E.reduzido) giro += dt * (E.tocando ? 0.5 : 0.12);
 
-    if (modo !== 'pista') viagem(v, dt, black);
+    const querMilk = modo !== 'pista';
+    if (querMilk && milkEstado === 'nada') iniciarMilk();
+    const usaMilk = querMilk && milkEstado === 'ok';
+    gl.style.display = usaMilk ? 'block' : 'none';
+    bTroca.hidden = !usaMilk;
+    if (usaMilk) {
+      // troca de preset na virada de frase (32 tempos; 64 no hipnótico)
+      const frase = E.estilo === 'hipnotico' ? 64 : 32;
+      const bloco = Math.floor(Math.max(0, E.batida) / frase);
+      if (E.tocando && bloco !== trocaEm) { if (trocaEm) trocar(2.7); trocaEm = bloco; }
+      try { milk.render(); } catch {}
+      c.clearRect(0, 0, W, H);
+    } else if (querMilk) viagem(v, dt, black);
+    if (modo === 'viagem' && !E.reduzido) voar(dt, black);
     if (modo !== 'viagem') pista(v, dt, black, modo === 'mistura');
 
     // confete: só no drop de verdade (marcador da faixa)
@@ -404,6 +549,7 @@ export function montarCena(el, { rotulo = null, nomeModo = (m) => m } = {}) {
           });
         }
         if (selo) { selo.classList.remove('vai'); void selo.offsetWidth; selo.classList.add('vai'); }
+        if (milkEstado === 'ok') trocar(0.8);
       }
     }
     c.globalCompositeOperation = 'source-over';

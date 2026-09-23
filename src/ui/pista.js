@@ -36,7 +36,9 @@ const CSS = `
 #pista { z-index:0; }
 #luzes { z-index:40; }
 /* a porta (fixa, por cima de tudo) e os diálogos ficam fora desta regra */
-body > *:not(#pista):not(#porta):not(#luzes):not(dialog) { position:relative; z-index:1; }
+/* as abas das gavetas também: são fixas nas bordas (sem isto viravam
+   relativas, caíam pro fim da página e sumiam da vista) */
+body > *:not(#pista):not(#porta):not(#luzes):not(dialog):not(.aba-bib) { position:relative; z-index:1; }
 
 /* o deck no ar ganha um contorno aceso — fixo, sem pulsar (sombra que pulsa
    repinta o deck inteiro a cada quadro) */
@@ -52,7 +54,7 @@ body > *:not(#pista):not(#porta):not(#luzes):not(dialog) { position:relative; z-
   animation: pista-deriva 26s ease-in-out infinite alternate; }
 #pista .canhoes { position:absolute; inset:0; will-change:opacity; }
 /* o facho é um cone de conic-gradient: bordas macias sem clip-path nem blur */
-#pista .feixe, #luzes .facho { position:absolute; top:-10%; width:120vmax; height:140vh; margin-left:-60vmax;
+#pista .feixe, #luzes .facho { position:absolute; top:-10%; width:80vmax; height:130vh; margin-left:-40vmax;
   transform-origin:50% 0; will-change:transform; }
 #pista .feixe { opacity:.55; }
 #pista .f1 { left:6%;  background:conic-gradient(from 174deg at 50% 0, transparent, rgba(255,78,205,.55) 6deg, transparent 12deg);
@@ -184,17 +186,20 @@ export function montarPista({ deckNoAr, nivel, momentos = () => [], espectro = (
   const el = document.createElement('div');
   el.id = 'pista';
   el.setAttribute('aria-hidden', 'true');
-  el.innerHTML = '<div class="fumaca"></div><div class="canhoes">' +
-    '<div class="feixe f1"></div><div class="feixe f2"></div><div class="feixe f3"></div><div class="feixe f4"></div></div>';
+  // atrás: só a fumaça. Os 4 canhões que havia aqui ficavam escondidos atrás
+  // dos painéis e custavam 4 camadas do tamanho da tela
+  el.innerHTML = '<div class="fumaca"></div><div class="canhoes"></div>';
   document.body.prepend(el);
 
   const luzes = document.createElement('div');
   luzes.id = 'luzes';
   luzes.setAttribute('aria-hidden', 'true');
-  luzes.innerHTML = '<div class="espelho"><div class="reflexos"></div><div class="reflexos r2"></div></div>' +
-    '<div class="fachos"><div class="facho l1"></div><div class="facho l2"></div><div class="facho l3"></div><div class="facho l4"></div></div>' +
+  // na frente: ~6 camadas no total (eram ~16). Cada camada do tamanho da tela
+  // soma luz em todo pixel a cada quadro — numa placa integrada, 16 engasgavam
+  luzes.innerHTML = '<div class="espelho"><div class="reflexos"></div></div>' +
+    '<div class="fachos"><div class="facho l1"></div><div class="facho l4"></div></div>' +
     '<div class="globo"><i class="fio"></i><div class="bola"><div class="facetas"></div></div></div>' +
-    '<div class="nevoa"><i class="n1"></i><i class="n2"></i><i class="n3"></i></div>';
+    '<div class="nevoa"><i class="n1"></i><i class="n2"></i></div>';
   document.body.appendChild(luzes);
 
   /**

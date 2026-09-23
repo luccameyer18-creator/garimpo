@@ -92,7 +92,14 @@ export class Deck extends EventTarget {
   get pronta() {
     return this.estado !== 'erro' && !this.parcial && this.analiseCompleta && !!this.grid?.bpm;
   }
-  get bpmEfetivo() { return this.faixa?.bpm ? this.faixa.bpm * this.nominalRate : null; }
+  /**
+   * O andamento NATURAL da faixa: o que a análise mediu na grade de batidas,
+   * e só na falta dela o do Audius. O do Audius é detectado por máquina e
+   * arredondado (100 onde a música tem 101,6): sincronizar por ele deixava as
+   * batidas escorregando, e o SYNC "não acertava o BPM da música".
+   */
+  get bpmNatural() { return this.grid?.bpm || this.faixa?.bpm || null; }
+  get bpmEfetivo() { const b = this.bpmNatural; return b ? b * this.nominalRate : null; }
 
   /** Rastro de passos: sem console no celular, e a unica forma de saber onde travou. */
   #passo(nome, detalhe) {

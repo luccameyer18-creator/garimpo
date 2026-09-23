@@ -202,13 +202,19 @@ export class Piloto extends EventTarget {
     // arruma a casa: quem saiu volta neutro, pra entrar limpo na próxima vez
     const m = this.#acoes();
     for (const b of ['grave', 'medio', 'agudo']) { this.#kill(sai, b, false); m.eq(sai, b, 0.5); }
+    // e quem ENTROU fica com as três bandas abertas — é ele que toca sozinho
+    // agora. Sem isto, um gesto trocado no modo junto deixava o deck no ar sem
+    // grave até o fim da música
+    for (const b of ['grave', 'medio', 'agudo']) this.#kill(entra, b, false);
     m.filtro(sai, 0); m.eco(sai, 0); m.fader(sai, 1);
 
     // o andamento volta devagar pro natural da faixa que entrou
-    if (est.caminha) {
+    // sempre: cada faixa termina no andamento DELA (ver caminharBpm)
+    {
       this.#diz('bpm caminhando', { deck: entra });
       this.#narra('n.caminha', { porque: 'n.caminha.p', vars: { e: entra }, mostra: [`pitch-${entra}`] });
-      if (!await caminharBpm(d[entra], { dorme: (ms) => this.#dorme(ms) })) return false;
+      const tempos = this.estilo === 'hipnotico' ? 64 : 32;   // hipnótico volta mais devagar
+      if (!await caminharBpm(d[entra], { dorme: (ms) => this.#dorme(ms), tempos })) return false;
     }
     return true;
   }

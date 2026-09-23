@@ -193,7 +193,6 @@ export const TECNICAS = {
  * `pesos`  chance relativa de cada técnica (as regras de ofício vêm antes: tom
  *          que briga continua forçando eco ou corte em qualquer estilo)
  * `escala` multiplica a duração padrão das técnicas (0.5 = metade do tempo)
- * `caminha` se o BPM volta pro natural da faixa depois da transição
  */
 export const ESTILOS = {
   hipnotico: {
@@ -201,42 +200,42 @@ export const ESTILOS = {
     escola: 'techno de Berlim e Detroit',
     como: 'misturas longas de EQ, quase nunca corta, deixa as duas faixas conversarem por minutos',
     pesos: { blend: 5, graves: 3, filtro: 1, loop: 0.5, eco: 0.3, corte: 0 },
-    escala: 1.5, caminha: false,
+    escala: 1.5,
   },
   pista: {
     nome: 'pista house',
     escola: 'house de Chicago e Nova York',
     como: 'troca de graves na frase, filtro pra subir a energia, um loop de vez em quando',
     pesos: { graves: 4, filtro: 3, loop: 1.5, blend: 1.5, eco: 0.5, corte: 0.3 },
-    escala: 1, caminha: true,
+    escala: 1,
   },
   disco: {
     nome: 'disco edit',
     escola: 'disco e nu-disco',
     como: 'filtro quente abrindo devagar, loops de groove, entradas longas e macias',
     pesos: { filtro: 4, loop: 2.5, blend: 2, graves: 2, eco: 0.5, corte: 0.2 },
-    escala: 1.25, caminha: true,
+    escala: 1.25,
   },
   turntablista: {
     nome: 'turntablista',
     escola: 'hip-hop de toca-discos',
     como: 'cortes secos, echo out, loops curtos — troca rápido e no tempo certo',
     pesos: { corte: 4, eco: 3, loop: 2.5, graves: 1, filtro: 0.5, blend: 0 },
-    escala: 0.5, caminha: false,
+    escala: 0.5,
   },
   baile: {
     nome: 'baile',
     escola: 'funk brasileiro e open format',
     como: 'emenda rápida, corte no drop, pula de gênero sem pedir licença',
     pesos: { corte: 3.5, eco: 2.5, loop: 2, filtro: 1.5, graves: 1, blend: 0 },
-    escala: 0.6, caminha: false,
+    escala: 0.6,
   },
   festival: {
     nome: 'festival',
     escola: 'palco grande de EDM',
     como: 'loop que fecha criando tensão, filtro subindo, e explode no drop',
     pesos: { loop: 4, filtro: 3, corte: 2.5, graves: 1, eco: 1, blend: 0 },
-    escala: 0.8, caminha: true,
+    escala: 0.8,
   },
 };
 
@@ -379,7 +378,9 @@ export async function executar(nomeTecnica, { m, dorme, sai, entra, bpm, tempos 
 export async function caminharBpm(deck, { dorme, tempos = 32 }) {
   const alvo = 0;
   const inicio = deck.pitch || 0;
-  if (Math.abs(inicio - alvo) < 0.002 || Math.abs(inicio) > 0.06) return true;
+  // volta SEMPRE — antes só até 6% e só em 3 estilos, e o set ia acumulando
+  // desvio: cada faixa nova sincronizava com a anterior já esticada
+  if (Math.abs(inicio - alvo) < 0.002) return true;
   const bpm = deck.bpmEfetivo || 124;
   const passos = 32;
   const msPasso = (tempos * 60000 / bpm) / passos;
