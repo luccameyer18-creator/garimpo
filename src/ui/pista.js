@@ -10,6 +10,14 @@
  *
  *   --pulso    1 exatamente no bumbo, decaindo até 0 antes do próximo
  *   --energia  o quanto de som está saindo agora, suavizado (0..1)
+ *   --drop     1 no instante em que a música ABRE, decaindo em ~2 s
+ *   --quebra   1 durante a quebra (a música fechou), 0 no resto
+ *
+ * Drop e quebra vêm dos MESMOS marcadores ▲▼ que aparecem na onda (momentos
+ * da faixa), então a pista explode quando a música explode — não por sorteio.
+ * Sem marcador, um salto brusco de energia faz as vezes do drop.
+ *
+ * O mesmo estado vai em `estadoPista`, que a janela da pista (cena.js) lê.
  *
  * Todo o resto é CSS reagindo a essas duas variáveis. Escrever duas variáveis
  * por quadro é barato; a animação pesada (rotação dos feixes, rolagem do chão)
@@ -23,7 +31,7 @@
  */
 
 const CSS = `
-:root { --pulso:0; --energia:0; --vel:.47s; }
+:root { --pulso:0; --energia:0; --vel:.47s; --drop:0; --quebra:0; }
 #pista { position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
 
 /* a cabine também sente a batida: o deck no ar brilha no bumbo */
@@ -31,7 +39,8 @@ const CSS = `
                           inset 0 0 0 1px rgba(76,201,240,calc(.2 + var(--pulso) * .4)); }
 .deck[data-d="B"].no-ar { box-shadow: 0 0 calc(4px + var(--pulso) * 26px) rgba(255,179,71,calc(.15 + var(--pulso) * .45)),
                                       inset 0 0 0 1px rgba(255,179,71,calc(.2 + var(--pulso) * .4)); }
-body > *:not(#pista) { position:relative; z-index:1; }
+/* a porta (fixa, por cima de tudo) e os diálogos ficam fora desta regra */
+body > *:not(#pista):not(#porta):not(dialog) { position:relative; z-index:1; }
 
 /* fumaça: manchas de cor bem desfocadas, que respiram com a energia */
 #pista .fumaca { position:absolute; inset:-20%; filter:blur(60px);
@@ -45,7 +54,8 @@ body > *:not(#pista) { position:relative; z-index:1; }
 /* feixes: quatro canhões de luz presos no teto, varrendo */
 #pista .feixe { position:absolute; top:-10%; width:34vmax; height:130vh;
   transform-origin:50% 0; mix-blend-mode:screen;
-  opacity: calc(.10 + var(--pulso) * .30 + var(--energia) * .20);
+  opacity: calc((.10 + var(--pulso) * .30 + var(--energia) * .20 + var(--drop) * .35) * (1 - var(--quebra) * .75));
+  transition: opacity .6s;
   clip-path: polygon(46% 0, 54% 0, 100% 100%, 0 100%);
   filter: blur(2px); }
 #pista .feixe.f1 { left:4%;  background:linear-gradient(180deg, rgba(255,78,205,.9), transparent 85%);
@@ -91,12 +101,23 @@ body > *:not(#pista) { position:relative; z-index:1; }
 
 const CORES = ['#ff4ecd', '#4cc9f0', '#ffb347', '#2ee6a8', '#c77dff'];
 
+/** O estado da pista a cada quadro. Só leitura pra quem não é este módulo. */
+export const estadoPista = {
+  pulso: 0, energia: 0, bpm: 0, tocando: false,
+  batida: 0,          // tempos desde a âncora da grade (fracionário)
+  drop: -1e9,         // performance.now() do último drop
+  dropV: 0,           // 1 no drop, decaindo
+  quebra: false,
+  reduzido: false,
+};
+
 /**
  * @param {object} dep
  * @param {function} dep.deckNoAr  devolve o Deck que está soando mais, ou null
  * @param {function} dep.nivel     nível do master agora, 0..1
+ * @param {function} [dep.momentos] (id) => marcadores da faixa no deck
  */
-export function montarPista({ deckNoAr, nivel }) {
+export function montarPista({ deckNoAr, nivel, momentos = () => [] }) {
   if (document.getElementById('pista')) return;
   const st = document.createElement('style');
   st.textContent = CSS;
@@ -128,16 +149,25 @@ export function montarPista({ deckNoAr, nivel }) {
   let energia = 0, bpmAntes = 0, quantasAntes = -1, deckAntes = null;
   const raiz = document.documentElement;
   const reduzido = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const E = estadoPista;
+  E.reduzido = reduzido;
+  let posAntes = 0, idAntes = null, lento = 0, quebraAte = -1, quebraAntes = null;
+
+  const marcarDrop = () => {
+    E.drop = performance.now();
+    E.quebra = false; quebraAte = -1;
+  };
 
   function quadro() {
     requestAnimationFrame(quadro);
     const d = deckNoAr();
     let pulso = 0;
-    if (d?.tocando && d.grid?.bpm && !reduzido) {
+    if (d?.tocando && d.grid?.bpm) {
       // fase no tempo pela GRADE: 0 exatamente no bumbo
       const per = 60 / d.grid.bpm;
-      const f = (((d.displayPosition - d.grid.ancora) / per) % 1 + 1) % 1;
-      pulso = Math.exp(-f * 5);            // pico no bumbo, decaindo rápido
+      E.batida = (d.displayPosition - d.grid.ancora) / per;
+      const f = ((E.batida % 1) + 1) % 1;
+      if (!reduzido) pulso = Math.exp(-f * 5);            // pico no bumbo, decaindo rápido
       const bpm = Math.round(d.bpmEfetivo || d.grid.bpm);
       if (bpm !== bpmAntes) { bpmAntes = bpm; raiz.style.setProperty('--vel', (60 / bpm).toFixed(3) + 's'); }
     }
@@ -146,6 +176,28 @@ export function montarPista({ deckNoAr, nivel }) {
     energia += (n > energia ? 0.25 : 0.03) * (n - energia);
     raiz.style.setProperty('--pulso', pulso.toFixed(3));
     raiz.style.setProperty('--energia', energia.toFixed(3));
+
+    // drop e quebra: o deck no ar passou por cima de um marcador neste quadro?
+    // (salto grande de posição = seek ou troca de faixa, não conta)
+    const pos = d?.displayPosition ?? 0;
+    if (d?.tocando && d.id === idAntes && pos > posAntes && pos - posAntes < 0.5) {
+      for (const m of momentos(d.id) || []) {
+        if (m.t <= posAntes || m.t > pos) continue;
+        if (m.tipo === 'drop') marcarDrop();
+        else if (m.tipo === 'quebra') { E.quebra = true; quebraAte = E.batida + 32; }
+      }
+    }
+    posAntes = pos; idAntes = d?.tocando ? d.id : null;
+    // sem marcador: energia subindo de repente também é drop
+    lento += 0.012 * (energia - lento);
+    if (energia - lento > 0.28 && energia > 0.55 && performance.now() - E.drop > 8000) marcarDrop();
+    if (E.quebra && (E.batida > quebraAte || !d?.tocando)) E.quebra = false;
+
+    E.dropV = reduzido ? 0 : Math.exp(-(performance.now() - E.drop) / 900);
+    raiz.style.setProperty('--drop', E.dropV.toFixed(3));
+    if (E.quebra !== quebraAntes) { quebraAntes = E.quebra; raiz.style.setProperty('--quebra', E.quebra ? '1' : '0'); }
+    E.pulso = pulso; E.energia = energia; E.tocando = !!d?.tocando;
+    E.bpm = d?.tocando ? (d.bpmEfetivo || d.grid?.bpm || 0) : 0;
 
     // marca qual deck está no ar, pra ele brilhar no bumbo
     const id = d?.tocando ? d.id : null;

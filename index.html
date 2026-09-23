@@ -56,7 +56,7 @@
   .topo { display:flex; align-items:center; gap:12px; padding:9px 14px; flex:none;
           border-bottom:1px solid var(--linha); background:linear-gradient(180deg,#1d1633,#120d20); }
   .marca { font-weight:800; letter-spacing:.12em; font-size:13px; }
-  .marca span { color:var(--acc); text-shadow:0 0 14px rgba(76,201,240,.65); }
+  .marca span { color:var(--acc); text-shadow:0 0 calc(8px + var(--pulso,0) * 18px) rgba(76,201,240,calc(.45 + var(--pulso,0) * .5)); }
   .marca { text-shadow:0 0 18px rgba(255,78,205,.18); }
   .medidor-topo { display:flex; align-items:center; gap:6px; margin-left:auto; }
   .barra-n { width:88px; height:5px; border-radius:3px; background:var(--fundo-tela);
@@ -130,6 +130,7 @@
   .deck[data-d="A"] .letra { color:var(--a); } .deck[data-d="B"] .letra { color:var(--b); }
   .capa { width:36px; height:36px; border-radius:6px; background:var(--sup2); flex:none; object-fit:cover;
           box-shadow:0 2px 6px rgba(0,0,0,.4); }
+  .capa:not([src]), .capa[src=""] { opacity:0; }
   .titulo { font-weight:650; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .artista { color:var(--mut); font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
@@ -156,9 +157,9 @@
      a onda pode engolir a folga toda — que e onde ela vale mais, porque e nela
      que se enxerga a batida */
   canvas.onda { display:block; width:100%; flex:1 1 auto; min-height:46px; max-height:none;
-                background:var(--fundo-tela);
+                background:rgba(6,4,13,.62);
                 border-top:1px solid var(--linha); border-bottom:1px solid var(--linha); }
-  canvas.mini { display:block; width:100%; height:18px; background:var(--fundo-tela); flex:none;
+  canvas.mini { display:block; width:100%; height:18px; background:rgba(6,4,13,.7); flex:none;
                 cursor:pointer; border-bottom:1px solid var(--linha); }
 
   .ctrl { display:flex; gap:11px; align-items:center; padding:11px; flex:none; }
@@ -248,7 +249,7 @@
   #piloto-tecnica .barra i { display:block; height:100%; background:var(--acc); }
   #b-prefs, #b-pular { flex:none; padding:3px 7px; font-size:11px; }
   #b-pular { border-color:var(--cue); color:var(--cue); }
-  #b-sugerir { font:700 9.5px ui-monospace,monospace; padding:6px; }
+
 
   #sugestoes textarea { width:100%; box-sizing:border-box; background:var(--fundo-tela);
                         color:var(--fg); border:1px solid var(--linha); border-radius:8px;
@@ -382,7 +383,43 @@
 
   .pitch { display:flex; align-items:center; gap:7px; padding:0 11px 11px; flex:none; }
   .pitch label { font:9px ui-monospace,monospace; color:var(--fraco); flex:none; }
-  input[type=range] { accent-color:var(--acc); }
+  /* FADERS DE MESA. O slider do navegador parece formulário; aqui o trilho é
+     um sulco escuro, a parte preenchida acende na cor do deck, e o cursor é
+     uma tampa de fader de verdade. O preenchimento vem de --de/--ate, que o
+     app.js escreve a partir do valor (inclusive quando o DJ automático mexe).
+     Controle com centro (EQ, filtro, pitch, crossfader) acende A PARTIR DO
+     MEIO — é assim que se lê "cortei" ou "aumentei" de relance. */
+  input[type=range] { -webkit-appearance:none; appearance:none; background:transparent;
+                      height:18px; margin:0; cursor:pointer; --cor-t:var(--acc); }
+  input[type=range]:focus-visible { outline:2px solid var(--acc); outline-offset:2px; border-radius:4px; }
+  input[type=range]::-webkit-slider-runnable-track {
+    height:4px; border-radius:3px;
+    background:linear-gradient(90deg, #0b0816 0 var(--de,0%), var(--cor-t) var(--de,0%) var(--ate,0%), #0b0816 var(--ate,0%));
+    box-shadow:inset 0 1px 2px rgba(0,0,0,.9), 0 0 0 1px rgba(255,255,255,.05); }
+  input[type=range]::-moz-range-track { height:4px; border-radius:3px; background:#0b0816;
+    box-shadow:inset 0 1px 2px rgba(0,0,0,.9), 0 0 0 1px rgba(255,255,255,.05); }
+  input[type=range]::-moz-range-progress { height:4px; border-radius:3px; background:var(--cor-t); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:11px; height:17px; margin-top:-6.5px; border-radius:3px;
+    background:linear-gradient(180deg,#f4f0ff 0,#b9b0d2 42%,#3b3354 44%,#3b3354 56%,#b9b0d2 58%,#8d84a8 100%);
+    border:1px solid #140f22;
+    box-shadow:0 2px 5px rgba(0,0,0,.7), 0 0 9px color-mix(in srgb, var(--cor-t) 45%, transparent); }
+  input[type=range]::-moz-range-thumb { width:11px; height:17px; border-radius:3px;
+    background:linear-gradient(180deg,#f4f0ff 0,#b9b0d2 42%,#3b3354 44%,#3b3354 56%,#b9b0d2 58%,#8d84a8 100%);
+    border:1px solid #140f22; box-shadow:0 2px 5px rgba(0,0,0,.7); }
+  input[type=range]:hover::-webkit-slider-thumb { filter:brightness(1.12); }
+  /* knobs do EQ: tampa redonda, com o brilho de posição */
+  .knob input[type=range]::-webkit-slider-thumb { width:14px; height:14px; margin-top:-5px; border-radius:50%;
+    background:radial-gradient(circle at 50% 35%, #fff 0 12%, #c9c1dc 13% 30%, #5d5478 70%, #2a2340 100%); }
+  .knob input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%;
+    background:radial-gradient(circle at 50% 35%, #fff 0 12%, #c9c1dc 13% 30%, #5d5478 70%, #2a2340 100%); }
+  /* crossfader: a tampa larga, a peça mais tocada da mesa */
+  input.xf { height:26px; --cor-t:var(--lock); }
+  input.xf::-webkit-slider-runnable-track { height:6px; }
+  input.xf::-webkit-slider-thumb { width:26px; height:22px; margin-top:-8px; border-radius:4px; }
+  input.xf::-moz-range-thumb { width:26px; height:22px; border-radius:4px; }
+  .tira[data-d="A"] input, .deck[data-d="A"] input { --cor-t:var(--a); }
+  .tira[data-d="B"] input, .deck[data-d="B"] input { --cor-t:var(--b); }
   .pitch input[type=range] { flex:1; min-width:0; }
   .pitch .val { font:700 10px ui-monospace,monospace; color:var(--acc); min-width:48px; text-align:right; }
   .faixa-sel { display:flex; gap:2px; flex:none; }
@@ -417,6 +454,56 @@
   .vu { height:4px; background:var(--fundo-tela); border-radius:2px; overflow:hidden; border:1px solid var(--linha); }
   .vu i { display:block; height:100%; width:0; background:linear-gradient(90deg,var(--ok),var(--cue),var(--bad)); }
   .xf { width:100%; }
+
+  /* ───────── janela da pista ───────── */
+  /* ocupa o vão embaixo do mixer: o que o DJ vê da cabine */
+  .janela-pista { flex:1 1 auto; min-height:120px; margin-top:9px; position:relative; overflow:hidden;
+                  border-radius:var(--r); border:1px solid var(--linha); background:#07040f;
+                  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03), 0 8px 28px rgba(0,0,0,.45); }
+  .janela-pista canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .cena-rot { position:absolute; left:10px; top:8px; right:10px; display:flex; gap:6px; align-items:center;
+              font:800 9px ui-monospace,monospace; letter-spacing:.14em; color:rgba(242,238,252,.75);
+              text-transform:uppercase; pointer-events:none; text-shadow:0 1px 4px #000; }
+  .cena-rot .vivo { width:7px; height:7px; border-radius:50%; background:var(--bad); flex:none;
+                    box-shadow:0 0 calc(4px + var(--pulso,0) * 10px) var(--bad); }
+  .cena-rot .off { background:var(--fraco); box-shadow:none; }
+  .cena-rot .dir { margin-left:auto; color:rgba(242,238,252,.55); }
+  .cena-drop { position:absolute; left:50%; top:46%; transform:translate(-50%,-50%) scale(.6); opacity:0;
+               font:900 clamp(22px, 5vw, 38px)/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.08em;
+               color:#fff; pointer-events:none; white-space:nowrap;
+               text-shadow:0 0 18px var(--neon), 0 0 36px var(--acc); }
+  .cena-drop.vai { animation:cena-drop 1.6s cubic-bezier(.2,.9,.3,1.2) forwards; }
+  @keyframes cena-drop { 0% { opacity:0; transform:translate(-50%,-50%) scale(.6) }
+                         15% { opacity:1; transform:translate(-50%,-50%) scale(1.08) }
+                         70% { opacity:1; transform:translate(-50%,-50%) scale(1) }
+                         100% { opacity:0; transform:translate(-50%,-60%) scale(1.02) } }
+
+  /* ───────── porta do club ───────── */
+  /* O navegador só libera o som depois de um toque. Antes, a tela abria com
+     dois buracos pretos no lugar dos decks e parecia quebrada. Agora esse
+     toque obrigatório vira a entrada: a pista já está acesa por trás. */
+  #porta { position:fixed; inset:0; z-index:60; display:grid; place-items:center; padding:16px;
+           background:radial-gradient(60% 60% at 50% 45%, rgba(10,7,19,.35), rgba(10,7,19,.88));
+           -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
+           transition:opacity .5s, visibility .5s; }
+  #porta.saiu { opacity:0; visibility:hidden; pointer-events:none; }
+  .porta-cx { text-align:center; max-width:420px; display:flex; flex-direction:column; align-items:center; gap:12px; }
+  .porta-masc .gp { width:112px; height:112px; }
+  #porta h1 { margin:0; font:900 clamp(34px, 8vw, 58px)/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.14em;
+              text-shadow:0 0 28px rgba(255,78,205,.35); }
+  #porta h1 span { color:var(--acc); text-shadow:0 0 26px rgba(76,201,240,.8); }
+  #porta p { margin:0; color:var(--mut); font-size:14px; line-height:1.5; }
+  #b-entrar { margin-top:6px; padding:16px 34px; border-radius:40px; font:900 14px/1 ui-sans-serif,system-ui,sans-serif;
+              letter-spacing:.12em; text-transform:uppercase; color:#2b0420; border:none;
+              background:linear-gradient(90deg,#ff7ad9,var(--neon) 40%,#c77dff);
+              box-shadow:0 0 0 0 rgba(255,78,205,.6), 0 10px 30px rgba(255,78,205,.35);
+              animation:porta-chama 2s ease-in-out infinite; }
+  #b-entrar:hover { filter:brightness(1.1); }
+  @keyframes porta-chama { 0%,100% { box-shadow:0 0 0 0 rgba(255,78,205,.55), 0 10px 30px rgba(255,78,205,.35) }
+                           50% { box-shadow:0 0 0 14px rgba(255,78,205,0), 0 10px 30px rgba(255,78,205,.35) } }
+  #porta small { color:var(--fraco); font-size:11px; }
+  #porta .erro-porta { color:var(--bad); font-size:12px; min-height:16px; }
+  @media (prefers-reduced-motion: reduce) { #b-entrar { animation:none; } }
 
   /* ───────── biblioteca ───────── */
   /* overflow AUTO, nao hidden. Com hidden, abrir o painel de preferencias
@@ -522,6 +609,7 @@
     .col.lib { grid-column:1/-1; order:4; min-height:auto; }
     .lateral { height:auto; }
     .mixer { min-height:280px; }
+    .janela-pista { flex:none; height:200px; }
     /* a lista e flex:1 dentro da lateral; com a linha do grid solta ela ficava
        com ALTURA ZERO — medido 528x0 numa janela de 585px. Aqui ela para de
        flexionar e passa a ter altura propria. */
@@ -534,6 +622,14 @@
     button { min-height:40px; }
     .knob .kill, .faixa-sel button, .mini-b { min-height:24px !important; }
     .crates { max-height:96px; }
+    /* a barra de cima passava de 375px e ESTICAVA a página inteira pra 473
+       (o celular alarga a viewport até caber o que transborda) — tudo ficava
+       deslocado pra direita. No celular ela leva só o essencial. */
+    .topo { gap:6px; padding:8px 10px; }
+    #dica, .medidor-topo > span, .barra-n { display:none; }
+    #master { width:64px !important; }
+    .topo .ic { min-height:32px; padding:5px; }
+    .porta-cx p { font-size:13px; }
   }
 </style>
 </head>
@@ -548,6 +644,7 @@
     <input type="range" id="master" min="0" max="1" step="0.01" value="0.85"
            style="width:76px" title="volume geral">
     <div class="barra-n" title="nível de saída"><i id="vu-master"></i></div>
+    <button class="ic" id="b-sugerir" data-i18n-attr="title:sug.abrir" title="deixar uma sugestão">💬</button>
     <button class="ic" id="b-ajuda" title="o que é cada coisa">?</button>
     <button class="ic" id="b-diag" title="copiar diagnóstico">⚙</button>
   </div>
@@ -605,6 +702,10 @@
         </div>
       </div>
     </div>
+    <div class="janela-pista" id="janela-pista" aria-hidden="true">
+      <div class="cena-rot"></div>
+      <div class="cena-drop">DROP!</div>
+    </div>
   </div>
 
   <div class="col"><div id="deckB"></div></div>
@@ -647,7 +748,6 @@
           <button id="b-esquecer" data-i18n="pref.esquecer">esquecer o que já tocou</button>
         </div>
       </div>
-      <button id="b-sugerir" data-i18n="sug.abrir">deixar uma sugestão</button>
       <div class="rot" id="piloto-nota" style="margin:0"></div>
       <div id="piloto-tecnica"></div>
       <div class="acervo">
@@ -670,6 +770,17 @@
       <button id="b-arquivo" style="font-size:10px;font-weight:600" data-i18n="app.arquivo">usar um arquivo meu</button>
       <input type="file" id="arquivo" accept="audio/*" hidden>
     </div>
+  </div>
+</div>
+
+<div id="porta">
+  <div class="porta-cx">
+    <div class="porta-masc" id="porta-masc"></div>
+    <h1>GARIM<span>PO</span></h1>
+    <p data-i18n="porta.sub">A pista tá cheia e o som tá esperando você. O professor te ensina a mixar, ou toca o set pra você ouvir.</p>
+    <button id="b-entrar" data-i18n="porta.entrar">entrar na pista</button>
+    <div class="erro-porta" id="porta-erro"></div>
+    <small data-i18n="porta.nota">milhares de músicas liberadas · nada pra baixar · funciona no celular</small>
   </div>
 </div>
 
@@ -782,6 +893,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260912f"></script>
+<script type="module" src="./src/ui/app.js?v=20260923a"></script>
 </body>
 </html>

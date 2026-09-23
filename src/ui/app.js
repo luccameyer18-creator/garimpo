@@ -19,6 +19,7 @@ import { ESTILOS, TECNICAS } from '../coach/tecnicas.js';
 import { decidirSet, aplicarDecisoes } from '../coach/jev.js';
 import { montarMascote } from './mascote.js';
 import { montarPista } from './pista.js';
+import { montarCena } from './cena.js';
 import * as bib from './biblioteca.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
@@ -142,7 +143,12 @@ async function garantirRodando() {
   }
 }
 
-const tentarLigar = () => { ligar().then(garantirRodando).catch(() => {}); };
+/** A porta do club sai de cena quando o áudio liga — é o mesmo toque. */
+const tentarLigar = () => {
+  ligar()
+    .then(() => { $('porta').classList.add('saiu'); return garantirRodando(); })
+    .catch((e) => { $('porta-erro').textContent = t('porta.erro', { e: e?.message || '' }); });
+};
 for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) addEventListener(ev, tentarLigar);
 
 // ─────────────────────────── um deck ───────────────────────────
@@ -796,8 +802,14 @@ function desenharOnda(id) {
   const d = decks[id], v = vistas[id];
   const dpr = ajustar(v.onda);
   const c = v.ctxOnda, L = v.onda.width, A = v.onda.height;
-  c.fillStyle = '#070909'; c.fillRect(0, 0, L, A);
+  // transparente: o fundo translúcido do CSS deixa a pista aparecer por trás
+  c.clearRect(0, 0, L, A);
   const pos = d.displayPosition;
+  if (!d.picos) {
+    // deck vazio: uma linha parada no meio, em vez de um buraco preto
+    c.fillStyle = 'rgba(255,255,255,.07)';
+    c.fillRect(0, A / 2, L, dpr);
+  }
 
   if (d.picos) {
     const { min, max, rms, binsPorSegundo } = d.picos;
@@ -858,7 +870,7 @@ function desenharMini(id) {
   const d = decks[id], v = vistas[id];
   ajustar(v.mini);
   const c = v.ctxMini, L = v.mini.width, A = v.mini.height;
-  c.fillStyle = '#070909'; c.fillRect(0, 0, L, A);
+  c.clearRect(0, 0, L, A);
   if (!d.picos) return;
   const { min, max } = d.picos, meio = A / 2;
   c.fillStyle = id === 'A' ? '#3d5a7a' : '#7a5f3d';
@@ -1888,4 +1900,47 @@ function deckNoAr() {
   return a ? decks.A : b ? decks.B : null;
 }
 
-montarPista({ deckNoAr, nivel: () => { try { return nivelMaster(); } catch { return 0; } } });
+montarPista({
+  deckNoAr,
+  nivel: () => { try { return nivelMaster(); } catch { return 0; } },
+  momentos: (id) => momentosDe[id],
+});
+
+// a janela da pista, embaixo do mixer: o que o DJ vê da cabine
+montarCena($('janela-pista'), {
+  rotulo: (e) => e.tocando
+    ? `<span class="vivo"></span>${t(e.quebra ? 'cena.quebra' : 'cena.aoVivo')}` +
+      `<span class="dir">${t('cena.gente', { n: e.pessoas })} · ${Math.round(e.bpm)} BPM</span>`
+    : `<span class="vivo off"></span>${t('cena.vazia')}`,
+});
+
+// o Garimpeiro recebe na porta, já dançando
+const mascotePorta = montarMascote($('porta-masc'));
+mascotePorta.humor(null);
+mascotePorta.batida(122);
+
+
+/**
+ * O preenchimento dos faders (ver "FADERS DE MESA" no index.html).
+ *
+ * CSS não enxerga o valor de um input, então o trilho aceso vem de duas
+ * variáveis escritas aqui. Por intervalo e não só no evento `input`: quem
+ * mais mexe nos controles durante um set é o DJ automático, e ele muda o
+ * valor por código, sem evento nenhum.
+ */
+function pintarTrilhos() {
+  for (const el of document.querySelectorAll('input[type=range]')) {
+    const mn = Number(el.min || 0), mx = Number(el.max || 100), v = Number(el.value);
+    const p = mx > mn ? ((v - mn) / (mx - mn)) * 100 : 0;
+    const centro = mn < 0 || 'eq' in el.dataset || el.classList.contains('xf');
+    const de = centro ? Math.min(50, p) : 0, ate = centro ? Math.max(50, p) : p;
+    const k = de.toFixed(1) + '|' + ate.toFixed(1);
+    if (el._trilho === k) continue;
+    el._trilho = k;
+    el.style.setProperty('--de', de.toFixed(1) + '%');
+    el.style.setProperty('--ate', ate.toFixed(1) + '%');
+  }
+}
+document.addEventListener('input', (ev) => { if (ev.target.type === 'range') pintarTrilhos(); });
+setInterval(pintarTrilhos, 120);
+pintarTrilhos();
