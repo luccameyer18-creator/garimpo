@@ -146,7 +146,15 @@ async function garantirRodando() {
 /** A porta do club sai de cena quando o áudio liga — é o mesmo toque. */
 const tentarLigar = () => {
   ligar()
-    .then(() => { $('porta').classList.add('saiu'); return garantirRodando(); })
+    .then(() => {
+      if (!$('porta').classList.contains('saiu')) {
+        document.body.classList.add('entrou');
+        // deck vazio: a primeira coisa a fazer é escolher música
+        if (!decks.A?.faixa) abrirBib(true);
+      }
+      $('porta').classList.add('saiu');
+      return garantirRodando();
+    })
     .catch((e) => { $('porta-erro').textContent = t('porta.erro', { e: e?.message || '' }); });
 };
 for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) addEventListener(ev, tentarLigar);
@@ -161,6 +169,7 @@ function montarVista(id) {
   no.id = 'deck' + id;
 
   const q = (s) => no.querySelector(s);
+  q('.browse').onclick = () => abrirBibPara(id);
   const v = {
     raiz: no, titulo: q('.titulo'), artista: q('.artista'), capa: q('.capa'),
     bpmVal: q('.bpm-val'), tom: q('.tom'), onda: q('.onda'), mini: q('.mini'),
@@ -1010,6 +1019,18 @@ function atualizarCompat() {
  * faixas no modo "só favoritas", que tinha 3.
  */
 let pedidoLista = 0;
+
+/**
+ * Cor do selo de tom: a posição na roda de Camelot vira matiz (12 posições,
+ * 30° cada). Tons vizinhos na roda saem com cores vizinhas, então "casa pelo
+ * tom" dá pra ver de relance, sem ler o código. Maior (B) sai mais claro.
+ */
+function corDoTom(camelot) {
+  const m = /^(\d{1,2})([AB])$/.exec(camelot || '');
+  if (!m) return '';
+  return ` style="--h:${(Number(m[1]) - 1) * 30}"`;
+}
+
 async function carregarLista(fn) {
   const meu = ++pedidoLista;
   const lista = $('lista');
@@ -1027,7 +1048,7 @@ async function carregarLista(fn) {
       const el = document.createElement('div');
       el.className = 'item';
       el.innerHTML = `<div class="n"><div class="t"></div><div class="a"></div><div class="a marca"></div></div>
-        <div class="m">${faixa.bpm ?? '—'}<br>${faixa.camelot ?? ''}</div>
+        <div class="m"><span class="bpm-b">${faixa.bpm ?? '—'}</span><span class="tom-b"${corDoTom(faixa.camelot)}>${faixa.camelot ?? ''}</span></div>
         <button class="fixar" title="">★</button>
         <div class="carregar"><button class="pa">A</button><button class="pb">B</button></div>`;
       el.querySelector('.t').textContent = faixa.title;
@@ -1043,6 +1064,8 @@ async function carregarLista(fn) {
         try { await ligar(); } catch { return; }
         await garantirRodando();
         decks[id].carregarAudius(faixa);
+        // veio do BROWSE de um deck: carregou, a gaveta sai e você volta pra mix
+        if (alvoBib) fecharBrowse(id);
       };
       el.querySelector('.pa').onclick = (e) => { e.stopPropagation(); por('A'); };
       el.querySelector('.pb').onclick = (e) => { e.stopPropagation(); por('B'); };
@@ -1071,7 +1094,7 @@ async function carregarLista(fn) {
         if (ev.pointerId !== pid || ev.target.closest('.carregar')) return;
         if (Math.hypot(ev.clientX - px, ev.clientY - py) > 12) return;
         pid = null;
-        por(deckLivre());
+        por(alvoBib || deckLivre());
       });
 
       lista.appendChild(el);
@@ -1124,6 +1147,8 @@ function pintarBiblioteca() {
       ? (bib.estado.decrescente ? '↓' : '↑') : '';
   }
   const n = sel.size;
+  const nomes = bib.GRUPOS.flatMap((g) => g.itens).filter((i) => sel.has(i.chave)).map((i) => i.nome);
+  $('gen-resumo').textContent = nomes.length ? nomes.join(', ') : t('bib.tudoChip');
   $('bib-resumo').textContent = bib.estado.ordem === 'favoritas'
     ? t('bib.soFavoritas', { n: bib.estado.favoritas.length })
     : n ? t('bib.generos', { n }) : t('bib.tudo');
@@ -1135,6 +1160,19 @@ $('crates').innerHTML =
     `<div class="grupo-chips"><span class="rot-chips" data-i18n="${g.grupo}">${t(g.grupo)}</span>` +
     g.itens.map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('') +
     '</div>').join('');
+/**
+ * Os gêneros ficam num menu que abre e fecha. Abertos o tempo todo eram ~40
+ * chips empurrando a lista pra baixo; fechados, o botão mostra o que está
+ * marcado, que é o que importa na maior parte do tempo.
+ */
+function abrirGeneros(aberto) {
+  $('crates').hidden = !aberto;
+  $('b-generos').setAttribute('aria-expanded', String(aberto));
+  try { localStorage.setItem('garimpo.bib.generosAbertos', aberto ? '1' : '0'); } catch {}
+}
+$('b-generos').onclick = () => abrirGeneros($('crates').hidden);
+try { abrirGeneros(localStorage.getItem('garimpo.bib.generosAbertos') === '1'); } catch { abrirGeneros(false); }
+
 $('crates').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-pilha]');
   if (!b) return;
@@ -1913,6 +1951,83 @@ montarCena($('janela-pista'), {
       `<span class="dir">${t('cena.gente', { n: e.pessoas })} · ${Math.round(e.bpm)} BPM</span>`
     : `<span class="vivo off"></span>${t('cena.vazia')}`,
 });
+
+/**
+ * A gaveta de músicas (ver "gaveta de músicas" no index.html).
+ *
+ * `bib-fixa` = coluna presa do lado, como era; sem ela, o painel flutua e a
+ * aba abre e fecha. Clicar fora fecha — mas só com a gaveta flutuando, e só
+ * se o clique não foi na própria gaveta ou na aba.
+ */
+function abrirBib(aberta) {
+  document.body.classList.toggle('bib-aberta', aberta);
+  $('b-bib').setAttribute('aria-expanded', String(aberta));
+  if (!aberta) mirar(null);
+}
+
+/**
+ * O BROWSE do deck: abre a gaveta MIRANDO aquele deck. É o gesto da CDJ —
+ * com a música tocando, aperta browse, acha a próxima, carrega, volta.
+ */
+let alvoBib = null;
+function mirar(id) {
+  alvoBib = id;
+  if (id) document.body.dataset.alvo = id; else delete document.body.dataset.alvo;
+  $('alvo-bib').hidden = !id;
+  if (id) $('alvo-bib').textContent = t('bib.alvo', { d: id });
+}
+function abrirBibPara(id) {
+  // o mesmo BROWSE de novo fecha, como na CDJ
+  if (alvoBib === id && document.body.classList.contains('bib-aberta')) { fecharBrowse(); return; }
+  abrirBib(true);
+  mirar(id);
+  // no celular não há gaveta: a lista mora embaixo, então o BROWSE rola até ela
+  if (!gaveta()) $('col-lib').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  else if (matchMedia('(pointer:fine)').matches) $('busca').focus({ preventScroll: true });
+}
+/** Tela larga = painel de músicas vira gaveta (mesmo corte do CSS). */
+const gaveta = () => matchMedia('(min-width:1041px)').matches;
+/** Carregou pelo BROWSE: com a gaveta flutuando ela fecha; presa, só desmira. */
+function fecharBrowse(id = null) {
+  if (document.body.classList.contains('bib-fixa') || !gaveta()) mirar(null);
+  else abrirBib(false);
+  // no celular, volta pro deck que recebeu a música
+  if (id && !gaveta()) $('deck' + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function fixarBib(fixa) {
+  document.body.classList.toggle('bib-fixa', fixa);
+  $('b-bib-fixar').title = t(fixa ? 'bib.soltar' : 'bib.fixar');
+  try { localStorage.setItem('garimpo.bib.fixa', fixa ? '1' : '0'); } catch {}
+}
+/** A gaveta começa logo abaixo da barra do professor, que tem altura fixa. */
+function medirTopoBib() {
+  const y = $('prof').getBoundingClientRect().bottom + 9;
+  document.documentElement.style.setProperty('--bib-topo', Math.round(y) + 'px');
+}
+$('b-bib').onclick = () => abrirBib(!document.body.classList.contains('bib-aberta'));
+$('b-bib-fechar').onclick = () => abrirBib(false);
+$('b-bib-fixar').onclick = () => fixarBib(!document.body.classList.contains('bib-fixa'));
+document.addEventListener('pointerdown', (e) => {
+  if (document.body.classList.contains('bib-fixa') || !document.body.classList.contains('bib-aberta')) return;
+  if (e.target.closest('#col-lib, #porta, dialog, .browse')) return;
+  abrirBib(false);
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') abrirBib(false); });
+addEventListener('resize', medirTopoBib);
+medirTopoBib();
+try { fixarBib(localStorage.getItem('garimpo.bib.fixa') === '1'); } catch { fixarBib(false); }
+
+/**
+ * Dois temas: COLORIDO (neon, o padrão) e ALL BLACK (preto de verdade, cores
+ * fundas, pista baixa). O atributo vai no <html>; o CSS e a pista leem dali.
+ * O index.html aplica o tema salvo antes da página pintar, pra não piscar.
+ */
+$('b-tema').onclick = () => {
+  const black = document.documentElement.dataset.tema !== 'black';
+  if (black) document.documentElement.dataset.tema = 'black';
+  else delete document.documentElement.dataset.tema;
+  try { localStorage.setItem('garimpo.tema', black ? 'black' : ''); } catch {}
+};
 
 // o Garimpeiro recebe na porta, já dançando
 const mascotePorta = montarMascote($('porta-masc'));

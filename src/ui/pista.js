@@ -19,6 +19,12 @@
  *
  * O mesmo estado vai em `estadoPista`, que a janela da pista (cena.js) lê.
  *
+ * Duas camadas: #pista fica ATRÁS dos painéis (o club ao fundo) e #luzes fica
+ * NA FRENTE — fachos coloridos cruzando a interface e os reflexos do globo
+ * espelhado passando por cima de tudo, como numa cabine de verdade. A da
+ * frente é fraca de propósito (10–30%) e não recebe clique: dá o clima sem
+ * atrapalhar a leitura. No tema all black ela cai pra menos da metade.
+ *
  * Todo o resto é CSS reagindo a essas duas variáveis. Escrever duas variáveis
  * por quadro é barato; a animação pesada (rotação dos feixes, rolagem do chão)
  * roda na GPU. E nada disso toca o áudio: o som mora no AudioWorklet, numa
@@ -40,7 +46,7 @@ const CSS = `
 .deck[data-d="B"].no-ar { box-shadow: 0 0 calc(4px + var(--pulso) * 26px) rgba(255,179,71,calc(.15 + var(--pulso) * .45)),
                                       inset 0 0 0 1px rgba(255,179,71,calc(.2 + var(--pulso) * .4)); }
 /* a porta (fixa, por cima de tudo) e os diálogos ficam fora desta regra */
-body > *:not(#pista):not(#porta):not(dialog) { position:relative; z-index:1; }
+body > *:not(#pista):not(#porta):not(#luzes):not(dialog) { position:relative; z-index:1; }
 
 /* fumaça: manchas de cor bem desfocadas, que respiram com a energia */
 #pista .fumaca { position:absolute; inset:-20%; filter:blur(60px);
@@ -89,6 +95,67 @@ body > *:not(#pista):not(#porta):not(dialog) { position:relative; z-index:1; }
   transform: translateY(calc(var(--pulso) * var(--salto) * -1px)) scaleY(calc(1 - var(--pulso) * .12)); }
 #pista .pessoa.ativa { opacity:.85; }
 
+/* ── luzes NA FRENTE da interface ── */
+#luzes { position:fixed; inset:0; z-index:40; pointer-events:none; overflow:hidden; --luz:1; }
+:root[data-tema="black"] #luzes { --luz:.42; }
+:root[data-tema="black"] #pista { opacity:.45; }
+#luzes .facho { position:absolute; top:-8%; width:46vmax; height:150vh; transform-origin:50% 0;
+  clip-path: polygon(47% 0, 53% 0, 100% 100%, 0 100%);
+  -webkit-mask: linear-gradient(180deg, #000 0%, rgba(0,0,0,.55) 50%, transparent 92%);
+          mask: linear-gradient(180deg, #000 0%, rgba(0,0,0,.55) 50%, transparent 92%);
+  opacity: calc(var(--luz) * (.07 + var(--pulso) * .07 + var(--energia) * .09 + var(--drop) * .22) * (1 - var(--quebra) * .7));
+  will-change: transform; }
+#luzes .l1 { left:-18%; background:linear-gradient(90deg, transparent 8%, #ff4ecd 50%, transparent 92%);
+             animation: luz-varre calc(var(--vel) * 16) ease-in-out infinite alternate; }
+#luzes .l2 { left:18%;  background:linear-gradient(90deg, transparent 8%, #4cc9f0 50%, transparent 92%);
+             animation: luz-varre calc(var(--vel) * 12) ease-in-out infinite alternate-reverse; }
+#luzes .l3 { left:48%;  background:linear-gradient(90deg, transparent 8%, #c77dff 50%, transparent 92%);
+             animation: luz-varre calc(var(--vel) * 20) ease-in-out infinite alternate; }
+#luzes .l4 { right:-18%; background:linear-gradient(90deg, transparent 8%, #ffb347 50%, transparent 92%);
+             animation: luz-varre calc(var(--vel) * 24) ease-in-out infinite alternate-reverse; }
+:root[data-tema="black"] #luzes .l1 { background:linear-gradient(90deg, transparent 8%, #8e2a70 50%, transparent 92%); }
+:root[data-tema="black"] #luzes .l2 { background:linear-gradient(90deg, transparent 8%, #1f6f8c 50%, transparent 92%); }
+:root[data-tema="black"] #luzes .l3 { background:linear-gradient(90deg, transparent 8%, #5b3d85 50%, transparent 92%); }
+:root[data-tema="black"] #luzes .l4 { background:linear-gradient(90deg, transparent 8%, #8c6124 50%, transparent 92%); }
+
+/* reflexos do globo: pontinhos de luz andando pela tela inteira. É a camada
+   que anda (transform, na GPU), não o fundo — por isso ela é mais larga que a
+   tela exatamente um ladrilho, e o laço fecha sem salto */
+#luzes .reflexos { position:absolute; top:0; bottom:0; left:0; width:calc(100% + 260px);
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,.95) 0 1.6px, transparent 2.8px),
+    radial-gradient(circle, rgba(76,201,240,.9) 0 1.3px, transparent 2.5px),
+    radial-gradient(circle, rgba(255,78,205,.9) 0 1.5px, transparent 2.6px),
+    radial-gradient(circle, rgba(255,179,71,.85) 0 1.2px, transparent 2.4px);
+  background-size: 260px 190px;
+  background-position: 0 0, 92px 71px, 171px 29px, 43px 133px;
+  opacity: calc(var(--luz) * (.20 + var(--pulso) * .22 + var(--drop) * .3) * (1 - var(--quebra) * .35));
+  animation: luz-gira 15s linear infinite; will-change: transform; }
+#luzes .reflexos.r2 { width:calc(100% + 370px); background-size:370px 262px;
+  background-position: 31px 52px, 204px 171px, 297px 88px, 118px 224px;
+  animation: luz-gira2 23s linear infinite; }
+
+/* o globo espelhado, pendurado no meio do topo */
+#luzes .globo { position:absolute; left:50%; top:0; transform:translateX(-50%);
+  display:flex; flex-direction:column; align-items:center; }
+#luzes .fio { width:1px; height:5px; background:rgba(255,255,255,.4); }
+#luzes .bola { width:30px; height:30px; border-radius:50%;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255,255,255,.95) 0 7%, transparent 24%),
+    linear-gradient(90deg, rgba(10,6,20,.55) 1px, transparent 1px) 0 0 / 5px 5px,
+    linear-gradient(0deg, rgba(10,6,20,.55) 1px, transparent 1px) 0 0 / 5px 5px,
+    conic-gradient(from 0deg, #cfc8e6, #7b7298, #f2eefc, #5e5680, #bdb4d8, #6f6790, #cfc8e6);
+  box-shadow: 0 0 calc(8px + var(--pulso) * 16px) rgba(255,255,255,calc(.18 + var(--pulso) * .3)),
+              0 0 26px rgba(199,125,255,calc(.25 * var(--luz)));
+  animation: globo-gira 1.4s linear infinite; }
+:root[data-tema="black"] #luzes .bola { filter:brightness(.7) saturate(.6); }
+
+@keyframes luz-gira  { to { transform: translateX(-260px) } }
+@keyframes luz-gira2 { to { transform: translateX(-370px) } }
+@keyframes globo-gira { to { background-position: 0 0, 5px 0, 0 0, 0 0; } }
+@keyframes luz-varre { from { transform: rotate(-32deg) } to { transform: rotate(32deg) } }
+@media (max-width:700px) { #luzes .globo { display:none; } }
+
 @keyframes pista-varre { from { transform: rotate(-24deg) } to { transform: rotate(24deg) } }
 @keyframes pista-rola  { from { background-position: 0 0 } to { background-position: 0 64px } }
 @keyframes pista-deriva { from { transform: translate(-3%, -2%) scale(1) } to { transform: translate(3%, 2%) scale(1.08) } }
@@ -96,6 +163,7 @@ body > *:not(#pista):not(#porta):not(dialog) { position:relative; z-index:1; }
 @media (prefers-reduced-motion: reduce) {
   #pista .feixe, #pista .chao, #pista .fumaca { animation:none !important; }
   #pista .pessoa { transform:none !important; }
+  #luzes .facho, #luzes .reflexos, #luzes .bola { animation:none !important; }
 }
 `;
 
@@ -130,6 +198,14 @@ export function montarPista({ deckNoAr, nivel, momentos = () => [] }) {
     '<div class="feixe f1"></div><div class="feixe f2"></div><div class="feixe f3"></div><div class="feixe f4"></div>' +
     '<div class="chao"></div><div class="galera"></div>';
   document.body.prepend(el);
+
+  const luzes = document.createElement('div');
+  luzes.id = 'luzes';
+  luzes.setAttribute('aria-hidden', 'true');
+  luzes.innerHTML = '<div class="reflexos"></div><div class="reflexos r2"></div>' +
+    '<div class="facho l1"></div><div class="facho l2"></div><div class="facho l3"></div><div class="facho l4"></div>' +
+    '<div class="globo"><i class="fio"></i><div class="bola"></div></div>';
+  document.body.appendChild(luzes);
 
   // a galera: cada pessoa com cor e altura de pulo próprias, pra não parecer
   // um exército marchando

@@ -27,6 +27,11 @@ const PALETAS = [
   ['#ff4ecd', '#4cc9f0'], ['#ffb347', '#c77dff'], ['#2ee6a8', '#ff4ecd'],
   ['#4cc9f0', '#ffb347'], ['#c77dff', '#2ee6a8'],
 ];
+/** No tema all black: as mesmas famílias de cor, bem mais fundas. */
+const PALETAS_BLACK = [
+  ['#8e2a70', '#1f6f8c'], ['#8c6124', '#5b3d85'], ['#1b7a5c', '#8e2a70'],
+  ['#1f6f8c', '#8c6124'], ['#5b3d85', '#1b7a5c'],
+];
 const CONFETE = ['#ff4ecd', '#4cc9f0', '#ffb347', '#2ee6a8', '#c77dff', '#fff2b3'];
 
 /** Pseudo-aleatório estável por inteiro (pras facetas do globo não tremerem). */
@@ -105,14 +110,16 @@ export function montarCena(el, { rotulo = null } = {}) {
     if (!W || !H) { ajustar(); if (!W || !H) return; }
 
     const toca = E.tocando;
-    const pal = PALETAS[Math.floor(Math.max(0, E.batida) / 16) % PALETAS.length];
+    const black = document.documentElement.dataset.tema === 'black';
+    const tabela = black ? PALETAS_BLACK : PALETAS;
+    const pal = tabela[Math.floor(Math.max(0, E.batida) / 16) % tabela.length];
     const quebraV = E.quebra ? 1 : 0;
-    const luz = toca ? 1 : 0.35;
+    const luz = (toca ? 1 : 0.35) * (black ? 0.7 : 1);
     if (!E.reduzido) giro += dt * (toca ? 0.5 : 0.12);
 
     // ── fundo e fumaça
     const g = c.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#07040f'); g.addColorStop(1, '#150b2a');
+    g.addColorStop(0, black ? '#000' : '#07040f'); g.addColorStop(1, black ? '#08080a' : '#150b2a');
     c.globalCompositeOperation = 'source-over';
     c.globalAlpha = 1;
     c.fillStyle = g; c.fillRect(0, 0, W, H);

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Garimpo</title>
+<script>try { var tm = localStorage.getItem('garimpo.tema'); if (tm) document.documentElement.dataset.tema = tm; } catch (e) {}</script>
 <style>
   /*
    * Paleta: grafite quente, não preto puro. Um CDJ é um objeto físico com
@@ -32,6 +33,9 @@
     --r:14px;
   }
   * { box-sizing:border-box; }
+  /* `hidden` vale sempre: regra de display (flex, grid) de uma classe anulava
+     o atributo, e o "esquecer o que já tocou" aparecia com o painel fechado */
+  [hidden] { display:none !important; }
   html,body { height:100%; }
   body { margin:0; background:
            radial-gradient(900px 520px at 12% -8%, rgba(76,201,240,.13), transparent 62%),
@@ -45,7 +49,7 @@
   /* VIDRO: os painéis deixam a pista aparecer por trás, borrada. O desfoque
      é o que mantém a leitura — sem ele, luz passando atrás do texto atrapalha. */
   .deck, .mixer, .lateral, .topo, .prof {
-    background: linear-gradient(180deg, rgba(27,20,48,.78), rgba(17,12,30,.82)) !important;
+    background: linear-gradient(180deg, var(--vidro-a, rgba(27,20,48,.78)), var(--vidro-b, rgba(17,12,30,.82))) !important;
     -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3); }
 
   /* superfície com relevo, usada em painel, botão e knob */
@@ -232,11 +236,6 @@
   #idioma { flex:none; width:auto; font:700 9.5px ui-monospace,monospace; padding:4px 6px; margin-left:auto;
             background:var(--sup); color:var(--mut); border:1px solid var(--linha);
             border-radius:6px; cursor:pointer; }
-  .piloto-cx { display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
-  .piloto-cx select { flex:1 1 auto; min-width:0; font-size:9.5px; padding:3px 4px; }
-  #b-piloto { flex:1 1 100%; min-width:0; font:800 10px ui-monospace,monospace;
-              letter-spacing:.05em; padding:7px 6px;
-              border-color:var(--neon); color:var(--neon); }
   #b-piloto.lig { background:linear-gradient(180deg,#ffa2e6,var(--neon)); border-color:var(--neon);
                   color:#2b0420; box-shadow:0 0 16px rgba(255,78,205,.5); }
   #piloto-nota { font-size:9.5px; min-height:12px; }
@@ -247,7 +246,6 @@
                            background:var(--linha); border-radius:2px; vertical-align:middle;
                            overflow:hidden; }
   #piloto-tecnica .barra i { display:block; height:100%; background:var(--acc); }
-  #b-prefs, #b-pular { flex:none; padding:3px 7px; font-size:11px; }
   #b-pular { border-color:var(--cue); color:var(--cue); }
 
 
@@ -296,26 +294,21 @@
                      box-shadow:0 0 9px rgba(255,78,205,.35); }
 
   /* o acervo local: quantas faixas ja foram garimpadas e ficam no aparelho */
-  .acervo { display:flex; align-items:center; gap:6px; }
-  #acervo-n { flex:1; min-width:0; font-size:9.5px; }
-  #b-garimpar { flex:none; padding:4px 8px; font:700 9px ui-monospace,monospace; }
   #b-garimpar.lig { border-color:var(--neon); color:var(--neon);
                     box-shadow:0 0 10px rgba(255,78,205,.3); }
 
   /* ordem da lista: embaralhar, favoritas, BPM, tom, nome, combina */
-  .ordem { display:flex; gap:3px; flex-wrap:wrap; }
-  .ordem button { flex:1 1 auto; padding:4px 6px; font:700 9.5px ui-monospace,monospace; border-radius:6px; }
-  .ordem button.lig { border-color:var(--acc); color:var(--acc); box-shadow:0 0 10px rgba(76,201,240,.3); }
   .ordem button[data-seta]:not([data-seta=""])::after { content:attr(data-seta); margin-left:3px; }
   #bib-resumo { font-size:9.5px; }
   .crates .chip-tudo { font-weight:800; }
 
-  .crates { display:flex; flex-direction:column; gap:3px; max-height:132px; overflow-y:auto;
-            padding-right:2px; flex:none; }
+  .crates { display:flex; flex-direction:column; gap:5px; flex:none; }
+  .crates[hidden] { display:none; }
   .grupo-chips { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
   .rot-chips { font:800 8px ui-monospace,monospace; letter-spacing:.14em; color:var(--fraco);
                text-transform:uppercase; width:100%; margin-top:2px; }
-  .crates button { padding:3px 7px; font:700 9.5px ui-monospace,monospace; border-radius:20px; }
+  .crates button { padding:5px 10px; font:700 10.5px ui-monospace,monospace; border-radius:20px;
+                   transition:background .15s, color .15s, box-shadow .15s, transform .12s; }
   .crates button.lig { background:linear-gradient(180deg,#ffa2e6,var(--neon)); border-color:var(--neon);
                        color:#2b0420; box-shadow:0 0 12px rgba(255,78,205,.45); }
 
@@ -591,6 +584,176 @@
   dialog dd { margin:3px 0 0; color:var(--mut); font-size:12.5px; }
   dialog .fechar { margin-top:20px; width:100%; padding:12px; font-size:12px; }
 
+  /* ───────── painel de músicas ───────── */
+  /* Dois cartões: o DJ automático em cima, as músicas embaixo. Antes era uma
+     pilha só de 14 controles do mesmo tamanho, e não dava pra saber o que era
+     do DJ e o que era da lista. */
+  .lateral { gap:10px; padding:10px; }
+  .cartao { border:1px solid var(--linha); border-radius:12px; padding:10px; flex:none;
+            display:flex; flex-direction:column; gap:8px;
+            background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.008)); }
+  .cartao-topo { display:flex; align-items:center; gap:6px; min-width:0; }
+  .cartao-topo h2 { margin:0; flex:none; }
+  .cartao-topo .mini { flex:none; padding:5px 8px; font:700 10px ui-monospace,monospace; border-radius:7px; }
+  #b-pular { margin-left:auto; border-color:var(--cue); color:var(--cue); }
+  #b-pular[hidden] + #b-prefs { margin-left:auto; }
+  #acervo-n { flex:1; min-width:0; font-size:9.5px; white-space:nowrap; overflow:hidden;
+              text-overflow:ellipsis; text-align:right; }
+  .piloto-cx { border-color:color-mix(in srgb, var(--neon) 38%, transparent);
+               background:linear-gradient(180deg, color-mix(in srgb, var(--neon) 9%, transparent), transparent 70%); }
+  #b-piloto { width:100%; padding:13px 10px; border-radius:10px; border-color:var(--neon); color:var(--neon);
+              font:900 12px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.09em; text-transform:uppercase; }
+  #b-piloto:hover:not(.lig) { background:color-mix(in srgb, var(--neon) 14%, transparent); }
+  .piloto-op { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:5px; }
+  .piloto-op select { font-size:11px; padding:7px 5px; border-radius:8px; }
+  .prefs { padding:6px; }
+  .dica-bib { font-size:10px; color:var(--fraco); line-height:1.35; }
+  .bib-cx { flex:1 0 auto; min-height:380px; }
+  #busca { padding:10px 10px 10px 32px; border-radius:10px;
+           background:var(--fundo-tela) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239a8fb8' stroke-width='2.5' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 11px 50%;
+           transition:border-color .15s, box-shadow .15s; }
+  #busca:focus { outline:none; border-color:var(--acc); box-shadow:0 0 0 3px color-mix(in srgb, var(--acc) 22%, transparent); }
+  .generos-topo { display:flex; align-items:center; gap:8px; width:100%; padding:9px 11px; border-radius:10px;
+                  font:700 11px/1.2 inherit; text-align:left; }
+  .generos-topo b { flex:1; min-width:0; color:var(--neon); font-weight:700; white-space:nowrap; overflow:hidden;
+                    text-overflow:ellipsis; }
+  .generos-topo i { font-style:normal; color:var(--mut); transition:transform .2s; }
+  .generos-topo[aria-expanded="true"] i { transform:rotate(180deg); }
+  .ordem { display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); border:1px solid var(--linha);
+           border-radius:10px; overflow:hidden; background:var(--fundo-tela); }
+  .ordem button { border:none; border-right:1px solid var(--linha); border-radius:0; background:transparent;
+                  box-shadow:none; padding:8px 2px; font:700 10px ui-monospace,monospace; color:var(--mut);
+                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ordem button:last-child { border-right:none; }
+  .ordem button:hover:not(.lig) { color:var(--fg); background:rgba(255,255,255,.04); }
+  .ordem button.lig { color:var(--acc); box-shadow:inset 0 -2px 0 var(--acc);
+                      background:linear-gradient(0deg, color-mix(in srgb, var(--acc) 20%, transparent), transparent); }
+  .acoes-lista { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+  .acoes-lista button { padding:8px 6px; font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rodape-bib { display:flex; flex-direction:column; gap:6px; flex:none; }
+  #b-arquivo { font-size:10.5px; padding:9px; border-style:dashed; background:transparent; box-shadow:none; }
+  /* a faixa: título grande, BPM e um selo de TOM colorido pela roda de Camelot
+     (tons vizinhos na roda têm cores vizinhas — dá pra casar tom pela cor) */
+  .item { padding:7px 8px; border-radius:10px; cursor:pointer;
+          transition:background .15s, border-color .15s, transform .12s; }
+  .item:hover { background:rgba(255,255,255,.055); }
+  .item:active { transform:scale(.99); }
+  .item .t { font-size:12px; font-weight:650; }
+  .item .m { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+  .item .m .bpm-b { font:700 10.5px ui-monospace,monospace; color:var(--fg); }
+  .item .m .tom-b { font:800 9px ui-monospace,monospace; padding:2px 5px; border-radius:5px; min-width:26px;
+                    text-align:center; color:#0b0816; background:hsl(var(--h, 260) 72% 66%); }
+  .item .m .tom-b:empty { display:none; }
+  .item .carregar button { width:32px; height:32px; padding:0; border-radius:9px; }
+  .item .carregar .pa:hover { background:var(--a); color:#04202b; }
+  .item .carregar .pb:hover { background:var(--b); color:#2b1603; }
+
+  /* ───────── professor com altura FIXA ───────── */
+  /* Com duas ou três dicas a barra crescia, empurrava a CDJ inteira pra baixo e
+     o botão fugia do dedo no meio do clique. Agora a altura não muda nunca: a
+     dica principal fica à esquerda (até duas linhas e o porquê) e as outras
+     viram linhas curtas à direita. */
+  .prof { height:74px; min-height:0; overflow:hidden; padding-top:8px; padding-bottom:8px; }
+  .prof .plano { display:grid; grid-template-columns:minmax(0,1fr); align-content:center; gap:3px 16px; height:100%; }
+  .prof .plano:has(.item:nth-child(2)) { grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); }
+  .prof .item:first-child { grid-row:1 / span 3; align-self:center; }
+  .prof .item:first-child .txt { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
+  .prof .item:first-child .txt small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .prof .item:nth-child(n+2) .txt { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* ───────── gaveta de músicas ───────── */
+  /* O painel de músicas FLUTUA: fechado, a CDJ ocupa a tela toda; aberto, ele
+     desliza da direita por cima. A aba na borda abre e fecha. O 📌 prende ele
+     de volta como coluna fixa, pra quem prefere ver a lista o tempo todo.
+     Só em tela larga: no celular ele continua empilhado embaixo. */
+  .aba-bib, .bib-barra { display:none; }
+  @media (min-width:1041px) {
+    .bib-barra { display:flex; justify-content:flex-end; gap:5px; margin:-2px 0 -4px; flex:none; }
+    .bib-barra .mini { padding:4px 8px; font-size:11px; border-radius:7px; }
+    body.bib-fixa #b-bib-fechar { display:none; }
+    body.bib-fixa #b-bib-fixar { border-color:var(--acc); color:var(--acc); }
+    body:not(.bib-fixa) .palco { grid-template-columns:minmax(0,1fr) clamp(236px, 19vw, 360px) minmax(0,1fr); }
+    body:not(.bib-fixa) .col.lib {
+      position:fixed; right:9px; bottom:9px; top:var(--bib-topo, 130px); width:clamp(330px, 28vw, 440px);
+      z-index:45; transform:translateX(calc(100% + 12px));
+      transition:transform .38s cubic-bezier(.2,.85,.25,1), filter .38s; }
+    body:not(.bib-fixa).bib-aberta .col.lib { transform:none; filter:drop-shadow(-18px 0 40px rgba(0,0,0,.65)); }
+    body:not(.bib-fixa) .col.lib .lateral { height:100%; }
+    body:not(.bib-fixa) .aba-bib {
+      display:flex; flex-direction:column; align-items:center; gap:6px;
+      position:absolute; left:-44px; top:50%; transform:translateY(-50%); width:36px; padding:12px 0;
+      border-radius:12px 0 0 12px; border:1px solid var(--neon); border-right:none;
+      background:linear-gradient(180deg, color-mix(in srgb, var(--neon) 30%, var(--sup2)), var(--sup));
+      color:var(--fg); font:800 10px ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase;
+      box-shadow:-6px 0 22px color-mix(in srgb, var(--neon) 35%, transparent); }
+    body:not(.bib-fixa) .aba-bib span:last-child { writing-mode:vertical-rl; }
+    body:not(.bib-fixa) .aba-bib .aba-ic { font-size:15px; letter-spacing:0; color:var(--neon);
+      text-shadow:0 0 calc(4px + var(--pulso,0) * 12px) var(--neon); }
+    body:not(.bib-fixa).bib-aberta .aba-bib { opacity:.85; }
+  }
+
+  /* BROWSE: abre a gaveta mirando ESTE deck. Os botões dele acendem na lista e
+     tocar numa faixa carrega direto nele — escolher a próxima com a atual
+     tocando, que é o gesto mais repetido de uma noite na cabine */
+  .faixa .browse { flex:none; padding:6px 9px; font:800 9.5px ui-monospace,monospace; letter-spacing:.1em;
+                   border-radius:7px; }
+  .deck[data-d="A"] .browse { border-color:color-mix(in srgb, var(--a) 55%, transparent); color:var(--a); }
+  .deck[data-d="B"] .browse { border-color:color-mix(in srgb, var(--b) 55%, transparent); color:var(--b); }
+  body[data-alvo="A"] .deck[data-d="A"] .browse { background:var(--a); color:#04202b; box-shadow:0 0 14px color-mix(in srgb, var(--a) 60%, transparent); }
+  body[data-alvo="B"] .deck[data-d="B"] .browse { background:var(--b); color:#2b1603; box-shadow:0 0 14px color-mix(in srgb, var(--b) 60%, transparent); }
+  .alvo-bib { font:800 10px ui-monospace,monospace; letter-spacing:.08em; padding:7px 10px; border-radius:9px;
+              color:#04202b; background:var(--a); }
+  body[data-alvo="B"] .alvo-bib { background:var(--b); color:#2b1603; }
+  body[data-alvo="A"] .item .carregar .pa { background:var(--a); color:#04202b; }
+  body[data-alvo="B"] .item .carregar .pb { background:var(--b); color:#2b1603; }
+  body[data-alvo="A"] .item .carregar .pb, body[data-alvo="B"] .item .carregar .pa { opacity:.35; }
+
+  /* ───────── fluidez ───────── */
+  button { transition:border-color .12s, color .12s, background .15s, box-shadow .15s, transform .1s; }
+  button:active:not(:disabled) { transform:translateY(1px) scale(.98); }
+  select { transition:border-color .15s; }
+  select:hover { border-color:color-mix(in srgb, var(--acc) 45%, var(--linha)); }
+  /* os painéis chegam em cascata quando a porta abre */
+  @keyframes chega { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+  body.entrou .palco > .col:not(.lib) { animation:chega .5s cubic-bezier(.2,.8,.3,1) both; }
+  body.entrou .palco > .col:nth-child(2) { animation-delay:.06s; }
+  body.entrou .palco > .col:nth-child(3) { animation-delay:.12s; }
+  body.entrou .palco > .col:nth-child(4) { animation-delay:.18s; }
+  @media (prefers-reduced-motion: reduce) { body.entrou .palco > .col { animation:none; } }
+
+  /* ───────── tela inteira ───────── */
+  /* mixer e painel crescem com a tela em vez de ficarem presos em 246/290 px;
+     os decks levam o resto. Em monitor grande o jog cresce junto. */
+  .palco { grid-template-columns:minmax(0,1fr) clamp(236px, 17vw, 340px) minmax(0,1fr) clamp(290px, 23vw, 430px); }
+  @media (min-width:1600px) {
+    .jog { width:124px; height:124px; }
+    .jog .marca-jog { transform-origin:50% 56px; }
+    .botoes button { padding:14px 8px; font-size:12.5px; }
+    .titulo { font-size:14px; } .artista { font-size:11.5px; }
+  }
+
+  /* ───────── tema ALL BLACK ───────── */
+  /* Preto de verdade e cores mais fundas: pra quem quer a cabine escura, sem
+     neon gritando. A pista continua lá, só que baixa. */
+  :root[data-tema="black"] {
+    --fundo:#000; --sup:#0d0d10; --sup2:#17171b; --fundo-tela:#000; --linha:#25252b;
+    --fg:#ececf0; --mut:#8b8b95; --fraco:#5f5f69;
+    --acc:#3597ba; --ok:#23a87f; --cue:#c98933; --lock:#8d5ec2; --bad:#c9475f; --neon:#bd3a93;
+    --a:#3597ba; --b:#c98933;
+    --vidro-a:rgba(11,11,13,.9); --vidro-b:rgba(3,3,4,.93);
+  }
+  :root[data-tema="black"] body { background:#000; }
+  :root[data-tema="black"] .topo { background:linear-gradient(180deg,#0e0e11,#050506); }
+  :root[data-tema="black"] .prof { background:linear-gradient(90deg, rgba(35,168,127,.1), transparent 60%); }
+  :root[data-tema="black"] .prof.azul { background:linear-gradient(90deg, rgba(53,151,186,.1), transparent 60%); }
+  :root[data-tema="black"] .jog { background:radial-gradient(circle at 50% 36%, #26262c 0%, #16161a 46%, #0c0c0e 73%, #060607 100%);
+                                  border-color:#2a2a31; }
+  :root[data-tema="black"] .jog .visor { background:radial-gradient(circle at 50% 35%, #18181c, #050506); border-color:#2a2a31; }
+  :root[data-tema="black"] dialog { background:linear-gradient(180deg,#111114,#060607); }
+  :root[data-tema="black"] .item .m .tom-b { background:hsl(var(--h, 260) 42% 40%); color:#f4f4f6; }
+  :root[data-tema="black"] #porta { background:radial-gradient(60% 60% at 50% 45%, rgba(0,0,0,.45), rgba(0,0,0,.92)); }
+  :root[data-tema="black"] #b-entrar { background:linear-gradient(90deg,#9c2f79,var(--neon) 45%,#6f4aa0); color:#fff; }
+
   @media (max-width:1240px) { .palco { grid-template-columns:1fr 218px 1fr 252px; } }
   /* Abaixo disto a tela deixa de caber em uma pagina so, e a pagina passa a
      rolar de proposito. Quando a linha do grid solta a altura, cada bloco
@@ -618,7 +781,16 @@
   @media (max-width:700px) {
     .palco { grid-template-columns:1fr; }
     .deck { min-height:330px; }
-    .prof { padding:10px 12px; }
+    .prof { padding:8px 12px; height:86px; }
+    .prof .plano:has(.item:nth-child(2)) { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+    .prof .item:first-child { grid-row:auto; grid-column:1 / -1; }
+    .prof .item:first-child .txt { -webkit-line-clamp:2; }
+    .prof .item:first-child .txt small { display:none; }
+    .prof .item:nth-child(n+2) .txt { font-size:10.5px; }
+    .prof .item:nth-child(n+4) { display:none; }
+    .bib-cx { min-height:460px; }
+    .faixa .browse { padding:6px 7px; font-size:0; }
+    .faixa .browse::before { content:"♫"; font-size:13px; }
     button { min-height:40px; }
     .knob .kill, .faixa-sel button, .mini-b { min-height:24px !important; }
     .crates { max-height:96px; }
@@ -644,6 +816,7 @@
     <input type="range" id="master" min="0" max="1" step="0.01" value="0.85"
            style="width:76px" title="volume geral">
     <div class="barra-n" title="nível de saída"><i id="vu-master"></i></div>
+    <button class="ic" id="b-tema" data-i18n-attr="title:tema.dica" title="tema: colorido ou all black">◐</button>
     <button class="ic" id="b-sugerir" data-i18n-attr="title:sug.abrir" title="deixar uma sugestão">💬</button>
     <button class="ic" id="b-ajuda" title="o que é cada coisa">?</button>
     <button class="ic" id="b-diag" title="copiar diagnóstico">⚙</button>
@@ -710,8 +883,15 @@
 
   <div class="col"><div id="deckB"></div></div>
 
-  <div class="col lib">
+  <div class="col lib" id="col-lib">
+    <button id="b-bib" class="aba-bib" aria-controls="col-lib" aria-expanded="false">
+      <span class="aba-ic">♫</span><span data-i18n="app.musicas">músicas</span>
+    </button>
     <div class="lateral">
+      <div class="bib-barra">
+        <button id="b-bib-fixar" class="mini" data-i18n-attr="title:bib.fixar" title="deixar fixo do lado">📌</button>
+        <button id="b-bib-fechar" class="mini" data-i18n-attr="title:app.fechar" title="fechar">✕</button>
+      </div>
       <div class="fila-cx" id="fila-cx" hidden>
         <div class="fila-topo">
           <h2 style="margin:0" data-i18n="app.proximas">próximas</h2>
@@ -720,55 +900,70 @@
         </div>
         <div class="fila" id="fila"></div>
       </div>
-      <h2 data-i18n="app.musicas">músicas</h2>
-      <div style="display:flex;gap:5px">
-        <button id="b-compat" disabled style="flex:1" data-i18n="app.combina">combina agora</button>
-        <button id="b-fila" disabled title="monta a sequência do set" data-i18n="app.montar">montar sequência</button>
-      </div>
-      <div class="piloto-cx">
+      <!-- o DJ automático: um cartão só, com o que ele precisa pra tocar -->
+      <section class="cartao piloto-cx">
+        <div class="cartao-topo">
+          <h2 data-i18n="dj.titulo">DJ automático</h2>
+          <button id="b-pular" class="mini" data-i18n-attr="title:piloto.pular.dica" title="pular pra próxima" hidden>⏭</button>
+          <button id="b-prefs" class="mini" data-i18n-attr="title:pref.abrir" title="escolher o que ele vai tocar">⚙</button>
+        </div>
         <button id="b-piloto" data-i18n="app.piloto" data-i18n-attr="title:app.piloto.dica" title="o professor monta e toca um set inteiro">▶ o professor toca</button>
-        <select id="pref-min" title="duração do set">
-          <option value="15" data-min="15">15 min</option>
-          <option value="30" selected data-min="30">30 min</option>
-          <option value="45" data-min="45">45 min</option>
-          <option value="60" data-min="60">60 min</option>
-        </select>
-        <select id="pref-energia" title="curva de energia">
-          <option value="subir" selected data-i18n="app.energia.subir">subindo</option>
-          <option value="estavel" data-i18n="app.energia.estavel">estável</option>
-          <option value="descer" data-i18n="app.energia.descer">descendo</option>
-        </select>
-        <select id="pref-estilo" data-i18n-attr="title:estilo.dica" title="o jeito de tocar"></select>
-        <button id="b-pular" data-i18n-attr="title:piloto.pular.dica" title="pular pra próxima" hidden>⏭</button>
-        <button id="b-prefs" data-i18n-attr="title:pref.abrir" title="escolher o que ele vai tocar">⚙</button>
-      </div>
-      <div class="prefs" id="prefs" hidden>
-        <div class="rot" data-i18n="bib.djUsaLista" style="margin:0">o DJ toca do que está selecionado na lista de músicas</div>
-        <div class="prefs-linha">
+        <div class="piloto-op">
+          <select id="pref-min" title="duração do set">
+            <option value="15" data-min="15">15 min</option>
+            <option value="30" selected data-min="30">30 min</option>
+            <option value="45" data-min="45">45 min</option>
+            <option value="60" data-min="60">60 min</option>
+          </select>
+          <select id="pref-energia" title="curva de energia">
+            <option value="subir" selected data-i18n="app.energia.subir">subindo</option>
+            <option value="estavel" data-i18n="app.energia.estavel">estável</option>
+            <option value="descer" data-i18n="app.energia.descer">descendo</option>
+          </select>
+          <select id="pref-estilo" data-i18n-attr="title:estilo.dica" title="o jeito de tocar"></select>
+        </div>
+        <div class="prefs" id="prefs" hidden>
           <button id="b-esquecer" data-i18n="pref.esquecer">esquecer o que já tocou</button>
         </div>
+        <div class="rot" id="piloto-nota" style="margin:0"></div>
+        <div id="piloto-tecnica"></div>
+        <div class="dica-bib" data-i18n="bib.djUsaLista">o DJ toca do que está selecionado na lista de músicas</div>
+      </section>
+
+      <!-- as músicas: busca, gêneros, ordem e a lista -->
+      <section class="cartao bib-cx">
+        <div class="cartao-topo">
+          <h2 data-i18n="app.musicas">músicas</h2>
+          <span id="acervo-n" class="rot" style="margin:0">—</span>
+          <button id="b-garimpar" class="mini" data-i18n="acervo.garimpar">garimpar mais</button>
+        </div>
+        <div class="alvo-bib" id="alvo-bib" hidden></div>
+        <input type="text" id="busca" placeholder="buscar por nome…" data-i18n-attr="placeholder:app.buscar">
+        <button class="generos-topo" id="b-generos" aria-expanded="false" aria-controls="crates">
+          <span data-i18n="bib.generosTit">gêneros</span><b id="gen-resumo"></b><i>▾</i>
+        </button>
+        <div class="crates" id="crates" hidden></div>
+        <div class="ordem" id="ordem">
+          <button data-ordem="embaralhar" data-i18n-attr="title:bib.o.embaralhar">🔀</button>
+          <button data-ordem="favoritas" data-i18n-attr="title:bib.o.favoritas">★</button>
+          <button data-ordem="bpm">BPM</button>
+          <button data-ordem="tom" data-i18n="bib.o.tom">tom</button>
+          <button data-ordem="nome">A–Z</button>
+          <button data-ordem="combina" data-i18n="bib.o.combina">combina</button>
+        </div>
+        <div class="rot" id="bib-resumo" style="margin:0"></div>
+        <div class="acoes-lista">
+          <button id="b-compat" disabled data-i18n="app.combina">combina agora</button>
+          <button id="b-fila" disabled title="monta a sequência do set" data-i18n="app.montar">montar sequência</button>
+        </div>
+        <div class="lista" id="lista"></div>
+      </section>
+
+      <div class="rodape-bib">
+        <button id="b-arquivo" data-i18n="app.arquivo">usar um arquivo meu</button>
+        <input type="file" id="arquivo" accept="audio/*" hidden>
+        <div class="creditos" id="creditos"></div>
       </div>
-      <div class="rot" id="piloto-nota" style="margin:0"></div>
-      <div id="piloto-tecnica"></div>
-      <div class="acervo">
-        <span id="acervo-n" class="rot" style="margin:0">—</span>
-        <button id="b-garimpar" data-i18n="acervo.garimpar">garimpar mais</button>
-      </div>
-      <input type="text" id="busca" placeholder="buscar por nome…" data-i18n-attr="placeholder:app.buscar">
-      <div class="crates" id="crates"></div>
-      <div class="ordem" id="ordem">
-        <button data-ordem="embaralhar" data-i18n-attr="title:bib.o.embaralhar">🔀</button>
-        <button data-ordem="favoritas" data-i18n-attr="title:bib.o.favoritas">★</button>
-        <button data-ordem="bpm">BPM</button>
-        <button data-ordem="tom" data-i18n="bib.o.tom">tom</button>
-        <button data-ordem="nome">A–Z</button>
-        <button data-ordem="combina" data-i18n="bib.o.combina">combina</button>
-      </div>
-      <div class="rot" id="bib-resumo" style="margin:0"></div>
-      <div class="lista" id="lista"></div>
-      <div class="creditos" id="creditos"></div>
-      <button id="b-arquivo" style="font-size:10px;font-weight:600" data-i18n="app.arquivo">usar um arquivo meu</button>
-      <input type="file" id="arquivo" accept="audio/*" hidden>
     </div>
   </div>
 </div>
@@ -842,6 +1037,7 @@
         </span>
         <span class="tom">—</span>
       </div>
+      <button class="browse" data-i18n="deck.browse" data-i18n-attr="title:deck.browse.dica" title="escolher a música deste deck">BROWSE</button>
     </div>
     <canvas class="onda"></canvas>
     <canvas class="mini"></canvas>
@@ -893,6 +1089,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260923a"></script>
+<script type="module" src="./src/ui/app.js?v=20260923b"></script>
 </body>
 </html>
