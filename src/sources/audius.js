@@ -497,6 +497,33 @@ export const CRATES = [
   { nome: 'Rap BR',    reg: 'BR',  termo: 'rap nacional',
     buscas: [{ q: 'rap nacional' }, { q: 'rap brasileiro' }, { q: 'hip hop brasil' }],
     filtro: /.*/ },
+  /*
+   * Os "mega" e os baianos são RAROS no Audius (catálogo de artista
+   * independente): medido em 2026-09-23, "megafunk" achou 1 faixa e "pagodão
+   * baiano" nenhuma. Por isso várias buscas vizinhas por pilha — "montagem"
+   * (48 faixas) é onde o megafunk mora lá — e o filtro segura o que é homônimo.
+   */
+  { nome: 'Megafunk',  reg: 'BR',  termo: 'mega funk',
+    buscas: [{ q: 'megafunk' }, { q: 'mega funk', filtro: /mega|funk|mtg|montagem|baile/i },
+             { q: 'montagem', filtro: /montagem|mtg|funk|baile/i }, { q: 'mega funk rs', filtro: /mega|funk/i },
+             { q: 'mega remix funk', filtro: /mega|funk/i }],
+    filtro: /mega|funk|montagem|mtg/i },
+  { nome: 'Mega House', reg: 'BR', termo: 'mega house',
+    buscas: [{ q: 'mega house', filtro: /mega|house/i }, { q: 'megahouse' },
+             { q: 'house funk brasil', filtro: /house|funk/i }],
+    filtro: /mega|house/i },
+  { nome: 'Mega Disco', reg: 'BR', termo: 'mega disco',
+    buscas: [{ q: 'mega disco', filtro: /mega|disco/i }, { q: 'megadisco' },
+             { q: 'disco remix brasil', filtro: /disco/i }],
+    filtro: /mega|disco/i },
+  { nome: 'Axé',       reg: 'BR',  termo: 'axé',
+    buscas: [{ q: 'axé' }, { q: 'axe music', filtro: /ax[eé]|bahia|carnaval/i },
+             { q: 'axe bahia', filtro: /ax[eé]|bahia/i }, { q: 'carnaval bahia', filtro: /carnaval|bahia|ax[eé]/i }],
+    filtro: /ax[eé]|bahia|carnaval|salvador/i },
+  { nome: 'Pagodão',   reg: 'BR',  termo: 'pagodão',
+    buscas: [{ q: 'pagodão' }, { q: 'pagodao' }, { q: 'swingueira' }, { q: 'pagode baiano' },
+             { q: 'arrocha pagodao', filtro: /pagod|swing|arrocha/i }],
+    filtro: /pagod|swing|bahia|baian/i },
   // ── América Latina ──
   { nome: 'Reggaeton', reg: 'LAT', termo: 'reggaeton',
     buscas: [{ q: 'reggaeton' }, { q: 'reggaeton remix' }, { q: 'latin urban' }],
@@ -520,6 +547,18 @@ export const CRATES = [
     buscas: [{ q: 'moombahton' }, { q: 'moombah' }], filtro: /moombah/i },
   { nome: 'Amapiano',  reg: 'LAT', termo: 'amapiano',
     buscas: [{ q: 'amapiano' }, { q: 'amapiano remix' }], filtro: /amapiano|piano/i },
+  // ── mais estilos: subgêneros que o Audius não tem como gênero próprio ──
+  { nome: 'Minimal',   reg: 'EST', termo: 'minimal techno',
+    buscas: [{ q: 'minimal techno' }, { q: 'minimal house' }, { q: 'minimal deep' }, { q: 'microhouse' }],
+    filtro: /minimal|micro/i },
+  { nome: 'Psy',       reg: 'EST', termo: 'psytrance',
+    buscas: [{ q: 'psytrance' }, { q: 'psy trance' }, { q: 'goa trance' }, { q: 'full on psy' },
+             { q: 'progressive psy' }],
+    filtro: /psy|goa|trance/i },
+  { nome: 'Boombap',   reg: 'EST', termo: 'boom bap',
+    buscas: [{ q: 'boom bap' }, { q: 'boombap' }, { q: 'boom bap beat' },
+             { q: '90s hip hop beat', filtro: /boom|90s|bap/i }],
+    filtro: /boom\s?bap|90s|hip ?hop/i },
 ];
 
 /** Compatibilidade: a primeira versão só tinha crates do Brasil. */

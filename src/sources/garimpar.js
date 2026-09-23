@@ -134,7 +134,7 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
        */
       frentes.push({
         nome: `${c.nome} · ${b.q}`,
-        pilha: (c.reg === 'BR' ? 'br:' : 'lat:') + c.nome,
+        pilha: ({ BR: 'br:', LAT: 'lat:', EST: 'est:' }[c.reg] || 'lat:') + c.nome,
         filtro: b.filtro !== undefined ? b.filtro : null,
         serie: PAGINAS_BUSCA.map((offset) =>
           `${H}/tracks/search?query=${encodeURIComponent(b.q)}&limit=${LIMITE}` +

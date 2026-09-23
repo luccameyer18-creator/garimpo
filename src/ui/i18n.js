@@ -205,6 +205,7 @@ const PT = {
   'app.grupo.eletronico': 'eletrônico',
   'app.grupo.brasil': 'brasil',
   'app.grupo.latino': 'latino',
+  'app.grupo.estilos': 'mais estilos',
 
   'mix.encaixar': 'ENCAIXAR',
   'mix.encaixar.dica': 'desliza o deck B até a batida cair em cima do A',
@@ -487,6 +488,7 @@ const EN = {
   'app.grupo.eletronico': 'electronic',
   'app.grupo.brasil': 'brazil',
   'app.grupo.latino': 'latin',
+  'app.grupo.estilos': 'more styles',
 
   'mix.encaixar': 'LINE UP',
   'mix.encaixar.dica': 'slides deck B until its beat lands on top of A',
@@ -768,6 +770,7 @@ const ES = {
   'app.grupo.eletronico': 'electrónico',
   'app.grupo.brasil': 'brasil',
   'app.grupo.latino': 'latino',
+  'app.grupo.estilos': 'más estilos',
 
   'mix.encaixar': 'CUADRAR',
   'mix.encaixar.dica': 'desliza el deck B hasta que su golpe caiga sobre el de A',

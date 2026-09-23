@@ -30,6 +30,9 @@ export const GRUPOS = [
   { grupo: 'app.grupo.latino',
     itens: CRATES.filter((c) => c.reg === 'LAT').map((c) => ({ chave: 'lat:' + c.nome, nome: c.nome,
       rede: () => crateBr(c.nome, { limite: 40 }) })) },
+  { grupo: 'app.grupo.estilos',
+    itens: CRATES.filter((c) => c.reg === 'EST').map((c) => ({ chave: 'est:' + c.nome, nome: c.nome,
+      rede: () => crateBr(c.nome, { limite: 40 }) })) },
 ];
 const TODAS = GRUPOS.flatMap((g) => g.itens);
 
@@ -203,7 +206,8 @@ export function favoritasParaSet() {
 
 export async function candidatasDoSet() {
   if (ordem === 'favoritas') return favoritasParaSet();
-  let lista = await doAcervo({ bpmMin: 100, bpmMax: 150, porPilha: 900, tudo: 5000 });
+  // 70–180 BPM: com 100–150, boombap (~90) nunca entrava num set
+  let lista = await doAcervo({ bpmMin: 70, bpmMax: 180, porPilha: 900, tudo: 5000 });
   if (lista.length < 40) lista = lista.concat(await daRede());
   return lista.filter((f) => f.bpm && f.camelot && f.duration >= 90 && f.duration <= 420 && !ehLixo(f.id));
 }
