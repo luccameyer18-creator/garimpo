@@ -17,6 +17,7 @@ import { Piloto } from '../coach/piloto.js';
 import { ESTILOS, TECNICAS } from '../coach/tecnicas.js';
 import { decidirSet, aplicarDecisoes } from '../coach/jev.js';
 import { montarMascote } from './mascote.js';
+import { montarPista } from './pista.js';
 import * as bib from './biblioteca.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
@@ -1870,3 +1871,18 @@ mascote = montarMascote($('prof'));
 // cava enquanto o garimpo roda
 new MutationObserver(() => mascote.cavando($('b-garimpar').classList.contains('lig')))
   .observe($('b-garimpar'), { attributes: true, attributeFilter: ['class'] });
+
+
+// ─────────────────────────── a pista de club ───────────────────────────
+
+/**
+ * O deck que está SOANDO mais: o que toca, pesado pelo crossfader. É ele que
+ * dita a batida da pista e do mascote.
+ */
+function deckNoAr() {
+  const a = decks.A?.tocando, b = decks.B?.tocando;
+  if (a && b) return (mixer?.crossfader ?? 0.5) <= 0.5 ? decks.A : decks.B;
+  return a ? decks.A : b ? decks.B : null;
+}
+
+montarPista({ deckNoAr, nivel: () => { try { return nivelMaster(); } catch { return 0; } } });

@@ -42,6 +42,12 @@
          font:13px/1.45 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
          -webkit-font-smoothing:antialiased; }
 
+  /* VIDRO: os painéis deixam a pista aparecer por trás, borrada. O desfoque
+     é o que mantém a leitura — sem ele, luz passando atrás do texto atrapalha. */
+  .deck, .mixer, .lateral, .topo, .prof {
+    background: linear-gradient(180deg, rgba(27,20,48,.78), rgba(17,12,30,.82)) !important;
+    -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3); }
+
   /* superfície com relevo, usada em painel, botão e knob */
   .relevo { background:linear-gradient(180deg,var(--sup2),var(--sup));
             box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 1px 3px rgba(0,0,0,.5); }

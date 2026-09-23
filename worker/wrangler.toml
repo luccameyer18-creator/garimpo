@@ -1,0 +1,15 @@
+# Worker do Garimpo — proxy do Jev e acervo compartilhado.
+#
+# Publicar:   cd worker && npx wrangler deploy
+# Chave:      npx wrangler secret put TYPESAFE_KEY < ~/.garimpo/typesafe-key.txt
+#             (entra pela entrada padrão: não aparece na linha de comando nem
+#             no histórico do terminal, e NUNCA vai pro repositório)
+
+name = "garimpo"
+main = "index.js"
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "garimpo"
+database_id = "PREENCHER_APOS_d1_create"

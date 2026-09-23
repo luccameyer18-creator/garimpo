@@ -62,7 +62,10 @@ export class Piloto extends EventTarget {
 
   /** Você encostou num controle: o piloto sai de cena imediatamente. */
   assumirControle(motivo = 'você assumiu') {
-    if (!this.ativo) return;
+    // `this.parar` também: quem ouve 'parado' chama pararPiloto(), que chama
+    // isto de novo — sem esta guarda era recursão infinita (estouro de pilha
+    // medido ao apertar ■ parar com o DJ tocando)
+    if (!this.ativo || this.parar) return;
     this.parar = true;
     this.#diz('parado', { motivo });
   }
