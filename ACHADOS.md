@@ -298,3 +298,46 @@ que erra — o detector do Audius rodou no arquivo inteiro, o meu roda numa
 autocorrelação decimada, boa pra **oitava** e fraca pro valor fino. Regra: a
 oitava é da análise, o valor fino é do metadata, e a âncora é refeita no BPM
 escolhido (grade com BPM de uma fonte e âncora de outra é grade incoerente).
+
+## 16 · Segunda fonte: por que o hearthis — 2026-09-24
+
+Testei com as exigências do deck (API com CORS, áudio buscável pelo navegador,
+BPM e tom no metadata): Jamendo (645 mil faixas) e Internet Archive (80 mil
+lançamentos de netlabel) tocam no navegador, mas não trazem BPM nem tom — e o
+acervo só mostra faixa que tem os dois. SoundCloud fechou a API, Mixcloud não
+entrega áudio, ccMixter não manda CORS na API, Nina e FMA estão fora do ar pra
+app. O hearthis passou em tudo: 134 de 140 faixas com BPM e tom, 30/30 streams
+buscáveis.
+
+- O `stream_url` da API aponta pra hearthis.**app**, cujo 301 não manda
+  `access-control-allow-origin`. A cadeia que funciona é
+  `hearthis.at/{artista}/{faixa}/listen/` → 301 → `streamNN.hearthis.at` (ACAO *).
+- O acervo deles é quase só set de uma hora (mediana 68 min no "popular").
+  `duration=10`, que não está documentado, inverte: 17 de 20 viram faixa.
+- `Range: bytes=a-b` NÃO dispara preflight no Chrome (206 no hearthis.at, cujo
+  preflight responderia 500). Emular o preflight no Node me fez achar que não
+  dava — só o navegador de verdade respondeu.
+- O servidor de stream limita cada conexão: 236 KB/s cravados em 4 de 4 faixas
+  do stream76. Em 4 pedaços paralelos, 2344 KB/s. Tocável em ~3,2 s aquecida.
+- A URL final que o HEAD devolve (`/<hash>.mp3`) não tem CORS; só a do GET.
+- `force-cache` devolve um 404 GUARDADO: a semente do hearthis nunca chegava
+  num navegador que tinha pedido o arquivo antes de ele existir.
+
+## 17 · Varrer o hearthis devagar — 2026-09-24
+
+Com dois pedidos simultâneos e 150 ms de pausa, em meia hora a API passou a
+devolver 504 e corpo vazio (43 de 60 pedidos) e um pedido sozinho subiu de
+~0,7 s pra 6,8 s. Parado o garimpo, voltou a 0,5–0,75 s. Agora é um pedido por
+vez, e página funda (6ª de 50 com `duration`) que dá 504 duas vezes encerra a
+série: insistir custava ~5 min por categoria.
+
+Os filtros das crates brasileiras, medidos no Audius, erram no hearthis:
+"Ice MC" caía em funk, remix indiano em Rap BR, "AXEL" em Axé. Rótulo
+brasileiro lá exige marca brasileira no título ou no nome.
+
+## 18 · O acervo varria tudo; os índices existiam — 2026-09-24
+
+Com 47 mil faixas cada chip levava 1,3–1,9 s (cursor pelo acervo inteiro).
+Os índices `pilha`, `genre` e `bpm` estavam criados desde o começo e ninguém
+lia. Pelos índices: chip House 1900 → 42 ms, quatro chips 88 ms, "tudo"
+1500 → 168 ms (sorteio entre as chaves), pote do DJ de 5000 faixas 361 ms.

@@ -20,7 +20,10 @@ export const WORKER = 'https://garimpo.garimpo-dj.workers.dev';
  * token de todas as outras.
  */
 export async function votarLixo(ids, origem = 'gente') {
-  if (!ids?.length) return;
+  // o Worker só conta voto em id do Audius; o 👎 numa faixa do hearthis
+  // continua valendo aqui (biblioteca.marcarLixo), só não vai pra galera
+  ids = (ids || []).filter((id) => /^[A-Za-z0-9]{3,16}$/.test(String(id)));
+  if (!ids.length) return;
   try {
     await fetch(`${WORKER}/lixo`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -64,6 +67,9 @@ let timer = null;
 export function compartilhar(faixas) {
   for (const f of faixas || []) {
     if (!f?.id || !f.bpm || !f.duration) continue;
+    // o Worker só aceita id do Audius (ver faixaValida lá): mandar as do
+    // hearthis gastaria o limite de POSTs por minuto com lote recusado
+    if (f.source && f.source !== 'audius') continue;
     fila.push(Object.fromEntries(CAMPOS.map((k) => [k, f[k] ?? null])));
   }
   clearTimeout(timer);

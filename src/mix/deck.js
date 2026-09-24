@@ -12,6 +12,7 @@
 
 import { Transport } from '../audio/transport.js';
 import { resolveStreamUrl, urlAquecida } from '../sources/audius.js';
+import { urlDoStream, tomarAquecida, comecar as comecarHearthis } from '../sources/hearthis.js';
 import { analisar } from '../analysis/analyze.js';
 
 /**
@@ -199,6 +200,30 @@ export class Deck extends EventTarget {
         return rr.arrayBuffer();
       })();
       return { prefixo, completo };
+    });
+  }
+
+  /**
+   * Faixa do hearthis. Mesmo efeito do caminho do Audius — toca com o começo
+   * e troca pelo arquivo inteiro quando ele chega —, mas baixando em pedaços
+   * paralelos, porque o servidor deles limita cada conexão (236 KB/s medidos).
+   * O como está em hearthis.comecar().
+   */
+  async carregarHearthis(faixa) {
+    return this.#carregar(faixa, async (sinal, aoProgredir) => {
+      // o começo baixado no hover, se houver: poupa a primeira resposta lenta
+      let ini = null;
+      const quente = tomarAquecida(faixa);
+      if (quente) {
+        sinal.addEventListener('abort', () => quente.ac.abort(), { once: true });
+        try { ini = await quente.promessa; } catch { ini = null; }
+      }
+      this.#passo('url', new URL(urlDoStream(faixa)).host + (ini ? ' (aquecida)' : ''));
+      if (!ini) ini = await comecarHearthis(faixa, { signal: sinal });
+      this.#passo('bytes baixados', `${(ini.prefixo.byteLength / 1048576).toFixed(2)} MB em ${ini.modo}`);
+      if (ini.inteiro) return ini.prefixo;   // arquivo menor que o prefixo: já é tudo
+      aoProgredir?.(0.3);
+      return { prefixo: ini.prefixo, completo: ini.resto(sinal) };
     });
   }
 

@@ -82,6 +82,14 @@ function resumoFaixa(f) {
  */
 export async function sinaisAudius(faixas) {
   const mapa = {};
+  // faixa de outra fonte (hearthis) já chega com os sinais dela; perguntar ao
+  // Audius por um id que não é de lá só alonga a URL (ele ignora, medido)
+  const doAudius = [];
+  for (const f of faixas) {
+    if (/^[A-Za-z0-9]{3,16}$/.test(String(f?.id))) doAudius.push(f);
+    else if (f?.sinais) mapa[f.id] = f.sinais;
+  }
+  faixas = doAudius;
   for (let i = 0; i < faixas.length; i += 25) {
     const q = faixas.slice(i, i + 25).map((f) => 'id=' + encodeURIComponent(f.id)).join('&');
     try {

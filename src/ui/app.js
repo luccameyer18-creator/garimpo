@@ -14,7 +14,7 @@ import { momentos, proximoMomento, faltaPara } from '../coach/momentos.js';
 import { montarSet, resumoSet } from '../coach/setlist.js';
 import * as crate from '../sources/crate.js';
 import { garimpar } from '../sources/garimpar.js';
-import { carregarSemente } from '../sources/semente.js';
+import { carregarSemente, SEMENTES } from '../sources/semente.js';
 import { puxar as puxarGalera, votarLixo, puxarLixo, enviarFeedback } from '../sources/galera.js';
 import { Piloto } from '../coach/piloto.js';
 import { ESTILOS, TECNICAS } from '../coach/tecnicas.js';
@@ -29,6 +29,12 @@ import {
   trending, search, GENRES, attribution, prefetch, compativeis,
   keyCompatible, resolveStreamUrl, CRATES, crateBr,
 } from '../sources/audius.js';
+import {
+  ehHearthis, atribuicao as atribuicaoHearthis, detalhe as detalheHearthis, aquecer as aquecerHearthis,
+} from '../sources/hearthis.js';
+
+/** Faixa do Audius? As da semente antiga não têm `source` e são todas de lá. */
+const doAudius = (f) => !!f && (!f.source || f.source === 'audius');
 
 export const VERSAO = '2026-09-12.18';
 
@@ -338,7 +344,9 @@ function montarVista(id) {
     v.erro.innerHTML = `não carregou: ${e.detail.erro} — <a href="#" style="color:var(--acc)">tentar de novo</a>`;
     v.erro.querySelector('a').onclick = (ev) => {
       ev.preventDefault();
-      if (e.detail.faixa?.id) d.carregarAudius(e.detail.faixa);
+      // pela fonte da faixa: mandar tudo pro Audius fazia a nova tentativa de
+      // uma faixa do hearthis (ou de uma pasta) falhar de novo, sempre
+      if (e.detail.faixa?.id) carregarFaixa(id, e.detail.faixa);
     };
   });
 
@@ -1195,6 +1203,19 @@ function desenharPassos(id, passos, falhou = false) {
 }
 
 function mostrarCreditos(faixa) {
+  if (ehHearthis(faixa)) {
+    // o crédito que o hearthis pede: o artista e o link pra faixa lá. Montado
+    // com textContent porque o nome vem de quem subiu a música
+    const a = atribuicaoHearthis(faixa);
+    const el = $('creditos');
+    el.textContent = a.artist + ' · ';
+    const link = document.createElement('a');
+    link.href = a.trackUrl; link.target = '_blank'; link.rel = 'noopener';
+    link.textContent = 'ouvir no hearthis.at';
+    el.appendChild(link);
+    if (a.license) el.appendChild(document.createTextNode(' · ' + a.license));
+    return;
+  }
   if (faixa.source !== 'audius') return;
   const a = attribution(faixa);
   // atribuição exigida pela Open Music License §1.5
@@ -1306,12 +1327,22 @@ async function carregarLista(fn) {
         <button class="pasta-b" title="">📁</button>
         <div class="carregar"><button class="pa">A</button><button class="pb">B</button></div>`;
       el.querySelector('.t').textContent = faixa.title;
-      el.querySelector('.a').textContent = faixa.artist;
+      el.querySelector('.a').textContent = faixa.artist + (ehHearthis(faixa) ? ' · hearthis' : '');
       el.__faixa = faixa;
 
-      let aquecida = false;
-      const aquecer = () => { if (!aquecida) { aquecida = true; prefetch(faixa.id).catch(() => {}); } };
-      el.onpointerenter = aquecer;
+      // cada fonte aquece do seu jeito, e arquivo de pasta não aquece. Mandar
+      // tudo pro prefetch do Audius gastava quatro tentativas com id alheio
+      const doHt = ehHearthis(faixa);
+      let aquecida = !doHt && !doAudius(faixa);
+      const aquecer = () => {
+        if (aquecida) return;
+        aquecida = true;
+        if (doHt) aquecerHearthis(faixa); else prefetch(faixa.id).catch(() => {});
+      };
+      // no hearthis aquecer já é baixar: só quando o ponteiro PARA no item
+      let parado = null;
+      el.onpointerenter = () => { if (doHt) parado = setTimeout(aquecer, 250); else aquecer(); };
+      el.onpointerleave = () => clearTimeout(parado);
       el.addEventListener('pointerdown', aquecer);
 
       const por = async (id) => {
@@ -1404,7 +1435,7 @@ async function carregarLista(fn) {
       lista.appendChild(el);
     }
     repintarLista();
-    faixas.slice(0, 3).forEach((x) => prefetch(x.id).catch(() => {}));
+    faixas.filter(doAudius).slice(0, 3).forEach((x) => prefetch(x.id).catch(() => {}));
   } catch (e) {
     lista.innerHTML = `<div class="aviso">Audius indisponível: ${e.message}</div>`;
   }
@@ -1467,11 +1498,12 @@ function pintarBiblioteca() {
  * pasta o BPM, o tom e a duração que a análise do deck achou.
  */
 async function carregarFaixa(id, faixa) {
+  if (ehHearthis(faixa)) return decks[id].carregarHearthis(faixa);
   if (faixa?.source !== 'local') return decks[id].carregarAudius(faixa);
   const file = faixa.file || await pastas.arquivo(faixa.localId);
   if (!file) { qd('dica').textContent = t('pastas.semArquivo'); return; }
   const r = decks[id].carregarArquivo(file, { id: faixa.id, localId: faixa.localId, title: faixa.title, artist: faixa.artist });
-  aprenderLocal(id, faixa.localId);
+  if (faixa.localId) aprenderLocal(id, faixa.localId);
   return r;
 }
 async function aprenderLocal(id, localId) {
@@ -2107,7 +2139,8 @@ $('b-piloto').onclick = async () => {
     // o DJ toca do MESMO lugar que a lista mostra: gêneros marcados, ou favoritas
     // ★ na lista = o DJ toca as favoritas (era o ♥ da fileira que saiu)
     const soFavoritas = fonteDj === 'favoritas' || bib.estado.ordem === 'favoritas';
-    const cands = soFavoritas ? bib.favoritasParaSet() : await bib.candidatasDoSet();
+    // espera os sinais de qualidade no máximo ~2,5 s: o que não chegou vem depois
+    const cands = soFavoritas ? bib.favoritasParaSet() : await bib.candidatasDoSet({ esperaSinais: 2500 });
     if (cands.length < 2) throw new Error(t(soFavoritas ? 'dj.poucasFav' : 'pref.semFaixas'));
     // passagens que o Jev achou que não combinam: o montador não repete
     const evitar = new Set();
@@ -2539,18 +2572,24 @@ $('b-garimpar').onclick = async () => {
  */
 (async () => {
   await new Promise((r) => setTimeout(r, 400));
-  const r = await carregarSemente({
-    aoAndar: ({ feitas, de }) => {
-      $('acervo-n').textContent = t('acervo.semeando', { i: feitas, de });
-      $('acervo-n').style.color = 'var(--acc)';
-    },
-  });
+  // uma semente por fonte (Audius, depois hearthis), cada uma com a sua versão
+  let novasDaSemente = 0;
+  for (const s of SEMENTES) {
+    const r = await carregarSemente({
+      ...s,
+      aoAndar: ({ feitas, de }) => {
+        $('acervo-n').textContent = t('acervo.semeando', { i: feitas, de });
+        $('acervo-n').style.color = 'var(--acc)';
+      },
+    });
+    if (r.carregou) novasDaSemente += r.novas;
+  }
   // depois o que a galera garimpou desde a última visita, e o que ela tirou
   const g = await puxarGalera();
   const lixoDaGalera = await puxarLixo();
   if (lixoDaGalera) bib.definirLixoGalera(lixoDaGalera);
   await mostrarAcervo();
-  if ((r.carregou && r.novas) || g.novas) recarregar();
+  if (novasDaSemente || g.novas) recarregar();
 })();
 
 mostrarAcervo();
@@ -2566,13 +2605,19 @@ window.addEventListener('idioma', mostrarAcervo);
  */
 const capasBuscadas = new Set();
 async function buscarCapa(faixa, v) {
-  if (capasBuscadas.has(faixa.id)) return;
+  if (capasBuscadas.has(faixa.id) || faixa.source === 'local') return;
   capasBuscadas.add(faixa.id);
   try {
-    const r = await fetch(`https://api.audius.co/v1/tracks/${faixa.id}?app_name=garimpo`);
-    if (!r.ok) return;
-    const d = (await r.json()).data;
-    const url = d?.artwork?.['480x480'] || d?.artwork?.['150x150'];
+    let url;
+    if (ehHearthis(faixa)) {
+      const d = await detalheHearthis(faixa);
+      url = d?.artwork_url || d?.thumb;
+    } else {
+      const r = await fetch(`https://api.audius.co/v1/tracks/${faixa.id}?app_name=garimpo`);
+      if (!r.ok) return;
+      const d = (await r.json()).data;
+      url = d?.artwork?.['480x480'] || d?.artwork?.['150x150'];
+    }
     if (!url) return;
     faixa.artwork = url;
     // só pinta se esta faixa ainda for a que está no deck

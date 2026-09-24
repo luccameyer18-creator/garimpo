@@ -6,8 +6,10 @@
   "description": "CDJ web com professor de mixagem. Audio do Audius e de arquivos locais; Spotify como crate.",
   "scripts": {
     "dev": "node dev-server.mjs 8080",
-    "test": "node src/dev/test-timemap.mjs && node src/dev/test-audius.mjs",
+    "test": "node src/dev/test-timemap.mjs && node src/dev/test-audius.mjs && node src/dev/test-hearthis.mjs",
     "test:timemap": "node src/dev/test-timemap.mjs",
-    "test:audius": "node src/dev/test-audius.mjs"
+    "test:audius": "node src/dev/test-audius.mjs",
+    "test:hearthis": "node src/dev/test-hearthis.mjs",
+    "garimpar:hearthis": "node src/dev/garimpar-hearthis.mjs"
   }
 }

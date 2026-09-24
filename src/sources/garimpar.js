@@ -23,6 +23,7 @@
  */
 
 import { APP_NAME, GENRES, CRATES, DJS, APOSTAS, ARTISTAS, isDeckable, normalizeTrack } from './audius.js';
+import * as hearthis from './hearthis.js';
 import { guardar as guardarLocal, contar, artistas, artistasVarridos, marcarVarrido,
          frentesEsgotadas, marcarEsgotada } from './crate.js';
 import { compartilhar } from './galera.js';
@@ -53,6 +54,14 @@ async function pegar(url, signal) {
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const j = await r.json();
   return j.data ?? [];      // /users/handle devolve objeto, o resto devolve lista
+}
+
+/** Página do hearthis: lista pura; "sem resultado" vem como objeto, e vira []. */
+async function pegarHearthis(url, signal) {
+  const r = await fetch(url, { signal });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  return Array.isArray(j) ? j : [];
 }
 
 /** Filtra o lote cru pro que serve num deck e normaliza. */
@@ -148,6 +157,21 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
     frentes.push({
       nome: `artista · ${a.nome}`, pilha: 'dj:' + a.nome, filtro: null,
       serie: [0, 100, 200].map((offset) => `${H}/users/${a.id}/tracks?limit=${LIMITE}&offset=${offset}&app_name=${APP_NAME}`),
+    });
+  }
+
+  /**
+   * 1c. HEARTHIS, categoria por categoria. A semente dele já traz o grosso
+   * (ver src/dev/garimpar-hearthis.mjs); aqui é pra pegar o que subiu depois.
+   * `duration=10` em toda página, senão vem set de uma hora. A API para por
+   * volta da 11ª página de 50.
+   */
+  for (const c of hearthis.CATEGORIAS) {
+    frentes.push({
+      nome: `hearthis · ${c.nome}`, pilha: hearthis.pilhaDe(c.slug), filtro: null,
+      fonte: 'hearthis', slug: c.slug,
+      serie: Array.from({ length: 11 }, (_, i) =>
+        `${hearthis.API}/categories/${c.slug}/?page=${i + 1}&count=${hearthis.POR_PAGINA}&duration=10`),
     });
   }
 
@@ -272,6 +296,15 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
       if (signal?.aborted || total >= alvo) break;
       feito++;
       try {
+        // artista do hearthis ('ht:fulano'): perguntar ao Audius seria um 404
+        if (a.handle.startsWith(hearthis.PREFIXO)) {
+          const novas = await guardar(await hearthis.faixasDoArtista(a.handle, { signal }), null);
+          total += novas;
+          marcarVarrido(a.handle);
+          aoAndar({ total, novas, frente: `artista ${a.handle}`, feito, de: aFazer.length + pendentes.length });
+          await dormir(PAUSA);
+          continue;
+        }
         const u = await pegar(`${H}/users/handle/${encodeURIComponent(a.handle)}?app_name=${APP_NAME}`, signal);
         const id = Array.isArray(u) ? u[0]?.id : u?.id;
         if (!id) { marcarVarrido(a.handle); continue; }
@@ -311,11 +344,12 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
           } catch { /* uma playlist fora do ar não derruba a varredura */ }
         }
       } else if (f.serie) {
+        const doHearthis = f.fonte === 'hearthis';
         for (const url of f.serie) {
           if (signal?.aborted) break;
-          const cru = await pegar(url, signal);
+          const cru = doHearthis ? await pegarHearthis(url, signal) : await pegar(url, signal);
           if (!cru.length) break;        // a API acabou este termo: não insiste
-          lote.push(...preparar(cru));
+          lote.push(...(doHearthis ? hearthis.preparar(cru, { slugOrigem: f.slug }) : preparar(cru)));
           await dormir(PAUSA);
         }
       } else {

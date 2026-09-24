@@ -184,7 +184,9 @@ export function parseKey(text) {
   else if (acc === 'flat' || acc === 'b' || acc === '♭') pc -= 1;
   pc = ((pc % 12) + 12) % 12;
 
-  const isMinor = /min/.test(m[3] || '') || /\bminor\b/.test(s);
+  // `m` sozinho também é menor: o hearthis escreve "Am", "Gbm". Com /min/ só,
+  // "Am" virava Lá MAIOR — e 'maj' não pode casar, por isso a âncora.
+  const isMinor = /^m(in(or)?)?$/.test(m[3] || '') || /\bminor\b/.test(s);
   const mode = isMinor ? 'minor' : 'major';
   const camelot = (isMinor ? MINOR_CAMELOT : MAJOR_CAMELOT)[pc] + (isMinor ? 'A' : 'B');
   return { pc, mode, camelot, label: `${SHARP[pc]} ${isMinor ? 'min' : 'maj'}` };

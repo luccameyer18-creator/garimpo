@@ -108,37 +108,71 @@ export async function contar() {
  * Aqui é uma passada pra todos. E a amostra é POR pilha — com uma só, House
  * (2.400 faixas) engoliria Pagode (83) e o gênero pequeno sumiria da lista.
  */
+/**
+ * PELOS ÍNDICES, não varrendo — desde que o hearthis entrou.
+ *
+ * A passada única pelo acervo inteiro custava ~775 ms com 39 mil faixas;
+ * com a semente do hearthis (47 mil) medi 1,3 a 1,9 s por chip, e cresce
+ * junto com o acervo. Os índices `pilha` e `genre` existiam desde o começo e
+ * ninguém lia: cada pilha agora busca SÓ as faixas dela.
+ */
+const pedido = (r) => new Promise((ok, no) => { r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+
+/** `k` sorteados de `a`, sem repetir (Fisher–Yates parcial). */
+function sortear(a, k) {
+  const x = [...a];
+  const n = Math.min(k, x.length);
+  for (let i = 0; i < n; i++) {
+    const j = i + Math.floor(Math.random() * (x.length - i));
+    [x[i], x[j]] = [x[j], x[i]];
+  }
+  return x.slice(0, n);
+}
+
 export async function buscarPilhas(pilhas, { bpmMin = null, bpmMax = null, porPilha = 250 } = {}) {
   const b = await abrir();
-  const alvo = pilhas.map((p) => ({ p, gen: p.startsWith('gen:') ? p.slice(4) : null, arr: [], vistos: 0 }));
-  return new Promise((ok, no) => {
-    const cur = b.transaction(LOJA, 'readonly').objectStore(LOJA).openCursor();
-    cur.onsuccess = () => {
-      const c = cur.result;
-      if (!c) {
-        const vistos = new Set(), fora = [];
-        for (const a of alvo) for (const f of a.arr) if (!vistos.has(f.id)) { vistos.add(f.id); fora.push(f); }
-        return ok(fora);
-      }
-      const f = c.value;
-      if (f.bpm && f.camelot && !(bpmMin != null && !(f.bpm >= bpmMin)) && !(bpmMax != null && !(f.bpm <= bpmMax))) {
-        for (const a of alvo) {
-          if (f.pilha !== a.p && !(a.gen && f.genre === a.gen)) continue;
-          if (a.arr.length < porPilha) a.arr.push(f);
-          else { const j = Math.floor(Math.random() * (a.vistos + 1)); if (j < porPilha) a.arr[j] = f; }
-          a.vistos++;
-        }
-      }
-      c.continue();
-    };
-    cur.onerror = () => no(cur.error);
-  });
+  const loja = b.transaction(LOJA, 'readonly').objectStore(LOJA);
+  const serve = (f) => f.bpm && f.camelot && !(bpmMin != null && !(f.bpm >= bpmMin)) && !(bpmMax != null && !(f.bpm <= bpmMax));
+  // todos os pedidos na mesma volta: a transação só fecha quando eles acabam
+  const porPilhaPedida = await Promise.all(pilhas.map((p) => Promise.all([
+    pedido(loja.index('pilha').getAll(p)),
+    p.startsWith('gen:') ? pedido(loja.index('genre').getAll(p.slice(4))) : [],
+  ])));
+  const vistos = new Set(), fora = [];
+  for (const [daPilha, doGenero] of porPilhaPedida) {
+    const daqui = new Map();
+    for (const f of daPilha) if (serve(f)) daqui.set(f.id, f);
+    for (const f of doGenero) if (serve(f)) daqui.set(f.id, f);
+    for (const f of sortear(daqui.values(), porPilha)) if (!vistos.has(f.id)) { vistos.add(f.id); fora.push(f); }
+  }
+  return fora;
+}
+
+/**
+ * Amostra do acervo INTEIRO sem varrer: sorteia entre as chaves (ou entre as
+ * da faixa de BPM, pelo índice) e busca só as sorteadas. É o caminho do
+ * "tudo" da lista e do pote do DJ.
+ */
+async function amostraDeTudo(limite, { bpmMin = null, bpmMax = null, precisaBpmETom = true } = {}) {
+  const b = await abrir();
+  const loja = b.transaction(LOJA, 'readonly').objectStore(LOJA);
+  const faixa = bpmMin != null || bpmMax != null
+    ? IDBKeyRange.bound(bpmMin ?? 0, bpmMax ?? 1000) : null;
+  const chaves = await pedido(faixa ? loja.index('bpm').getAllKeys(faixa) : loja.getAllKeys());
+  // sorteia um pouco a mais: sem BPM e tom a faixa não serve e sai
+  const escolhidas = sortear(chaves, Math.ceil(limite * 1.1));
+  const valores = await Promise.all(escolhidas.map((k) => pedido(loja.get(k))));
+  return valores.filter((f) => f && (!precisaBpmETom || (f.bpm && f.camelot))).slice(0, limite);
 }
 
 export async function buscar({ pilha = null, genero = null, texto = null,
                                bpmMin = null, bpmMax = null, camelot = null,
                                precisaBpmETom = true, limite = 200,
                                amostrar = false } = {}) {
+  // amostra sem filtro de conteúdo ("tudo"): pelas chaves, sem varrer
+  if (amostrar && !pilha && !genero && !texto && !camelot) {
+    return amostraDeTudo(limite, { bpmMin, bpmMax, precisaBpmETom });
+  }
   const b = await abrir();
   const q = texto ? String(texto).toLowerCase() : null;
   return new Promise((ok, no) => {

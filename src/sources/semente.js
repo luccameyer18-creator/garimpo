@@ -36,8 +36,18 @@ export const CAMPOS = ['id', 'title', 'artist', 'handle', 'duration', 'genre',
 
 const CHAVE_VERSAO = 'garimpo.sementeVersao';
 
+/**
+ * As sementes que o app carrega, na ordem. Cada uma tem a sua versão
+ * guardada: publicar uma nova do hearthis não recarrega as 39 mil do Audius.
+ */
+export const SEMENTES = [
+  { url: 'assets/acervo.json', chave: CHAVE_VERSAO },
+  { url: 'assets/acervo-hearthis.json', chave: CHAVE_VERSAO + '.hearthis' },
+];
+
 function inflar(linha) {
-  const f = { source: 'audius' };
+  // a fonte está no id: 'ht:artista/faixa' é do hearthis, o resto do Audius
+  const f = { source: String(linha[0]).startsWith('ht:') ? 'hearthis' : 'audius' };
   CAMPOS.forEach((c, i) => { f[c] = linha[i] ?? null; });
   f.isLongMix = f.duration > 600;
   f.playable = true;          // a semente só guarda o que passou no filtro de deck
@@ -56,15 +66,20 @@ function inflar(linha) {
  *
  * @returns {Promise<{carregou:boolean, novas:number, total:number, versao:string|null}>}
  */
-export async function carregarSemente({ url = 'assets/acervo.json', aoAndar = () => {} } = {}) {
+export async function carregarSemente({ url = 'assets/acervo.json', chave = CHAVE_VERSAO, aoAndar = () => {} } = {}) {
   try {
-    const r = await fetch(url, { cache: 'force-cache' });
+    let r = await fetch(url, { cache: 'force-cache' });
+    // force-cache devolve até um 404 GUARDADO (sem cache-control o navegador
+    // guarda por heurística): quem abriu o app antes do arquivo existir
+    // nunca mais receberia a semente. Visto com a do hearthis. Então, se o
+    // cache não serviu, pergunta ao servidor de novo.
+    if (!r.ok) r = await fetch(url, { cache: 'no-cache' });
     if (!r.ok) return { carregou: false, novas: 0, total: await contar().catch(() => 0), versao: null };
     const j = await r.json();
     const versao = String(j.versao || '');
 
     let jaTem = null;
-    try { jaTem = localStorage.getItem(CHAVE_VERSAO); } catch {}
+    try { jaTem = localStorage.getItem(chave); } catch {}
     if (jaTem === versao) {
       return { carregou: false, novas: 0, total: await contar().catch(() => 0), versao };
     }
@@ -80,7 +95,7 @@ export async function carregarSemente({ url = 'assets/acervo.json', aoAndar = ()
       // devolve o fôlego pro navegador entre lotes
       await new Promise((ok) => setTimeout(ok, 0));
     }
-    try { localStorage.setItem(CHAVE_VERSAO, versao); } catch {}
+    try { localStorage.setItem(chave, versao); } catch {}
     return { carregou: true, novas, total: await contar().catch(() => 0), versao };
   } catch {
     return { carregou: false, novas: 0, total: await contar().catch(() => 0), versao: null };

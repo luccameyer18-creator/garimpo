@@ -18,6 +18,7 @@
  */
 
 import { GENRES, CRATES, DJS, APOSTAS, ARTISTAS, trending, search, crateBr, revelacoes, apostasDaSemana, faixasDoArtista } from '../sources/audius.js';
+import * as hearthis from '../sources/hearthis.js';
 import * as crate from '../sources/crate.js';
 import { sinaisAudius } from '../coach/jev.js';
 import { familia, FAMILIAS_PISTA } from '../coach/setlist.js';
@@ -29,11 +30,40 @@ import * as pastas from '../sources/pastas.js';
  * das abas.
  */
 const artista = (a) => ({ chave: 'dj:' + a.nome, nome: a.nome, rede: () => faixasDoArtista(a.id, { limite: 60 }) });
+/**
+ * Os gêneros que só o hearthis tem (Dub Techno, UK Garage, Jungle…), um chip
+ * cada, na aba que faz sentido. Os que ele tem em comum com o Audius (House,
+ * Techno…) não ganham chip: as faixas dele entram nos chips que já existem.
+ */
+const doHearthis = (aba) => hearthis.CATEGORIAS.filter((c) => c.aba === aba).map((c) => ({
+  chave: hearthis.pilhaDe(c.slug), nome: c.nome, rede: () => hearthis.categoria(c.slug, { count: 40 }),
+}));
+
+/**
+ * 🕳️ UNDERGROUND: o que está rolando de bom na cena eletrônica, das DUAS
+ * fontes — as revelações do Audius (tração pra quem tem poucos seguidores) e
+ * o que a cena abraçou no hearthis entre o que subiu há pouco (ver
+ * hearthis.emAlta). Intercaladas, pra nenhuma fonte tomar a lista; uma fora
+ * do ar não apaga a outra.
+ */
+async function undergroundAgora({ limite = 80 } = {}) {
+  const [a, h] = await Promise.all([
+    revelacoes({ limite: limite / 2 }).catch(() => []),
+    hearthis.emAlta({ limite: limite / 2 }).catch(() => []),
+  ]);
+  const fora = [];
+  for (let i = 0; i < Math.max(a.length, h.length); i++) {
+    if (h[i]) fora.push(h[i]);
+    if (a[i]) fora.push(a[i]);
+  }
+  return fora;
+}
 export const GRUPOS = [
   // as SUAS pastas vêm primeiro: é a sua música (itens montados por porPastas)
   { grupo: 'app.grupo.pastas', ic: '📁', itens: [] },
   { grupo: 'app.grupo.eletronico', ic: '⚡',
-    itens: GENRES.map((g) => ({ chave: 'gen:' + g, nome: g, rede: () => trending({ genre: g, limit: 40 }) })) },
+    itens: [...GENRES.map((g) => ({ chave: 'gen:' + g, nome: g, rede: () => trending({ genre: g, limit: 40 }) })),
+            ...doHearthis('eletronico')] },
   { grupo: 'app.grupo.brasil', ic: '⚽',
     itens: CRATES.filter((c) => c.reg === 'BR').map((c) => ({ chave: 'br:' + c.nome, nome: c.nome,
       rede: () => crateBr(c.nome, { limite: 40 }) })) },
@@ -41,13 +71,14 @@ export const GRUPOS = [
     itens: CRATES.filter((c) => c.reg === 'LAT').map((c) => ({ chave: 'lat:' + c.nome, nome: c.nome,
       rede: () => crateBr(c.nome, { limite: 40 }) })) },
   { grupo: 'app.grupo.estilos', ic: '✨',
-    itens: CRATES.filter((c) => c.reg === 'EST').map((c) => ({ chave: 'est:' + c.nome, nome: c.nome,
-      rede: () => crateBr(c.nome, { limite: 40 }) })) },
+    itens: [...CRATES.filter((c) => c.reg === 'EST').map((c) => ({ chave: 'est:' + c.nome, nome: c.nome,
+      rede: () => crateBr(c.nome, { limite: 40 }) })), ...doHearthis('estilos')] },
   // as apostas: o que está estourando. Revelações é FRESCA (quem está
   // chegando muda toda semana: volta à rede a cada 6 h mesmo com acervo); as
   // 🚀 da semana entram logo depois dela, ver carregarApostas()
   { grupo: 'app.grupo.apostas', ic: '🔥',
-    itens: [{ chave: 'dj:Revelações', nome: '🔥 Revelações', fresca: true, rede: () => revelacoes({ limite: 60 }) },
+    itens: [{ chave: 'dj:Underground', nome: '🕳️ Underground', fresca: true, rede: () => undergroundAgora({ limite: 80 }) },
+      { chave: 'dj:Revelações', nome: '🔥 Revelações', fresca: true, rede: () => revelacoes({ limite: 60 }) },
       ...APOSTAS.map((c) => ({ chave: 'dj:' + c.nome, nome: c.nome, rede: () => crateBr(c.nome, { limite: 60 }) }))] },
   { grupo: 'app.grupo.djs', ic: '🎧',
     itens: DJS.map((c) => ({ chave: 'dj:' + c.nome, nome: c.nome, rede: () => crateBr(c.nome, { limite: 60 }) })) },
@@ -76,28 +107,45 @@ export function porPastas() {
 let selecionadasRef = null, gravarSel = null;
 
 /**
- * 🚀 APOSTAS DA SEMANA: os artistas do Audius que mais pegaram tração, com
- * NOME, um chip cada. Guardadas por 12 h (a conta pede 14 chamadas); ao
- * trocar, as que saíram deixam de estar marcadas. Devolve true se mudou.
+ * 🚀 APOSTAS DA SEMANA: os artistas que mais pegaram tração, com NOME, um
+ * chip cada — os do Audius e os estourados do hearthis (ver
+ * hearthis.estourados), intercalados. Guardadas por 12 h; ao trocar, as que
+ * saíram deixam de estar marcadas. Devolve true se mudou.
+ *
+ * A chave do guardado mudou (garimpo.apostas2) quando o hearthis entrou:
+ * com a antiga, quem já tinha a lista de 12 h só veria os estourados dele
+ * quando ela vencesse.
  */
+const CHAVE_APOSTAS = 'garimpo.apostas2';
 const GRUPO_APOSTAS = GRUPOS.find((g) => g.grupo === 'app.grupo.apostas');
 function porApostas(lista) {
   GRUPO_APOSTAS.itens = GRUPO_APOSTAS.itens.filter((i) => !i.chave.startsWith('ap:'));
   // quem já tem chip com nome (Aurelios é aposta fixa E sai na da semana) não repete
   const ja = new Set(TODAS.filter((i) => i.chave.startsWith('dj:')).map((i) => i.nome.toLowerCase()));
   lista = lista.filter((a) => !ja.has(a.nome.toLowerCase()));
-  GRUPO_APOSTAS.itens.splice(1, 0, ...lista.map((a) => ({
-    chave: 'ap:' + a.id, nome: '🚀 ' + a.nome, fresca: true, rede: () => faixasDoArtista(a.id, { limite: 60 }),
+  // logo depois das Revelações (e do Underground, que vem antes delas)
+  const depois = GRUPO_APOSTAS.itens.findIndex((i) => i.chave === 'dj:Revelações') + 1;
+  GRUPO_APOSTAS.itens.splice(depois, 0, ...lista.map((a) => ({
+    chave: 'ap:' + a.id, nome: '🚀 ' + a.nome, fresca: true,
+    rede: a.fonte === 'hearthis' ? () => hearthis.faixasDoArtista(a.id)
+                                 : () => faixasDoArtista(a.id, { limite: 60 }),
   })));
   TODAS = GRUPOS.flatMap((g) => g.itens);
 }
 export async function carregarApostas() {
-  const salvo = ler('garimpo.apostas', null);
+  const salvo = ler(CHAVE_APOSTAS, null);
   if (salvo?.lista?.length && Date.now() - salvo.quando < 12 * 3600e3) return false;
-  let lista;
-  try { lista = await apostasDaSemana({ n: 8 }); } catch { return false; }
+  const [doAudius, doHearthis] = await Promise.all([
+    apostasDaSemana({ n: 8 }).catch(() => []),
+    hearthis.estourados({ n: 8 }).catch(() => []),
+  ]);
+  const lista = [];
+  for (let i = 0; i < Math.max(doAudius.length, doHearthis.length); i++) {
+    if (doAudius[i]) lista.push(doAudius[i]);
+    if (doHearthis[i]) lista.push(doHearthis[i]);
+  }
   if (!lista.length) return false;
-  gravar('garimpo.apostas', { quando: Date.now(), lista });
+  gravar(CHAVE_APOSTAS, { quando: Date.now(), lista });
   porApostas(lista);
   const vivas = new Set(TODAS.map((i) => i.chave));
   for (const s of [...selecionadas]) if (s.startsWith('ap:') && !vivas.has(s)) selecionadas.delete(s);
@@ -121,7 +169,7 @@ selecionadasRef = () => selecionadas;
 gravarSel = () => gravar('garimpo.bib.generos', [...selecionadas]);
 porPastas();
 // as 🚀 apostas guardadas aparecem já no primeiro quadro (ler/gravar existem daqui pra baixo)
-porApostas(ler('garimpo.apostas', { lista: [] }).lista || []);
+porApostas(ler(CHAVE_APOSTAS, { lista: [] }).lista || []);
 /**
  * TRASH: o que não é música (piada, teste, grito, ruído). `lixo` é o que VOCÊ
  * tirou (👎) ou o Jev reprovou neste aparelho; `lixoGalera` é o que a galera
@@ -300,9 +348,14 @@ export async function faixasDaLista({ texto = '', pontuarCombina = null } = {}) 
      * "ache esta em qualquer lugar", então ignora o gênero marcado.
      */
     try { lista = await crate.buscar({ texto: q, limite: 300 }); } catch { lista = []; }
-    // não achou no acervo: vai à rede — acha o que ninguém garimpou ainda
+    // não achou no acervo: vai à rede — acha o que ninguém garimpou ainda.
+    // As duas fontes ao mesmo tempo; uma fora do ar não apaga a outra
     if (lista.length < 5) {
-      try { lista = lista.concat(await search(q, { limit: 40 })); } catch {}
+      const [a, h] = await Promise.all([
+        search(q, { limit: 40 }).catch(() => []),
+        hearthis.buscar(q, { count: 40 }).catch(() => []),
+      ]);
+      lista = lista.concat(a, h);
     }
   } else {
     lista = await doAcervo();

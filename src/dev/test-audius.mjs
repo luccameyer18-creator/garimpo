@@ -32,6 +32,13 @@ eq('F major        → 7B',  parseKey('F major')?.camelot, '7B');
 eq('E minor        → 9A',  parseKey('E minor')?.camelot, '9A');
 eq('D sharp minor  → 2A',  parseKey('D sharp minor')?.camelot, '2A');
 eq('rótulo normalizado',   parseKey('A flat minor')?.label, 'G# min');
+// forma curta, a do hearthis: o "m" sozinho é menor
+eq('Am             → 8A',  parseKey('Am')?.camelot, '8A');
+eq('Gbm            → 11A', parseKey('Gbm')?.camelot, '11A');
+eq('Bbm            → 3A',  parseKey('Bbm')?.camelot, '3A');
+eq('Bm             → 10A', parseKey('Bm')?.camelot, '10A');
+eq('D              → 10B', parseKey('D')?.camelot, '10B');
+eq('Cmaj           → 8B',  parseKey('Cmaj')?.camelot, '8B');
 eq('texto inválido',       parseKey('xyz'), null);
 eq('nulo',                 parseKey(null), null);
 
