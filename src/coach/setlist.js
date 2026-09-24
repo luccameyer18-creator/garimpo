@@ -86,6 +86,86 @@ export function raiz(t) {
   return s.replace(/[^\p{L}\p{N}]+/gu, ' ').trim() || String(t?.id);
 }
 
+/**
+ * FAMÍLIA de som de uma faixa — pelo gênero marcado (`pilha`) e pelo gênero
+ * do Audius. O montador cobrava caro repetir gênero e premiava o set com mais
+ * gêneros: pulava de pagode pra techno pra reggaeton, e as transições não
+ * faziam sentido ("as músicas nada a ver uma com a outra"). Agora o set fica
+ * numa família e só passa pra uma vizinha, devagar.
+ */
+const FAMILIAS = [
+  ['slowed', /slw:|slowed|sped ?up|nightcore/],
+  ['funkbr', /br:funk|funk rj|brega|megafunk|mega disco|mega house|trap br|montagem|baile|gen:funk|funk/],
+  ['rap', /rap|hip-hop|boombap|\btrap\b/],
+  ['latino', /reggaeton|perreo|dembow|guaracha|moombah|cumbia|salsa|bachata|amapiano|latin/],
+  ['brasil', /pagode|samba|sertanejo|ax[eé]|pagod[aã]o|world|forr[oó]|piseiro/],
+  ['house', /tech house|deep house|house|disco|garage|progressive/],
+  ['techno', /techno|trance|psy|minimal|hard/],
+  ['bass', /dubstep|drum|bass|future|electro\b|jungle/],
+  ['chill', /ambient|lo-?fi|downtempo|chill|vaporwave|classical|piano|new age/],
+  ['eletronico', /electronic|edm|dance/],
+  ['pop', /\bpop\b|k-pop/],
+  ['rock', /rock|alternative|metal|punk|indie|grunge/],
+  ['soul', /jazz|soul|r&b|blues|gospel|devotional|funk ?soul/],
+];
+/** Famílias de PISTA: com "tudo" marcado, o set só pega destas (rock, jazz e
+ *  chill entram quando você marca o gênero de propósito). */
+export const FAMILIAS_PISTA = new Set(['house', 'techno', 'bass', 'eletronico', 'funkbr', 'latino', 'rap', 'brasil', 'pop']);
+export function familia(t) {
+  const s = `${t?.pilha || ''} ${t?.genre || ''}`.toLowerCase();
+  for (const [f, re] of FAMILIAS) if (re.test(s)) return f;
+  return null;
+}
+/** Quanto custa passar de uma família pra outra: vizinhas custam pouco. */
+const VIZINHAS = {
+  'house|techno': 4, 'house|eletronico': 1, 'techno|eletronico': 1, 'bass|eletronico': 2, 'house|bass': 6,
+  'techno|bass': 5, 'funkbr|rap': 5, 'funkbr|latino': 5, 'rap|latino': 6, 'latino|house': 7, 'brasil|funkbr': 6,
+  'chill|eletronico': 4, 'chill|house': 6, 'slowed|rap': 6, 'slowed|funkbr': 6,
+  'pop|house': 5, 'pop|latino': 5, 'pop|rap': 5, 'pop|eletronico': 4, 'soul|rap': 5, 'soul|chill': 4,
+  'soul|house': 6, 'rock|pop': 5,
+};
+export function custoFamilia(a, b) {
+  const fa = familia(a), fb = familia(b);
+  if (fa === fb && fa) return 0;
+  // sem família conhecida não é "combina com tudo": é um risco (antes custava 0,
+  // e um set "coeso" misturava vaporwave, rock e cumbia)
+  if (!fa || !fb) return 7;
+  return VIZINHAS[`${fa}|${fb}`] ?? VIZINHAS[`${fb}|${fa}`] ?? 10;
+}
+
+/**
+ * AFINIDADE entre duas faixas, de 0 a 1: as TAGS que os artistas puseram
+ * (Jaccard) e o CLIMA (mood) do Audius. Duas faixas "groove, techhouse,
+ * summer" se atraem mesmo em gêneros vizinhos; é o que deixa o set alternar
+ * sem parecer que mudou de festa.
+ */
+function tagsDe(t) {
+  const cru = t?.tags?.length ? t.tags : String(t?.sinais?.tags || '').split(',');
+  return new Set(cru.map((x) => String(x).trim().toLowerCase().replace(/^#/, '')).filter((x) => x.length > 1));
+}
+export function afinidade(a, b) {
+  const ta = tagsDe(a), tb = tagsDe(b);
+  let comum = 0;
+  for (const x of ta) if (tb.has(x)) comum++;
+  const uniao = ta.size + tb.size - comum;
+  const jac = uniao ? comum / uniao : 0;
+  const ma = a?.mood || a?.sinais?.clima, mb = b?.mood || b?.sinais?.clima;
+  return Math.min(1, jac * 1.6 + (ma && mb && ma === mb ? 0.35 : 0));
+}
+
+/**
+ * VARIEDADE — o ajuste do DJ. Quanto pesa trocar de família, e se trocar de
+ * gênero DENTRO dela (ou pra uma vizinha) ganha ou custa:
+ *   coeso        fica no mesmo som; troca de família quase nunca
+ *   equilibrado  fica na família, varia de gênero de vez em quando
+ *   eclético     alterna de propósito — mas só pra vizinhos que combinam
+ */
+export const VARIEDADES = {
+  coeso:       { familia: 1.6, trocaPerto: 1.5 },
+  equilibrado: { familia: 1,   trocaPerto: 0.5 },
+  ecletico:    { familia: 0.45, trocaPerto: -2 },
+};
+
 /** As pilhas que o professor conhece, e como buscar cada uma. */
 export const PILHAS = [
   { nome: 'Disco',     buscar: () => trending({ genre: 'Disco', limit: 50 }) },
@@ -144,7 +224,8 @@ export async function juntarCandidatas({ pilhas = null, bpmMin = 100, bpmMax = 1
  * que enfiá-la no meio e estragar o set em silêncio.
  */
 function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
-                                        recentes = null, sorte = 0 }) {
+                                        recentes = null, sorte = 0, variedade = 'equilibrado', evitar = null }) {
+  const V = VARIEDADES[variedade] || VARIEDADES.equilibrado;
   const usadas = new Set([semente.id]);
   const raizes = new Set([raiz(semente)]);
   const fila = [semente];
@@ -183,6 +264,8 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
 
   const encaixaNivel = (de, t, n) => {
     if (usadas.has(t.id) || !t.bpm || raizes.has(raiz(t))) return false;
+    // passagem que o Jev achou que não combina (ver julgarPassagens)
+    if (evitar?.has(de.id + '>' + t.id)) return false;
     const lv = NIVEIS[n];
     if (Math.abs(t.bpm / de.bpm - 1) > lv.bpm) return false;
     if (lv.roda === 0) return keyCompatible({ camelot: de.camelot }, { camelot: t.camelot }).ok;
@@ -204,6 +287,9 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
 
   while ((dur < minutos * 60 || (pendentes.length && dur < teto)) && fila.length < 24) {
     let esc = null;
+    // quantas do mesmo gênero seguidas no fim da fila
+    let mesmoGenero = 0;
+    for (let k = fila.length - 1; k >= 0 && fila[k].pilha === atual.pilha; k--) mesmoGenero++;
 
     // 1. alguma obrigatória encaixa agora? ela tem prioridade absoluta
     const i = pendentes.findIndex((t) => encaixa(atual, t));
@@ -227,8 +313,14 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
         const h = keyCompatible({ camelot: atual.camelot }, { camelot: t.camelot });
         let c = (h.distance ?? 0) * 3
               + Math.abs(t.bpm - alvo) / atual.bpm * 60
-              + (t.pilha === atual.pilha ? 6 : 0)
-              + (anterior && t.pilha === anterior.pilha ? 2 : 0)
+              // COERÊNCIA: ficar na família de som é o normal; vizinha custa
+              // pouco, família distante custa caro. Dentro da família, trocar
+              // de gênero é leve — e 4+ do mesmo gênero em fila pede variar
+              + custoFamilia(atual, t) * V.familia
+              + (t.pilha === atual.pilha ? (mesmoGenero >= 4 ? 2 : 0)
+                 : custoFamilia(atual, t) <= 5 ? V.trocaPerto : 1)
+              // tags e clima parecidos se atraem: até 4 pontos
+              - afinidade(atual, t) * 4
               /**
                * MEMÓRIA e SORTE — é o que faz dois sets seguidos não serem o
                * mesmo set.
@@ -295,7 +387,7 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
  */
 export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente = null,
                                         obrigatorias = [], recentes = [], sorte = 3.5,
-                                        variar = true } = {}) {
+                                        variar = true, variedade = 'equilibrado', evitar = null } = {}) {
   const jaOuvidas = new Set(recentes || []);
   if (!candidatas?.length) return { fila: [], minutos: 0, generos: 0, naoCoube: obrigatorias };
 
@@ -358,13 +450,17 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
 
   const resultados = [];
   for (const s of sementes) {
-    const r = corrente(s, pote, { minutos, energia, obrigatorias, recentes: jaOuvidas, sorte });
+    const r = corrente(s, pote, { minutos, energia, obrigatorias, recentes: jaOuvidas, sorte, variedade, evitar });
     const generos = new Set(r.fila.map((x) => x.pilha)).size;
     // quantas faixas, quantos gêneros, quantas escolhidas entraram, e quão
     // perto da duração pedida. As suas escolhas pesam mais que tudo.
     const novas = r.fila.filter((x) => !jaOuvidas.has(x.id)).length;
     const q = r.fila.reduce((s, x) => s + qualidade(x), 0) / Math.max(1, r.fila.length);
-    const pontos = r.fila.length + generos * 4 + novas * 2 + q * 12
+    // saltos de família no set inteiro: um set que faz sentido quase não salta
+    const saltos = r.fila.slice(1).reduce((s, x, k) => s + custoFamilia(r.fila[k], x), 0);
+    const V = VARIEDADES[variedade] || VARIEDADES.equilibrado;
+    const pontos = r.fila.length + Math.min(generos, 4) * (variedade === 'ecletico' ? 3 : 1.5)
+                 - saltos * 0.8 * V.familia + novas * 2 + q * 12
                  + (obrigatorias.length - r.naoCoube.length) * 20
                  + (Math.abs(r.minutos - minutos) < 6 ? 8 : 0)
                  - Math.abs(r.minutos - minutos) / 3;

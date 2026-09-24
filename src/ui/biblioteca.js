@@ -20,6 +20,8 @@
 import { GENRES, CRATES, DJS, APOSTAS, ARTISTAS, trending, search, crateBr, revelacoes, apostasDaSemana, faixasDoArtista } from '../sources/audius.js';
 import * as crate from '../sources/crate.js';
 import { sinaisAudius } from '../coach/jev.js';
+import { familia, FAMILIAS_PISTA } from '../coach/setlist.js';
+import * as pastas from '../sources/pastas.js';
 
 /** Todas as pilhas, cada uma com chave única e rótulo. */
 /**
@@ -28,6 +30,8 @@ import { sinaisAudius } from '../coach/jev.js';
  */
 const artista = (a) => ({ chave: 'dj:' + a.nome, nome: a.nome, rede: () => faixasDoArtista(a.id, { limite: 60 }) });
 export const GRUPOS = [
+  // as SUAS pastas vêm primeiro: é a sua música (itens montados por porPastas)
+  { grupo: 'app.grupo.pastas', ic: '📁', itens: [] },
   { grupo: 'app.grupo.eletronico', ic: '⚡',
     itens: GENRES.map((g) => ({ chave: 'gen:' + g, nome: g, rede: () => trending({ genre: g, limit: 40 }) })) },
   { grupo: 'app.grupo.brasil', ic: '⚽',
@@ -54,6 +58,22 @@ export const GRUPOS = [
       rede: () => crateBr(c.nome, { limite: 40 }) })) },
 ];
 let TODAS = GRUPOS.flatMap((g) => g.itens);
+
+/** Os chips da aba 📁: uma por pasta. `pasta: true` = nunca vai à rede nem ao acervo. */
+const GRUPO_PASTAS = GRUPOS[0];
+export function porPastas() {
+  GRUPO_PASTAS.itens = pastas.listar().map((p) => ({
+    chave: 'pasta:' + p.id, nome: p.nome, n: p.n, pasta: true, rede: async () => pastas.faixasDe(p.id),
+  }));
+  TODAS = GRUPOS.flatMap((g) => g.itens);
+  // pasta apagada deixa de estar marcada
+  let mudou = false;
+  for (const s of [...(selecionadasRef?.() || [])]) {
+    if (s.startsWith('pasta:') && !TODAS.some((i) => i.chave === s)) { selecionadasRef().delete(s); mudou = true; }
+  }
+  if (mudou) gravarSel?.();
+}
+let selecionadasRef = null, gravarSel = null;
 
 /**
  * 🚀 APOSTAS DA SEMANA: os artistas do Audius que mais pegaram tração, com
@@ -97,6 +117,9 @@ let selecionadas = new Set(ler('garimpo.bib.generos', []));
 let ordem = ler('garimpo.bib.ordem', 'embaralhar');
 let decrescente = ler('garimpo.bib.desc', false);
 let favoritas = ler('garimpo.favoritas', []);   // objetos completos: tocam sem rede
+selecionadasRef = () => selecionadas;
+gravarSel = () => gravar('garimpo.bib.generos', [...selecionadas]);
+porPastas();
 // as 🚀 apostas guardadas aparecem já no primeiro quadro (ler/gravar existem daqui pra baixo)
 porApostas(ler('garimpo.apostas', { lista: [] }).lista || []);
 /**
@@ -198,9 +221,12 @@ async function doAcervo({ bpmMin = null, bpmMax = null, porPilha = 250, tudo = 1
   const fora = [];
   const vistos = new Set();
   const somar = (lista) => { for (const t of lista) if (!vistos.has(t.id)) { vistos.add(t.id); fora.push(t); } };
+  // as PASTAS marcadas entram direto: são suas, não moram no acervo nem na rede
+  for (const s of selecionadas) if (s.startsWith('pasta:')) somar(pastas.faixasDe(s.slice(6)));
+  const deFora = [...selecionadas].filter((s) => !s.startsWith('pasta:'));
   try {
     if (!selecionadas.size) somar(await crate.buscar({ ...f, limite: tudo }));
-    else somar(await crate.buscarPilhas([...selecionadas], { bpmMin, bpmMax, porPilha }));
+    else if (deFora.length) somar(await crate.buscarPilhas(deFora, { bpmMin, bpmMax, porPilha }));
   } catch { /* sem IndexedDB: segue pela rede abaixo */ }
 
   /**
@@ -220,7 +246,7 @@ async function doAcervo({ bpmMin = null, bpmMax = null, porPilha = 250, tudo = 1
         if (s === t.pilha || (s.startsWith('gen:') && t.genre === s.slice(4))) porPilhaAchada[s] = (porPilhaAchada[s] || 0) + 1;
       }
     }
-    const faltam = TODAS.filter((i) => selecionadas.has(i.chave) &&
+    const faltam = TODAS.filter((i) => !i.pasta && selecionadas.has(i.chave) &&
       ((porPilhaAchada[i.chave] || 0) < 30 || (i.fresca && passada(i.chave))));
     await Promise.all(faltam.slice(0, 6).map(async (it) => {
       try {
@@ -245,7 +271,8 @@ function passada(chave) {
 async function daRede() {
   const fora = [];
   // sem gênero marcado: três pilhas SORTEADAS (antes era sempre House)
-  const alvo = selecionadas.size ? TODAS.filter((i) => selecionadas.has(i.chave)) : embaralhar(TODAS).slice(0, 3);
+  const alvo = selecionadas.size ? TODAS.filter((i) => selecionadas.has(i.chave) && !i.pasta)
+                                  : embaralhar(TODAS.filter((i) => !i.pasta)).slice(0, 3);
   for (const it of alvo.slice(0, 6)) {
     try { fora.push(...await it.rede()); } catch {}
   }
@@ -298,7 +325,12 @@ export async function candidatasDoSet() {
   // 70–180 BPM: com 100–150, boombap (~90) nunca entrava num set
   let lista = await doAcervo({ bpmMin: 70, bpmMax: 180, porPilha: 900, tudo: 5000 });
   if (lista.length < 40) lista = lista.concat(await daRede());
-  lista = lista.filter((f) => f.bpm && f.camelot && f.duration >= 90 && f.duration <= 420 && !ehLixo(f.id));
+  // com "tudo" (nada marcado), o set é de PISTA: rock, jazz, chill e o que
+  // não tem família ficam de fora — marcando o gênero, eles entram
+  if (!selecionadas.size) lista = lista.filter((f) => FAMILIAS_PISTA.has(familia(f)));
+  // música sua (pasta) entra sem tom: o arquivo não traz, e ela é sua
+  lista = lista.filter((f) => f.bpm && (f.camelot || f.source === 'local')
+    && (f.source === 'local' || (f.duration >= 90 && f.duration <= 420)) && !ehLixo(f.id));
   // sem repetidas: o que veio do acervo e o que veio da rede se sobrepõem, e a
   // mesma música às vezes foi enviada duas vezes (mesmo título e artista)
   const vistas = new Set();

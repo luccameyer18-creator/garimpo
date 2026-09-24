@@ -360,6 +360,22 @@
                max-height:132px; overflow-y:auto; }
   .gen-desc { width:100%; font:800 8px ui-monospace,monospace; letter-spacing:.12em; color:var(--fraco);
               text-transform:uppercase; }
+  /* PASTAS: o número de faixas no chip, as ações, e o menu 📁 do item */
+  .gen-chips button small { font-size:9px; opacity:.6; margin-left:2px; }
+  .gen-chips .pasta-acao { border-style:dashed; color:var(--acc); }
+  .gen-chips .pasta-acao.perigo { color:var(--bad); }
+  .pasta-nome { font:700 11px ui-sans-serif,system-ui,sans-serif; padding:5px 9px; border-radius:20px; min-width:140px;
+                background:var(--fundo-tela); border:1px solid var(--acc); color:var(--fg); }
+  .item { position:relative; }
+  .item .pasta-b { flex:none; padding:5px 6px; font-size:12px; border-radius:6px; opacity:.55; filter:grayscale(1); }
+  .item .pasta-b.lig { opacity:1; filter:none; border-color:var(--acc); }
+  .menu-pasta { position:absolute; right:6px; top:calc(100% - 4px); z-index:30; display:flex; flex-direction:column; gap:3px;
+                min-width:170px; max-height:220px; overflow-y:auto; padding:6px; border-radius:10px;
+                background:linear-gradient(180deg,#221640,#140d26); border:1px solid color-mix(in srgb, var(--acc) 45%, var(--linha));
+                box-shadow:0 10px 30px rgba(0,0,0,.6); }
+  .menu-pasta button { text-align:left; padding:6px 9px; font:700 11px ui-sans-serif,system-ui,sans-serif; border-radius:7px; }
+  .menu-pasta button.lig { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 45%, var(--linha)); }
+
   /* a aba na fileira do DJ: ◂ nome ▸ */
   .dj-generos .dj-aba { color:var(--acc); border-color:color-mix(in srgb, var(--acc) 45%, var(--linha)); }
   .dj-generos .dj-aba.nome { font-weight:800; }
@@ -742,7 +758,7 @@
   #b-piloto { width:100%; padding:13px 10px; border-radius:10px; border-color:var(--neon); color:var(--neon);
               font:900 12px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.09em; text-transform:uppercase; }
   #b-piloto:hover:not(.lig) { background:color-mix(in srgb, var(--neon) 14%, transparent); }
-  .piloto-op { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:5px; }
+  .piloto-op { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:5px; }
   .piloto-op select { font-size:11px; padding:7px 5px; border-radius:8px; }
   .prefs { padding:6px; }
   .dica-bib { font-size:10px; color:var(--fraco); line-height:1.35; }
@@ -1408,6 +1424,12 @@
               <option value="estavel" data-i18n="app.energia.estavel">estável</option>
               <option value="descer" data-i18n="app.energia.descer">descendo</option>
             </select>
+            <!-- o quanto o set alterna de gênero (ver VARIEDADES em setlist.js) -->
+            <select id="pref-variedade" data-i18n-attr="title:var.dica" title="quanto o set alterna de gênero">
+              <option value="coeso" data-i18n="var.coeso">coeso</option>
+              <option value="equilibrado" selected data-i18n="var.equilibrado">equilibrado</option>
+              <option value="ecletico" data-i18n="var.ecletico">eclético</option>
+            </select>
           </div>
           <div class="prefs" id="prefs" hidden>
             <button id="b-esquecer" data-i18n="pref.esquecer">esquecer o que já tocou</button>
@@ -1620,6 +1642,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260924h"></script>
+<script type="module" src="./src/ui/app.js?v=20260924j"></script>
 </body>
 </html>

@@ -52,7 +52,7 @@ const DURACOES = { curta: 16, frase: 32, longa: 64 };
  */
 const FAIXA_DURACAO = {
   corte: [8, 8], eco: [16, 16], loop: [16, 32],
-  graves: [16, 64], filtro: [16, 64], blend: [32, 64], agudos: [32, 64], duplo: [32, 32],
+  graves: [16, 64], filtro: [16, 64], blend: [32, 64], agudos: [32, 64], duplo: [32, 32], estende: [32, 32],
 };
 function duracaoValida(tecnica, pedida) {
   const f = FAIXA_DURACAO[tecnica];
@@ -153,6 +153,56 @@ export async function julgarFaixas(faixas, { corte = 0.35, signal } = {}) {
 }
 
 /**
+ * ESSA EMENDA NESSA? — o Jev julga cada PASSAGEM do set, antes de tocar.
+ *
+ * BPM, tom e família dizem se dá pra mixar; não dizem se faz sentido. Uma
+ * faixa de piano melancólico e um tech house de festa podem ter o mesmo BPM,
+ * o mesmo tom e a mesma família "eletrônico". O Jev lê título, artista,
+ * gênero, tags e clima das duas e responde se um DJ emendaria uma na outra.
+ * Uma pergunta sim/não por passagem, todas no mesmo pedido.
+ *
+ * @returns {Promise<null | { ruins: {de:object, para:object, p:number}[], notas: number[] }>}
+ */
+export async function julgarPassagens(fila, { corte = 0.45, signal } = {}) {
+  const url = urlJev();
+  if (!url || !fila || fila.length < 2) return null;
+  const sinais = await sinaisAudius(fila);
+  const state = {
+    faixas: fila.map((f) => ({
+      titulo: f.title, artista: f.artist, genero: f.genre || null, bpm: f.bpm, tom: f.camelot || null,
+      tags: sinais[f.id]?.tags || (f.tags || []).join(',') || null, clima: sinais[f.id]?.clima || f.mood || null,
+    })),
+  };
+  const questions = {};
+  for (let i = 0; i < fila.length - 1; i++) {
+    questions[`p${i}`] = {
+      type: 'noul',
+      instructions: `In a DJ set, \`faixas[${i + 1}]\` is mixed right after \`faixas[${i}]\`. Would the crowd feel ` +
+        'this as a natural continuation of the same party — same or neighboring scene, compatible mood and ' +
+        'energy — rather than an unrelated jump? Genre changes between close styles are fine; ' +
+        'answer no only when the two tracks clearly belong to different worlds.',
+    };
+  }
+  let j;
+  try {
+    const r = await fetch(url, {
+      method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'jev-latest', state, questions }),
+    });
+    if (!r.ok) return null;
+    j = await r.json();
+  } catch { return null; }
+  if (!j?.answers) return null;
+  const notas = [], ruins = [];
+  for (let i = 0; i < fila.length - 1; i++) {
+    const p = j.answers[`p${i}`]?.noul;
+    notas.push(p ?? null);
+    if (typeof p === 'number' && p < corte) ruins.push({ de: fila[i], para: fila[i + 1], p });
+  }
+  return { ruins, notas, tokens: j.usage };
+}
+
+/**
  * Decide técnica e duração de cada transição do set, num pedido só.
  *
  * @param {object[]} fila  faixas na ordem em que vão tocar
@@ -214,7 +264,7 @@ export async function decidirSet(fila, estilo = 'pista', { signal } = {}) {
     // política no código: tom que briga não se sobrepõe, diga o Jev o que disser
     const entra = fila[i + 1];
     const brigam = entra?.harmonicamenteOk === false || (entra?.nivel ?? 0) >= 2;
-    if (tecnica && brigam && !['eco', 'corte'].includes(tecnica)) {
+    if (tecnica && brigam && !['eco', 'corte', 'agudos'].includes(tecnica)) {
       porque = `Jev quis ${TECNICAS[tecnica].nome}, mas os tons brigam — virou echo out`;
       tecnica = 'eco';
     }

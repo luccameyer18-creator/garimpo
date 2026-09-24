@@ -123,12 +123,13 @@ export class Piloto extends EventTarget {
    * graves, o corte). A transição começa `impacto` tempos antes e termina
    * dentro da faixa. Com `cedo` (o ⏭), vale a primeira frase que der.
    */
-  #planoSaida(S, { tempos, impacto, cedo = false, em = 'quebra' }) {
+  #planoSaida(S, { tempos, impacto, cedo = false, em = 'quebra', precisa = null }) {
     const l = momentos(S);
     if (!l.length || !S.grid?.bpm) return null;
     const p = per(S), pos = S.displayPosition;
+    const depois = (precisa ?? tempos) - impacto;     // tempos da que sai depois do golpe
     const cabe = l.filter((m) => m.t - impacto * p > pos + 4 * (S.nominalRate || 1)
-                              && m.t + (tempos - impacto) * p <= S.duration - 0.3);
+                              && m.t + depois * p <= S.duration - 0.3);
     if (!cabe.length) return null;
     if (cedo) return { impactoT: cabe[0].t, inicioT: cabe[0].t - impacto * p, tipo: cabe[0].tipo };
     const est = ESTILOS[this.estilo] || ESTILOS.pista;
@@ -290,10 +291,15 @@ export class Piloto extends EventTarget {
      * acha que servem, a que você viu menos. Sem Jev, o estilo e o currículo.
      */
     const probs = faixa?.probsIA || null;
+    const entraF = faixa || E.faixa;
+    const brigam = entraF?.harmonicamenteOk === false || (entraF?.nivel ?? 0) >= 2;
     let tecnica;
-    if (faixa?.tecnica && TECNICAS[faixa.tecnica] && (!probs || (probs[faixa.tecnica] ?? 1) >= 0.6)) {
+    if (brigam) {
+      // tons brigando: a regra de ofício (troca em três bandas, eco…) decide
+      tecnica = escolherTecnica({ saiFaixa: S.faixa, entraFaixa: entraF, anterior, estilo: this.estilo, vistos: this.vistos });
+    } else if (faixa?.tecnica && TECNICAS[faixa.tecnica] && (!probs || (probs[faixa.tecnica] ?? 1) >= 0.6)) {
       tecnica = faixa.tecnica;
-    } else if (probs && faixa?.tecnica && faixa.harmonicamenteOk !== false) {
+    } else if (probs && faixa?.tecnica) {
       // (tom que briga não reabre: ali a política já forçou eco/corte)
       const pesos = {};
       for (const [k, pr] of Object.entries(probs)) {
@@ -314,7 +320,7 @@ export class Piloto extends EventTarget {
      * tempo antes do drop — medido na simulação. Assim duração, golpe e cada
      * passo ficam em tempos inteiros, e o golpe cai no 1 da frase.
      */
-    const base = TECNICAS[tecnica].tempos;
+    let base = TECNICAS[tecnica].tempos;
     const pedida = (faixa?.tempos || base * est.escala) / base;
     const ESCALAS = [0.25, 0.5, 0.75, 1, 1.5, 2].filter((e) => base * e >= 8);
     let escala = ESCALAS.reduce((a, b) => (Math.abs(b - pedida) < Math.abs(a - pedida) ? b : a));
@@ -343,10 +349,30 @@ export class Piloto extends EventTarget {
     if (S.grid?.bpm && E.grid?.bpm) {
       // não coube a duração pedida no que resta da faixa? encurta (mesma
       // técnica, escala menor) em vez de cair no jeito sem frase
-      for (const e of [escala, ...ESCALAS.filter((x) => x < escala).reverse()]) {
-        plano = this.#planoSaida(S, { tempos: base * e, impacto: (TECNICAS[tecnica].impacto ?? base / 2) * e,
-                                      cedo: this.pularAgora, em: TECNICAS[tecnica].saidaEm || 'quebra' });
-        if (plano) { escala = e; tempos = base * e; impacto = (TECNICAS[tecnica].impacto ?? base / 2) * e; break; }
+      const tentar = (tec, e) => this.#planoSaida(S, {
+        tempos: TECNICAS[tec].tempos * e, impacto: (TECNICAS[tec].impacto ?? TECNICAS[tec].tempos / 2) * e,
+        precisa: TECNICAS[tec].cabe != null ? TECNICAS[tec].cabe * e : null,
+        cedo: this.pularAgora, em: TECNICAS[tec].saidaEm || 'quebra' });
+      plano = tentar(tecnica, escala);
+      /**
+       * Não coube a duração pedida: a que sai está acabando. Antes a técnica
+       * só encurtava (e aí a troca era corrida). Agora, com tom que casa, o
+       * LOOP QUE SEGURA entra: segura 16 tempos do fim dela e a mistura
+       * inteira cabe. Só se nem isso couber, encurta.
+       */
+      if (!plano && !brigam && tecnica !== 'estende' && !this.pularAgora) {
+        const p2 = tentar('estende', 1);
+        if (p2) { tecnica = 'estende'; plano = p2; escala = 1; }
+      }
+      if (!plano) {
+        for (const e of ESCALAS.filter((x) => x < escala).reverse()) {
+          plano = tentar(tecnica, e);
+          if (plano) { escala = e; break; }
+        }
+      }
+      if (plano) {
+        tempos = TECNICAS[tecnica].tempos * escala;
+        impacto = (TECNICAS[tecnica].impacto ?? TECNICAS[tecnica].tempos / 2) * escala;
       }
     }
     if (plano) {
@@ -411,7 +437,7 @@ export class Piloto extends EventTarget {
 
     const ok = await executar(tecnica, {
       m: this.#acoes(), dorme: (ms) => this.#dorme(ms),
-      sai, entra, bpm: d[entra].bpmEfetivo, tempos, relogio,
+      sai, entra, bpm: d[entra].bpmEfetivo, tempos, relogio, param: { brigam },
       aoPasso: ({ tempo, de }) => this.dispatchEvent(new CustomEvent('progresso', { detail: { tempo, de, tecnica } })),
       aoFalar: (x) => this.#narra(x.diz, x),
       aluno: this.juntos,

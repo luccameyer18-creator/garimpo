@@ -168,11 +168,13 @@ export const TECNICAS = {
     quando: 'músicas com muita coisa acontecendo — troca uma faixa de frequência de cada vez',
     tempos: 32,
     impacto: 16,
-    roteiro: ({ sai, entra, xfSai, xfEntra }) => ({
+    // `brigam`: tons que brigam — os médios (onde mora o tom) trocam JUNTO com
+    // o grave, no 16, e as duas nunca soam com o médio aberto ao mesmo tempo
+    roteiro: ({ sai, entra, xfSai, xfEntra, brigam = false }) => ({
       passos: [
         { em: 0, faz: (m) => { m.kill(entra, 'grave', true); m.kill(entra, 'medio', true); },
           diz: 'n.agudos.0', porque: 'n.agudos.0p', mostra: ['kill-{e}-grave', 'kill-{e}-medio', 'xf'] },
-        { em: 8, faz: (m) => { m.kill(entra, 'medio', false); m.kill(sai, 'medio', true); },
+        { em: brigam ? 16 : 8, faz: (m) => { m.kill(entra, 'medio', false); m.kill(sai, 'medio', true); },
           diz: 'n.agudos.8', porque: 'n.agudos.8p', mostra: ['kill-{e}-medio', 'kill-{s}-medio'] },
         { em: 16, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); },
           diz: 'n.graves.16', porque: 'n.graves.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'],
@@ -186,6 +188,44 @@ export const TECNICAS = {
         { de: 0, ate: 8, alvo: 'xf', v0: xfSai, v1: 0.5 },
         { de: 24, ate: 29, alvo: 'xf', v0: 0.5, v1: xfEntra },
       ],
+    }),
+  },
+
+  /**
+   * LOOP QUE SEGURA: a que sai está acabando — um loop de 16 tempos segura o
+   * fim dela (no 1 da frase), e a mistura acontece sem pressa por cima dele.
+   * É o loop "pra ajudar a transição" das cabines: sem ele, faixa com outro
+   * curto obriga a trocar correndo.
+   *
+   * `cabe`: quantos tempos da que sai a técnica precisa DEPOIS do começo —
+   * aqui só 16, porque o loop repete. O plano de saída usa isso pra caber
+   * em faixa que acaba logo.
+   */
+  estende: {
+    nome: 'loop que segura',
+    quando: 'a música que sai está acabando: um loop de 16 tempos segura o fim dela e a mistura não tem pressa',
+    tempos: 32,
+    impacto: 16,
+    cabe: 16,
+    roteiro: ({ sai, entra, xfSai, xfEntra }) => ({
+      passos: [
+        // um quarto de tempo ANTES do 1: o loop nasce no próximo tempo, que é o 1
+        { em: -0.25, faz: (m) => m.loop(sai, 16) },
+        { em: 0, faz: (m) => m.kill(entra, 'grave', true),
+          diz: 'n.estende.0', porque: 'n.estende.0p', mostra: ['kill-{e}-grave', 'xf'] },
+        { em: 16, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); },
+          diz: 'n.graves.16', porque: 'n.graves.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'],
+          aluno: { pede: 'n.aluno.graves', porque: 'n.aluno.graves.p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'],
+                  feito: (ler) => ler.morto(sai, 'grave') && !ler.morto(entra, 'grave') } },
+        { em: 20, diz: 'n.estende.20', porque: 'n.estende.20p', mostra: ['fil-{s}'] },
+        { em: 30, faz: (m) => { m.semLoop(sai); m.parar(sai); m.filtro(sai, 0); }, diz: 'n.fim' },
+      ],
+      rampas: [
+        { de: 0, ate: 16, alvo: 'xf', v0: xfSai, v1: 0.5 },
+        { de: 20, ate: 29, alvo: `filtro:${sai}`, v0: 0, v1: 0.6, curva: 'entra' },
+        { de: 22, ate: 29, alvo: 'xf', v0: 0.5, v1: xfEntra },
+      ],
+      depois: (m) => { m.semLoop(sai); m.filtro(sai, 0); },
     }),
   },
 
@@ -406,7 +446,7 @@ export const ESTILOS = {
     nome: 'hipnótico',
     escola: 'techno de Berlim e Detroit',
     como: 'misturas longas de EQ, quase nunca corta, deixa as duas faixas conversarem por minutos',
-    pesos: { blend: 5, graves: 3, agudos: 2.5, filtro: 1, loop: 0.5, eco: 0.3, duplo: 0.2, corte: 0 },
+    pesos: { blend: 5, graves: 3, agudos: 2.5, estende: 1.5, filtro: 1, loop: 0.5, eco: 0.3, duplo: 0.2, corte: 0 },
     escala: 1.5,
     uso: 0.72,
     vida: { respiro: 2, mergulho: 2, subida: 1, chimbal: 1, provoca: 0.5, ecoFrase: 0.3 }, chanceVida: 0.35,
@@ -415,7 +455,7 @@ export const ESTILOS = {
     nome: 'pista house',
     escola: 'house de Chicago e Nova York',
     como: 'troca de graves na frase, filtro pra subir a energia, um loop de vez em quando',
-    pesos: { graves: 4, filtro: 3, agudos: 2, loop: 1.5, blend: 1.5, duplo: 1, eco: 0.5, corte: 0.3 },
+    pesos: { graves: 4, filtro: 3, agudos: 2, estende: 1.5, loop: 1.5, blend: 1.5, duplo: 1, eco: 0.5, corte: 0.3 },
     escala: 1,
     uso: 0.66,
     vida: { provoca: 3, subida: 2, chimbal: 2, mergulho: 1, ecoFrase: 1, respiro: 1, soltaSom: 0.4 }, chanceVida: 0.5,
@@ -424,7 +464,7 @@ export const ESTILOS = {
     nome: 'disco edit',
     escola: 'disco e nu-disco',
     como: 'filtro quente abrindo devagar, loops de groove, entradas longas e macias',
-    pesos: { filtro: 4, loop: 2.5, blend: 2, graves: 2, agudos: 1.5, duplo: 0.5, eco: 0.5, corte: 0.2 },
+    pesos: { filtro: 4, loop: 2.5, estende: 2, blend: 2, graves: 2, agudos: 1.5, duplo: 0.5, eco: 0.5, corte: 0.2 },
     escala: 1.25,
     uso: 0.66,
     vida: { subida: 3, mergulho: 2, respiro: 2, chimbal: 1, provoca: 1, ecoFrase: 1, soltaSom: 0.3 }, chanceVida: 0.5,
@@ -451,7 +491,7 @@ export const ESTILOS = {
     nome: 'festival',
     escola: 'palco grande de EDM',
     como: 'loop que fecha criando tensão, filtro subindo, e explode no drop',
-    pesos: { loop: 4, filtro: 3, duplo: 3, corte: 2.5, graves: 1, eco: 1, agudos: 0.5, blend: 0 },
+    pesos: { loop: 4, filtro: 3, duplo: 3, corte: 2.5, estende: 1, graves: 1, eco: 1, agudos: 0.5, blend: 0 },
     escala: 0.8,
     uso: 0.58,
     vida: { subida: 3, provoca: 3, soltaSom: 2.5, chimbal: 1.5, ecoFrase: 1.5, mergulho: 1, respiro: 0.5 }, chanceVida: 0.7,
@@ -495,8 +535,18 @@ export function escolherTecnica({ saiFaixa, entraFaixa, anterior = null, estilo 
   const saltoBpm = bpmS && bpmE ? Math.abs(bpmE / bpmS - 1) : 0;
   const mudaGenero = saiFaixa?.pilha && entraFaixa?.pilha && saiFaixa.pilha !== entraFaixa.pilha;
 
-  // regra de ofício vale em qualquer estilo: tom que briga não se sobrepõe
-  if (!harmonia) return est.pesos.corte > est.pesos.eco || saltoBpm > 0.03 ? 'corte' : 'eco';
+  /**
+   * Tom que briga não se sobrepõe no MÉDIO — mas isso não obriga a cortar
+   * seco. Antes era sempre corte ou eco, e num set com gêneros diferentes os
+   * tons brigam quase sempre: o DJ "só jogava pra outra". Agora a troca em
+   * três bandas (médios trocam de uma vez, junto com o grave) e o echo out são
+   * o normal; o corte fica pros estilos que cortam.
+   */
+  if (!harmonia) {
+    const p = { agudos: 3, eco: 2.5, loop: 1.2, corte: est.pesos.corte >= 2 ? 2 : 0.3 };
+    for (const k of Object.keys(p)) p[k] *= novidade(vistos[k]);
+    return sortear(p, anterior);
+  }
 
   // nas outras situações, o estilo decide, mas a situação empurra os pesos
   const pesos = { ...est.pesos };

@@ -7,6 +7,7 @@ import { Deck } from '../mix/deck.js';
 import { t, idioma, setIdioma, traduzirDOM, IDIOMAS } from './i18n.js';
 import { Mixer, erroDeFase } from '../mix/mixer.js';
 import { montarPads } from './pads.js';
+import * as pastas from '../sources/pastas.js';
 import { plano, autoajuste } from '../coach/guia.js';
 import { montarFila, resumo as resumoFila } from '../coach/fila.js';
 import { momentos, proximoMomento, faltaPara } from '../coach/momentos.js';
@@ -17,7 +18,7 @@ import { carregarSemente } from '../sources/semente.js';
 import { puxar as puxarGalera, votarLixo, puxarLixo, enviarFeedback } from '../sources/galera.js';
 import { Piloto } from '../coach/piloto.js';
 import { ESTILOS, TECNICAS } from '../coach/tecnicas.js';
-import { decidirSet, aplicarDecisoes, julgarFaixas } from '../coach/jev.js';
+import { decidirSet, aplicarDecisoes, julgarFaixas, julgarPassagens } from '../coach/jev.js';
 import { montarMascote } from './mascote.js';
 import { montarPista } from './pista.js';
 import { montarCena } from './cena.js';
@@ -1296,6 +1297,7 @@ async function carregarLista(fn) {
       el.innerHTML = `<div class="n"><div class="t"></div><div class="a"></div><div class="a marca"></div></div>
         <div class="m"><span class="bpm-b">${faixa.bpm ?? '—'}</span><span class="tom-b"${corDoTom(faixa.camelot)}>${faixa.camelot ?? ''}</span></div>
         <button class="fixar" title="">★</button>
+        <button class="pasta-b" title="">📁</button>
         <div class="carregar"><button class="pa">A</button><button class="pb">B</button></div>`;
       el.querySelector('.t').textContent = faixa.title;
       el.querySelector('.a').textContent = faixa.artist;
@@ -1309,7 +1311,7 @@ async function carregarLista(fn) {
       const por = async (id) => {
         try { await ligar(); } catch { return; }
         await garantirRodando();
-        decks[id].carregarAudius(faixa);
+        carregarFaixa(id, faixa);
         // veio do BROWSE de um deck: carregou, a gaveta sai e você volta pra mix
         if (alvoBib) fecharBrowse(id);
       };
@@ -1333,12 +1335,61 @@ async function carregarLista(fn) {
       el.__pintarEstrela = pintarEstrela;
       pintarEstrela();
 
+      // 📁: guardar numa pasta (ou tirar). Um menu pequeno DENTRO do item, com
+      // as pastas marcadas ✓ e "+ nova pasta" no fim
+      const bPasta = el.querySelector('.pasta-b');
+      const pintarPasta = () => {
+        const n = pastas.pastasDa(faixa.id).length;
+        bPasta.classList.toggle('lig', n > 0);
+        bPasta.title = t('pastas.menu');
+      };
+      pintarPasta();
+      bPasta.onclick = (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.menu-pasta').forEach((m) => m.remove());
+        const menu = document.createElement('div');
+        menu.className = 'menu-pasta';
+        const desenhar = () => {
+          const minhas = pastas.pastasDa(faixa.id);
+          menu.innerHTML = pastas.listar().map((p) =>
+            `<button data-p="${p.id}" class="${minhas.includes(p.id) ? 'lig' : ''}">${minhas.includes(p.id) ? '✓ ' : ''}${p.nome}</button>`).join('') +
+            `<button data-nova>${t('pastas.nova')}</button>`;
+        };
+        desenhar();
+        menu.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+        menu.addEventListener('pointerup', (ev) => ev.stopPropagation());
+        menu.onclick = (ev) => {
+          ev.stopPropagation();
+          const b = ev.target.closest('button');
+          if (!b) return;
+          if (b.dataset.nova != null) {
+            const inp = document.createElement('input');
+            inp.className = 'pasta-nome'; inp.placeholder = t('pastas.nome'); inp.maxLength = 40;
+            b.replaceWith(inp); inp.focus();
+            inp.addEventListener('keydown', (k) => {
+              k.stopPropagation();
+              if (k.key === 'Enter' && inp.value.trim()) { const id = pastas.criar(inp.value); if (id) pastas.adicionar(id, faixa); menu.remove(); pintarPasta(); }
+              if (k.key === 'Escape') menu.remove();
+            });
+            return;
+          }
+          const id = b.dataset.p;
+          if (pastas.contem(id, faixa.id)) pastas.remover(id, faixa.id); else pastas.adicionar(id, faixa);
+          desenhar(); pintarPasta();
+        };
+        el.appendChild(menu);
+        setTimeout(() => document.addEventListener('pointerdown', function fora(ev) {
+          if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('pointerdown', fora); }
+        }), 0);
+      };
+
       // toque no corpo do item = deck livre. Tolerância de 12 px porque a lista
       // rola e o Chrome cancela o click se o dedo escorrega.
       let px = 0, py = 0, pid = null;
       el.addEventListener('pointerdown', (ev) => { px = ev.clientX; py = ev.clientY; pid = ev.pointerId; });
       el.addEventListener('pointerup', (ev) => {
-        if (ev.pointerId !== pid || ev.target.closest('.carregar')) return;
+        // os botões do item (A/B, ★, 📁 e o menu dele) não carregam a faixa
+        if (ev.pointerId !== pid || ev.target.closest('.carregar, .fixar, .pasta-b, .menu-pasta')) return;
         if (Math.hypot(ev.clientX - px, ev.clientY - py) > 12) return;
         pid = null;
         por(alvoBib || deckLivre());
@@ -1405,6 +1456,33 @@ function pintarBiblioteca() {
 }
 
 /**
+ * Carrega uma faixa num deck, venha de onde vier: do Audius, ou um arquivo
+ * seu guardado numa pasta. Música sua tocada pela primeira vez ensina à
+ * pasta o BPM, o tom e a duração que a análise do deck achou.
+ */
+async function carregarFaixa(id, faixa) {
+  if (faixa?.source !== 'local') return decks[id].carregarAudius(faixa);
+  const file = faixa.file || await pastas.arquivo(faixa.localId);
+  if (!file) { qd('dica').textContent = t('pastas.semArquivo'); return; }
+  const r = decks[id].carregarArquivo(file, { id: faixa.id, localId: faixa.localId, title: faixa.title, artist: faixa.artist });
+  aprenderLocal(id, faixa.localId);
+  return r;
+}
+async function aprenderLocal(id, localId) {
+  const t0 = performance.now();
+  while (performance.now() - t0 < 90000) {
+    const d = decks[id];
+    if (d.faixa?.localId !== localId) return;
+    if (d.pronta) {
+      pastas.atualizarLocal(localId, { bpm: d.bpmNatural ? Math.round(d.bpmNatural * 100) / 100 : null,
+                                       camelot: d.faixa.camelot || null, duration: Math.round(d.duration) || null });
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 800));
+  }
+}
+
+/**
  * OS GÊNEROS NUM BLOCO SÓ, COM ABAS.
  *
  * Eram ~120 chips empilhados em seis grupos: abrir "gêneros" empurrava a lista
@@ -1431,7 +1509,8 @@ function desenharChips() {
              `<i>${x.ic || '•'}</i><span>${t('aba.' + x.grupo.slice(10))}</span>${n ? `<b>${n}</b>` : ''}</button>`;
     }).join('') + '</div>' +
     `<div class="gen-chips" role="tabpanel"><span class="gen-desc">${t(g.grupo)}</span>` +
-      g.itens.map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('') + '</div>';
+      g.itens.map((i) => `<button data-pilha="${i.chave}">${i.nome}${i.pasta ? ` <small>${i.n}</small>` : ''}</button>`).join('') +
+      (g.grupo === 'app.grupo.pastas' ? acoesPastas(marcados) : '') + '</div>';
   $('dj-generos').innerHTML =
     `<button class="fav" data-fonte="favoritas">♥ ${t('dj.fav')}</button>` +
     `<button data-pilha="*" class="chip-tudo">${t('bib.tudoChip')}</button>` +
@@ -1441,6 +1520,29 @@ function desenharChips() {
     marcados.filter((i) => !g.itens.includes(i)).map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('') +
     g.itens.map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('');
 }
+/** + nova pasta, e renomear/apagar quando UMA pasta está marcada. */
+function acoesPastas(marcados) {
+  const ps = marcados.filter((i) => i.pasta);
+  let h = `<button class="pasta-acao" data-pasta-nova>${t('pastas.nova')}</button>`;
+  if (ps.length === 1) {
+    h += `<button class="pasta-acao" data-pasta-renomear="${ps[0].chave.slice(6)}">✎ ${t('pastas.renomear')}</button>` +
+         `<button class="pasta-acao perigo" data-pasta-apagar="${ps[0].chave.slice(6)}">🗑 ${t('pastas.apagar')}</button>`;
+  }
+  if (!bib.GRUPOS[0].itens.length) h += `<span class="gen-nada">${t('pastas.dica')}</span>`;
+  return h;
+}
+/** Um campo de nome no lugar do botão; Enter confirma, Esc desiste. */
+function pedirNome(botao, inicial, feito) {
+  const inp = document.createElement('input');
+  inp.className = 'pasta-nome'; inp.value = inicial || ''; inp.placeholder = t('pastas.nome'); inp.maxLength = 40;
+  botao.replaceWith(inp); inp.focus(); inp.select();
+  let fechado = false;
+  const fim = (ok) => { if (fechado) return; fechado = true; if (ok && inp.value.trim()) feito(inp.value.trim()); else desenharChips(); };
+  inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') fim(true); if (e.key === 'Escape') fim(false); });
+  inp.addEventListener('blur', () => fim(true));
+}
+pastas.aoMudar(() => { bib.porPastas(); desenharChips(); pintarBiblioteca(); });
+
 function irAba(k) {
   abaGen = ((k % bib.GRUPOS.length) + bib.GRUPOS.length) % bib.GRUPOS.length;
   try { localStorage.setItem('garimpo.bib.aba', String(abaGen)); } catch {}
@@ -1448,7 +1550,20 @@ function irAba(k) {
 }
 $('crates').addEventListener('click', (e) => {
   const a = e.target.closest('[data-aba]');
-  if (a) { e.stopPropagation(); irAba(Number(a.dataset.aba)); }
+  if (a) { e.stopPropagation(); irAba(Number(a.dataset.aba)); return; }
+  const b = e.target.closest('[data-pasta-nova], [data-pasta-renomear], [data-pasta-apagar]');
+  if (!b) return;
+  e.stopPropagation();
+  if (b.dataset.pastaNova != null) {
+    pedirNome(b, '', (nome) => { const id = pastas.criar(nome); if (id) { bib.alternarGenero('pasta:' + id); desenharChips(); recarregar(); } });
+  } else if (b.dataset.pastaRenomear) {
+    const id = b.dataset.pastaRenomear;
+    pedirNome(b, pastas.listar().find((p) => p.id === id)?.nome, (nome) => pastas.renomear(id, nome));
+  } else if (b.dataset.pastaApagar) {
+    const id = b.dataset.pastaApagar;
+    const nome = pastas.listar().find((p) => p.id === id)?.nome || '';
+    if (confirm(t('pastas.apagarConfirma', { n: nome }))) pastas.apagar(id).then(() => recarregar());
+  }
 }, true);
 desenharChips();
 // as 🚀 apostas da semana chegam depois (rede): redesenha os chips quando vierem
@@ -1519,7 +1634,7 @@ function refazerProximas() {
       const bpmAgora = noAr.bpm || 120;
       const ponte = pote.reduce((m, f) => (Math.abs(f.bpm - bpmAgora) < Math.abs(m.bpm - bpmAgora) ? f : m));
       const s = montarSet(pote, {
-        minutos: Number($('pref-min').value), energia: $('pref-energia').value,
+        minutos: Number($('pref-min').value), energia: $('pref-energia').value, variedade: $('pref-variedade').value,
         semente: ponte, recentes: soFav ? jaTocadas : [...jaTocadas, ...jaSugeridas], variar: !soFav,
       });
       let novas = s.fila.filter((f) => f.id !== noAr.id);
@@ -1638,7 +1753,7 @@ function desenharFila() {
     d.querySelector('.destino').onclick = async () => {
       try { await ligar(); } catch { return; }
       await garantirRodando();
-      decks[destino].carregarAudius(faixa);
+      carregarFaixa(destino, faixa);
       fila = fila.filter((x) => x.id !== faixa.id);
       desenharFila();
     };
@@ -1673,17 +1788,38 @@ $('fechar-ajuda').onclick = () => $('ajuda').close();
 
 const arquivo = $('arquivo');
 $('b-arquivo').onclick = () => arquivo.click();
-arquivo.onchange = async () => {
+/**
+ * Música sua: vai pro deck livre E fica guardada na pasta "minhas músicas"
+ * (neste navegador, só aqui). Vários arquivos de uma vez: todos pra pasta,
+ * o primeiro pro deck.
+ */
+async function subirArquivos(files) {
   try { await ligar(); } catch { return; }
   await garantirRodando();
-  if (arquivo.files[0]) decks[deckLivre()].carregarArquivo(arquivo.files[0]);
-};
+  const lista = [...files].filter((f) => f.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|flac|opus|webm)$/i.test(f.name));
+  if (!lista.length) return;
+  pastas.garantirMinhas(t('pastas.minhas'));
+  let primeira = null;
+  for (const f of lista) {
+    try {
+      const faixa = await pastas.guardarArquivo(f);
+      pastas.adicionar(pastas.MINHAS, faixa);
+      primeira ||= { ...faixa, file: f };
+    } catch { /* sem IndexedDB: ainda toca, só não guarda */ primeira ||= { source: 'local', title: f.name, file: f }; }
+  }
+  if (primeira?.localId) carregarFaixa(deckLivre(), primeira);
+  else if (primeira) decks[deckLivre()].carregarArquivo(primeira.file);
+  qd('dica').textContent = t('pastas.guardou', { n: lista.length });
+}
+arquivo.multiple = true;
+// copia ANTES de limpar: a FileList é viva, e limpar o campo esvaziava a lista
+arquivo.onchange = () => { const fs = [...arquivo.files]; arquivo.value = ''; subirArquivos(fs); };
 ['dragenter', 'dragover'].forEach((t) => addEventListener(t, (e) => e.preventDefault()));
 addEventListener('drop', async (e) => {
   e.preventDefault();
   try { await ligar(); } catch { return; }
   await garantirRodando();
-  if (e.dataTransfer.files[0]) decks[deckLivre()].carregarArquivo(e.dataTransfer.files[0]);
+  if (e.dataTransfer.files?.length) subirArquivos([...e.dataTransfer.files]);
 });
 
 addEventListener('keydown', (e) => {
@@ -1877,7 +2013,7 @@ function garantirPiloto() {
     },
     sincronizar: (id) => sincronizar(id),
     carregar: async (id, faixa) => {
-      decks[id].carregarAudius(faixa);
+      await carregarFaixa(id, faixa);
       const t0 = performance.now();
       while (performance.now() - t0 < 70000) {
         const d = decks[id];
@@ -1960,9 +2096,12 @@ $('b-piloto').onclick = async () => {
     const soFavoritas = fonteDj === 'favoritas' || bib.estado.ordem === 'favoritas';
     const cands = soFavoritas ? bib.favoritasParaSet() : await bib.candidatasDoSet();
     if (cands.length < 2) throw new Error(t(soFavoritas ? 'dj.poucasFav' : 'pref.semFaixas'));
+    // passagens que o Jev achou que não combinam: o montador não repete
+    const evitar = new Set();
     const montar = (pote) => montarSet(pote, {
       minutos: Number($('pref-min').value),
       energia: $('pref-energia').value,
+      variedade: $('pref-variedade').value, evitar,
       obrigatorias: [],
       // evita o que TOCOU e o que já foi SUGERIDO: pedir outro set traz outras
       // músicas. No set de favoritas não — ali repetir é o ponto.
@@ -1995,6 +2134,27 @@ $('b-piloto').onclick = async () => {
         s = novo;
       }
       if (tiradas) $('piloto-tecnica').textContent = t('jev.tirou', { n: tiradas });
+      /**
+       * Depois do trash, a EMENDA: o Jev julga cada passagem. As que ele acha
+       * que pulam de mundo viram "evitar" e o set é remontado — até 2 voltas,
+       * e só fica o novo se ele tiver MENOS passagens ruins.
+       */
+      let trocadas = 0;
+      let ruinsAgora = null;
+      for (let volta = 0; volta < 2; volta++) {
+        $('piloto-nota').textContent = t('jev.passagens', { n: s.fila.length - 1 });
+        const juiz = await julgarPassagens(s.fila).catch(() => null);
+        if (!juiz) break;
+        if (ruinsAgora == null) ruinsAgora = juiz.ruins.length;
+        if (!juiz.ruins.length) break;
+        for (const r of juiz.ruins) evitar.add(r.de.id + '>' + r.para.id);
+        const novo = montar(cands.filter((f) => !bib.ehLixo(f.id)));
+        if (novo.fila.length < 2) break;
+        const juiz2 = await julgarPassagens(novo.fila).catch(() => null);
+        if (juiz2 && juiz2.ruins.length < juiz.ruins.length) { trocadas += juiz.ruins.length - juiz2.ruins.length; s = novo; }
+        if (!juiz2?.ruins.length) break;
+      }
+      if (trocadas) $('piloto-tecnica').textContent = t('jev.emendas', { n: trocadas });
       registrarSugeridas(s.fila);
     }
 
@@ -2029,7 +2189,7 @@ $('b-piloto').onclick = async () => {
       // frente o professor sinaliza — a lista "próximas" mostra a ordem e a
       // técnica sugerida de cada passagem
       const alvo = decks.A?.tocando ? deckLivre() : 'A';
-      decks[alvo].carregarAudius(s.fila[0]);
+      carregarFaixa(alvo, s.fila[0]);
       $('piloto-nota').textContent = t('dj.soloPronto', { d: alvo });
       $('piloto-nota').style.color = 'var(--ok)';
       return;
@@ -2421,6 +2581,8 @@ async function buscarCapa(faixa, v) {
 $('pref-estilo').innerHTML = Object.entries(ESTILOS).map(([id, e]) =>
   `<option value="${id}" title="${e.escola} — ${e.como}">${e.nome}</option>`).join('');
 try { $('pref-estilo').value = localStorage.getItem('garimpo.estilo') || 'pista'; } catch {}
+try { $('pref-variedade').value = localStorage.getItem('garimpo.variedade') || 'equilibrado'; } catch {}
+$('pref-variedade').onchange = () => { try { localStorage.setItem('garimpo.variedade', $('pref-variedade').value); } catch {} };
 $('pref-estilo').onchange = () => {
   try { localStorage.setItem('garimpo.estilo', $('pref-estilo').value); } catch {}
   if (piloto) piloto.estilo = $('pref-estilo').value;

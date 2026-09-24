@@ -151,9 +151,9 @@ export class Deck extends EventTarget {
   // ─────────────────────────── carga ───────────────────────────
 
   /** Arquivo local: File do input ou do drag-and-drop. */
-  async carregarArquivo(file) {
+  async carregarArquivo(file, dados = {}) {
     return this.#carregar(
-      { source: 'local', title: file.name.replace(/\.[^.]+$/, ''), artist: 'arquivo local', file },
+      { source: 'local', title: file.name.replace(/\.[^.]+$/, ''), artist: 'arquivo local', ...dados, file },
       async () => file.arrayBuffer()
     );
   }
