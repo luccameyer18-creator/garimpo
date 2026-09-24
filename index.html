@@ -386,9 +386,13 @@
   .bib-cx > .lista { min-height:120px; }
   @media (max-height:760px), (orientation:landscape) and (max-width:1040px) {
     .crates .gen-aba > span, .gen-desc, #bib-resumo { display:none; }
-    .crates .gen-aba { padding:4px 7px; }
+    /* os 10 ícones numa fileira, dividindo a largura: quebrando em duas
+       linhas eles comiam a altura e os chips sumiam (visto no print) */
+    .gen-abas { flex-wrap:nowrap; gap:3px; padding-bottom:5px; }
+    .crates .gen-aba { flex:1 1 0; min-width:0; justify-content:center; padding:5px 0; }
     .crates .gen-aba i { font-size:14px; }
-    .gen-abas { gap:3px; padding-bottom:5px; }            /* quebra de linha: todas à vista */
+    .crates .gen-aba b { position:absolute; top:-4px; right:-3px; min-width:13px; height:13px; font-size:8px; line-height:13px; }
+    .crates .gen-chips { min-height:44px; }                /* uma fileira de chips inteira, sempre */
     .gen-marcados { padding:5px 7px 4px; }
     .gen-chips { padding:5px 7px; }
   }
@@ -399,11 +403,11 @@
   @media (max-height:760px), (orientation:landscape) and (max-width:1040px) {
     .bib-cx:has(> .crates:not([hidden])) > :is(.alvo-bib, .ordem, .acoes-lista) { display:none; }
     .col.lib .lateral:has(.crates:not([hidden])) > .rodape-bib { display:none; }
-    .bib-cx > .crates { min-height:118px; }
+    .bib-cx > .crates { min-height:128px; }
   }
   @media (orientation:landscape) and (max-width:1040px) {
-    .bib-cx > .lista { min-height:84px; }
-    .bib-cx > .crates { min-height:104px; }
+    .bib-cx > .lista { min-height:72px; }
+    .bib-cx > .crates { min-height:122px; }
   }
 
   /* a aba na fileira do DJ: ◂ nome ▸ */
