@@ -605,7 +605,14 @@
      camada com blend a placa aguenta; eram as ~16 que travavam. As formas
      voando vêm por cima dela. Os dois canvas desenham pequenos e a placa
      amplia (ver viagem.js). Nada disso pega clique. */
-  #viagem-fundo, #viagem-frente { position:fixed; inset:0; width:100vw; height:100vh; display:none; pointer-events:none; }
+  #viagem-fundo, #viagem-frente, #viagem-hiper { position:fixed; inset:0; width:100vw; height:100vh; display:none; pointer-events:none; }
+  /* o HIPERESPAÇO (hiperespaco.js) é o padrão da viagem; o MilkDrop e as
+     formas voando entram quando o ↻ chega nele (body.viagem-milk) */
+  #viagem-hiper { z-index:40; mix-blend-mode:screen; opacity:.55; }
+  body.viagem:not(.viagem-milk) #viagem-hiper { display:block; }
+  body.viagem:not(.viagem-milk) #viagem-fundo, body.viagem:not(.viagem-milk) #viagem-frente { display:none !important; }
+  body.q1 #viagem-hiper { opacity:.32; } body.q2 #viagem-hiper { opacity:.55; } body.q3 #viagem-hiper { opacity:.82; }
+  body.so-viagem #viagem-hiper { mix-blend-mode:normal; opacity:1; }
   #viagem-fundo { z-index:40; mix-blend-mode:screen; opacity:.55; }
   #viagem-frente { z-index:41; opacity:.9; }
   body.viagem #viagem-fundo, body.viagem #viagem-frente { display:block; }
@@ -1666,6 +1673,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260924l"></script>
+<script type="module" src="./src/ui/app.js?v=20260924m"></script>
 </body>
 </html>

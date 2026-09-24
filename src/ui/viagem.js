@@ -1,6 +1,11 @@
 /**
  * MODO VIAGEM — a página inteira entra na viagem, não só uma janelinha.
  *
+ * Abre no HIPERESPAÇO (hiperespaco.js): as imagens que quem fumou DMT
+ * descreve — crisântemo, túnel, mandala, joias, fractal — geradas na placa
+ * de vídeo e dançando com a música. O ↻ passa pelas cinco cenas e depois
+ * pelo MilkDrop (com as formas voando); mais um ↻ volta pro hiperespaço.
+ *
  *   POR CIMA o MilkDrop (Butterchurn) cobre a tela inteira, na frente da CDJ,
  *           com mistura "screen": a luz soma, o escuro deixa ver os controles
  *   NA FRENTE formas psicodélicas (anéis, estrelas, olhos, espirais, flores,
@@ -22,6 +27,7 @@
 
 import { estadoPista as E } from './pista.js';
 import { qualidade as Q, aoMudarQualidade } from './qualidade.js';
+import { montarHiperespaco } from './hiperespaco.js';
 
 // o MilkDrop desenha 1/3 da tela (menos, se o medidor baixar a resolução);
 // quantas formas voam depende do modo escolhido (leve, médio, bombando)
@@ -41,9 +47,17 @@ export function montarViagem({ audio }) {
   const frente = document.createElement('canvas');
   frente.id = 'viagem-frente';
   frente.setAttribute('aria-hidden', 'true');
+  const hiperCv = document.createElement('canvas');
+  hiperCv.id = 'viagem-hiper';
+  hiperCv.setAttribute('aria-hidden', 'true');
   document.body.prepend(fundo);
+  document.body.prepend(hiperCv);
   document.body.appendChild(frente);
   const c = frente.getContext('2d');
+  // o hiperespaço é o padrão; sem WebGL, a viagem fica no MilkDrop
+  const hiper = montarHiperespaco(hiperCv);
+  let modo = hiper ? 'hiper' : 'milk';
+  const pintarModo = () => document.body.classList.toggle('viagem-milk', modo === 'milk');
 
   let ligada = false, milk = null, estado = 'nada', presets = null, nomes = [], atual = -1, frase = -1;
   let W = 0, H = 0, FW = 0, FH = 0, tAntes = 0, batidaVoo = -1;
@@ -56,6 +70,7 @@ export function montarViagem({ audio }) {
     W = Math.max(320, Math.round(innerWidth / 2)); H = Math.max(180, Math.round(innerHeight / 2));
     fundo.width = FW; fundo.height = FH;
     frente.width = W; frente.height = H;
+    hiper?.tamanho(FW, FH);
     try { milk?.setRendererSize(FW, FH); } catch {}
   }
   addEventListener('resize', () => { if (ligada) medir(); });
@@ -136,11 +151,24 @@ export function montarViagem({ audio }) {
     const dt = Math.min(0.1, (agora - tAntes) / 1000);
     tAntes = agora;
 
-    // ── fundo: MilkDrop, preset novo a cada frase (32 tempos) e no drop ──
+    // uma CENA nova a cada frase de 32 tempos (no hiperespaço ou no MilkDrop)
+    const f = Math.floor(Math.max(0, E.batida) / 32);
+    const virouFrase = E.tocando && f !== frase;
+    if (virouFrase) frase = f;
+
+    // ── hiperespaço: o shader, e só ele (é denso o bastante sozinho) ──
+    if (modo === 'hiper') {
+      if (virouFrase && frase > 0) hiper.trocar(Math.floor(Math.random() * (hiper.CENAS - 1) + hiper.cena + 1) % hiper.CENAS);
+      hiper.desenhar(E, dt, Q.nivel || 2);
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, W, H);
+      return;
+    }
+
+    // ── MilkDrop, preset novo a cada frase (32 tempos) ──
     if (estado === 'nada') iniciarMilk();
     if (estado === 'ok') {
-      const f = Math.floor(Math.max(0, E.batida) / 32);
-      if (E.tocando && f !== frase) { if (frase >= 0) trocar(2.7); frase = f; }
+      if (virouFrase && frase > 0) trocar(2.7);
       try { milk.render(); } catch {}
     }
 
@@ -173,12 +201,25 @@ export function montarViagem({ audio }) {
   }
   requestAnimationFrame(quadro);
 
+  /**
+   * O ↻: próxima cena do hiperespaço; depois da última, o MilkDrop; do
+   * MilkDrop, volta pro hiperespaço.
+   */
+  function proxima() {
+    if (modo === 'hiper') {
+      if (hiper.cena >= hiper.CENAS - 1) { modo = 'milk'; pintarModo(); if (estado === 'ok') trocar(0.5); }
+      else hiper.trocar();
+    } else if (hiper) { modo = 'hiper'; pintarModo(); hiper.trocar(0); }
+    else trocar(1.2);
+  }
+
   return {
     get ligada() { return ligada; },
-    trocar,
+    trocar: proxima,
     alternar(on = !ligada) {
       ligada = on;
       document.body.classList.toggle('viagem', on);
+      pintarModo();
       if (on) { medir(); tAntes = 0; } else { c.clearRect(0, 0, W, H); voadores.length = 0; }
       return on;
     },

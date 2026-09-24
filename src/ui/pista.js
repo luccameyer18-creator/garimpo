@@ -40,7 +40,7 @@ const CSS = `
 /* a porta (fixa, por cima de tudo) e os diálogos ficam fora desta regra */
 /* as abas das gavetas também: são fixas nas bordas (sem isto viravam
    relativas, caíam pro fim da página e sumiam da vista) */
-body > *:not(#pista):not(#porta):not(#luzes):not(dialog):not(.aba-bib):not(#viagem-fundo):not(#viagem-frente):not(#so-viagem):not(#cena-tela):not(#cena-galera):not(.cena-drop):not(#girar) { position:relative; z-index:1; }
+body > *:not(#pista):not(#porta):not(#luzes):not(dialog):not(.aba-bib):not(#viagem-fundo):not(#viagem-hiper):not(#viagem-frente):not(#so-viagem):not(#cena-tela):not(#cena-galera):not(.cena-drop):not(#girar) { position:relative; z-index:1; }
 
 /* o deck no ar ganha um contorno aceso — fixo, sem pulsar (sombra que pulsa
    repinta o deck inteiro a cada quadro) */
