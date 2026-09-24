@@ -25,7 +25,7 @@ import { qualidade as Q, aoMudarQualidade } from './qualidade.js';
 
 // o MilkDrop desenha 1/3 da tela (menos, se o medidor baixar a resolução);
 // quantas formas voam depende do modo escolhido (leve, médio, bombando)
-const MAX_FORMAS = { 3: 40, 2: 24, 1: 12, 0: 12 };
+const MAX_FORMAS = { 3: 44, 2: 22, 1: 8, 0: 0 };
 
 const FORMAS = ['anel', 'estrela', 'olho', 'espiral', 'flor', 'mandala'];
 const hsl = (h, s, l) => `hsl(${((h % 360) + 360) % 360},${s}%,${l}%)`;

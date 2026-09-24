@@ -31,11 +31,16 @@ export const qualidade = {
   fps: 0,
   medianaMs: 0,
 };
+/**
+ * O PADRÃO É SEM EFEITO. Efeito só aparece quando a pessoa liga a 🎉 pista
+ * ou a 🌀 viagem; o ✨ diz a INTENSIDADE do que estiver ligado (leve, médio,
+ * bombando). Chave nova no localStorage de propósito: quem tinha "bombando"
+ * guardado do jeito antigo começa limpo, sem efeito, como pedido.
+ */
 try {
-  const salvo = localStorage.getItem('garimpo.efeitos.modo');
-  qualidade.nivel = salvo !== null && [0, 1, 2, 3].includes(Number(salvo))
-    ? Number(salvo) : (matchMedia('(pointer: coarse)').matches ? 1 : 3);
-} catch {}
+  const salvo = Number(localStorage.getItem('garimpo.efeitos.intensidade'));
+  qualidade.nivel = [1, 2, 3].includes(salvo) ? salvo : (matchMedia('(pointer: coarse)').matches ? 1 : 2);
+} catch { qualidade.nivel = 2; }
 
 const ouvintes = new Set();
 /** Avisa quando o modo ou a resolução mudam. */
@@ -44,9 +49,9 @@ const avisar = () => { for (const fn of ouvintes) { try { fn(qualidade); } catch
 
 /** A pessoa escolheu um modo (0 off, 1 leve, 2 médio, 3 bombando). */
 export function definirModo(n) {
-  qualidade.nivel = Math.max(0, Math.min(3, n));
+  qualidade.nivel = Math.max(1, Math.min(3, n));
   for (const k of [0, 1, 2, 3]) document.body.classList.toggle('q' + k, k === qualidade.nivel);
-  try { localStorage.setItem('garimpo.efeitos.modo', String(qualidade.nivel)); } catch {}
+  try { localStorage.setItem('garimpo.efeitos.intensidade', String(qualidade.nivel)); } catch {}
   avisar();
 }
 

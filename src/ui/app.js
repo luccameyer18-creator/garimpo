@@ -809,10 +809,11 @@ function itemNarracao(n) {
   return {
     // o número muda a cada fala: é o que faz a luz reacender no controle novo
     id: 'dj:' + n.k,
-    cor: n.vez ? 'urgente' : n.acertou ? 'depois' : 'agora',
+    // rosa = sua vez · violeta = o DJ mexeu (a legenda fica na barra do professor)
+    cor: n.vez ? 'urgente' : n.acertou ? 'depois' : 'dj',
     fala: '🎧 ' + t(n.diz, n.vars),
     porque: n.porque ? t(n.porque, n.vars) : (n.vars?.ia ? 'Jev: ' + n.vars.ia : null),
-    apontar: (n.mostra || []).map((id) => ({ id, rotulo: t(n.vez ? 'n.rotVez' : 'n.rot') })),
+    apontar: n.mostra || [],
   };
 }
 // declarado aqui e montado no fim do arquivo: o professor roda antes disso
@@ -886,19 +887,22 @@ function rodarProfessor() {
 
   // apaga o que estava aceso
   for (const el of apontados) {
-    el.classList.remove('apontado', 'c-urgente', 'c-agora', 'c-depois');
+    el.classList.remove('apontado', 'c-urgente', 'c-agora', 'c-depois', 'c-dj');
     el.removeAttribute('data-rotulo');
   }
-  // acende, NOMEIA e NUMERA. Acender sem dizer o que é deixa quem nunca mixou
-  // adivinhando qual daqueles controles é o "jog"; sem o numero, com dois
-  // acesos, nao da pra saber qual pertence a qual frase.
+  /**
+   * Acende SÓ NA COR. Havia uma etiqueta de texto pendurada em cada controle
+   * aceso ("o DJ mexeu aqui", "sua vez", "1 · PLAY…") e, com dois ou três
+   * ajustes ao mesmo tempo, elas cobriam os próprios controles. A frase já
+   * está na barra do professor; no controle basta a cor — e a legenda das
+   * cores fica lá em cima.
+   */
   apontados = [];
-  itens.forEach((it, k) => {
+  itens.forEach((it) => {
     for (const alvo of it.apontar || []) {
       const el = $(typeof alvo === 'string' ? alvo : alvo.id);
       if (!el) continue;
       el.classList.add('apontado', 'c-' + it.cor);
-      if (alvo.rotulo) el.setAttribute('data-rotulo', `${k + 1} · ${alvo.rotulo}`);
       apontados.push(el);
     }
   });

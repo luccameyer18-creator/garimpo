@@ -409,6 +409,17 @@
   .apontado.c-urgente { --luz:rgba(255,78,205,.85); --cor:var(--neon); }
   .apontado.c-agora   { --luz:rgba(46,230,168,.8);  --cor:var(--ok); }
   .apontado.c-depois  { --luz:rgba(76,201,240,.75); --cor:var(--acc); }
+  .apontado.c-dj      { --luz:rgba(199,125,255,.8);  --cor:var(--lock); }
+  .prof .item.c-dj i { background:var(--lock); box-shadow:0 0 10px rgba(199,125,255,.55); }
+  .prof .item.c-dj .txt b { color:var(--lock); }
+  /* a legenda das cores: aparece com o DJ tocando */
+  .prof-legenda { display:none; flex:none; flex-direction:column; gap:3px; margin-left:auto;
+                  font:700 9.5px ui-monospace,monospace; color:var(--mut); }
+  body.dj-tocando .prof-legenda { display:flex; }
+  .prof-legenda span { display:flex; align-items:center; gap:5px; white-space:nowrap; }
+  .prof-legenda i { width:9px; height:9px; border-radius:50%; flex:none; }
+  .prof-legenda .vez { background:var(--neon); box-shadow:0 0 8px var(--neon); }
+  .prof-legenda .dj { background:var(--lock); box-shadow:0 0 8px var(--lock); }
   /* o NUMERO do item vai dentro do texto da etiqueta (app.js monta "2 · SYNC…"),
      porque um elemento tem um ::after so e a etiqueta ja ocupa ele */
   /* etiqueta que o professor pendura no controle que ele esta apontando.
@@ -562,12 +573,21 @@
   #cena-tela { position:fixed; inset:0; width:100vw; height:100vh; z-index:39; pointer-events:none;
                mix-blend-mode:screen; }
   .cena-drop { position:fixed !important; z-index:57 !important; }
-  /* o modo de efeitos escolhido no ✨ (qualidade.js): médio sem os reflexos,
-     leve só com névoa, globo e confete, off sem nada. A 🎉 pista mostra tudo. */
-  body.q2:not(.pista-cheia) #luzes .espelho { display:none; }
-  body.q1:not(.pista-cheia) #luzes .espelho, body.q1:not(.pista-cheia) #luzes .fachos { display:none; }
-  body.q0:not(.pista-cheia) #luzes, body.q0:not(.pista-cheia) #cena-tela { display:none !important; }
-  body.q0 #viagem-frente, body.q0 #viagem-fundo { display:none !important; }
+  /* a galera: silhuetas escuras por cima (mistura normal), sem pegar clique */
+  #cena-galera { position:fixed; inset:0; width:100vw; height:100vh; z-index:39; pointer-events:none; opacity:.62; }
+  body:not(.pista-cheia) #cena-galera { display:none !important; }
+  /* O PADRÃO É SEM EFEITO: sem 🎉 pista e sem 🌀 viagem, nenhuma camada de
+     show aparece (nem a fumaça, nem o brilho dos decks, nem o DROP). */
+  body:not(.pista-cheia) #luzes, body:not(.pista-cheia) #cena-tela,
+  body:not(.pista-cheia) #pista { display:none !important; }
+  body:not(.pista-cheia):not(.viagem) .deck > .brilho,
+  body:not(.pista-cheia):not(.viagem) .cena-drop { display:none !important; }
+  /* a intensidade do ✨ (qualidade.js), na pista e na viagem:
+     leve = névoa e globo; médio = + fachos de luz; bombando = + reflexos do globo */
+  body.q1 #luzes .espelho, body.q1 #luzes .fachos, body.q2 #luzes .espelho { display:none; }
+  body.q1 #viagem-fundo { opacity:.32; }
+  body.q2 #viagem-fundo { opacity:.55; }
+  body.q3 #viagem-fundo { opacity:.82; }
 
   /* 🎉 PISTA: o club completo por cima da CDJ — globo grande, névoa densa */
   .cena-pista { position:absolute; top:6px; right:190px; z-index:3; padding:3px 9px; border-radius:20px; font-size:11px;
@@ -586,7 +606,7 @@
      voando vêm por cima dela. Os dois canvas desenham pequenos e a placa
      amplia (ver viagem.js). Nada disso pega clique. */
   #viagem-fundo, #viagem-frente { position:fixed; inset:0; width:100vw; height:100vh; display:none; pointer-events:none; }
-  #viagem-fundo { z-index:40; mix-blend-mode:screen; opacity:.62; }
+  #viagem-fundo { z-index:40; mix-blend-mode:screen; opacity:.55; }
   #viagem-frente { z-index:41; opacity:.9; }
   body.viagem #viagem-fundo, body.viagem #viagem-frente { display:block; }
   body.viagem #pista, body.viagem #luzes { display:none; }
@@ -1337,6 +1357,10 @@
     <div class="item c-urgente"><i>1</i><div class="txt">Toque em qualquer lugar da tela para <b>ligar o áudio</b>.</div></div>
   </div>
   <div class="acao" id="prof-acao"></div>
+  <div class="prof-legenda" aria-hidden="true">
+    <span><i class="vez"></i><b data-i18n="leg.vez">sua vez</b></span>
+    <span><i class="dj"></i><b data-i18n="leg.dj">o DJ mexeu</b></span>
+  </div>
 </div>
 
 <div class="palco">
@@ -1642,6 +1666,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260924j"></script>
+<script type="module" src="./src/ui/app.js?v=20260924l"></script>
 </body>
 </html>
