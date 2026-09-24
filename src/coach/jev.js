@@ -52,7 +52,7 @@ const DURACOES = { curta: 16, frase: 32, longa: 64 };
  */
 const FAIXA_DURACAO = {
   corte: [8, 8], eco: [16, 16], loop: [16, 32],
-  graves: [16, 64], filtro: [16, 64], blend: [32, 64],
+  graves: [16, 64], filtro: [16, 64], blend: [32, 64], agudos: [32, 64], duplo: [32, 32],
 };
 function duracaoValida(tecnica, pedida) {
   const f = FAIXA_DURACAO[tecnica];
@@ -223,6 +223,8 @@ export async function decidirSet(fila, estilo = 'pista', { signal } = {}) {
       tecnica,
       tempos: duracaoValida(tecnica, DURACOES[dur?.choice]),
       confianca: tec?.confidence ?? null,
+      // as chances de TODAS: o piloto cruza com o currículo quando o Jev hesita
+      probs: tec?.probabilities || null,
       porqueIA: porque,
     });
   }
@@ -238,6 +240,6 @@ export function aplicarDecisoes(fila, resultado) {
   return fila.map((f, i) => {
     if (i === 0) return f;
     const d = resultado.decisoes[i - 1];
-    return d?.tecnica ? { ...f, tecnica: d.tecnica, tempos: d.tempos, porqueIA: d.porqueIA } : f;
+    return d?.tecnica ? { ...f, tecnica: d.tecnica, tempos: d.tempos, porqueIA: d.porqueIA, probsIA: d.probs } : f;
   });
 }

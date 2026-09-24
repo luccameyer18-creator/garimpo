@@ -22,7 +22,7 @@
  */
 
 import { momentos } from './momentos.js';
-import { executar, escolherTecnica, escolherMovimento, caminharBpm, TECNICAS, ESTILOS, MOVIMENTOS } from './tecnicas.js';
+import { executar, escolherTecnica, escolherMovimento, caminharBpm, novidade, TECNICAS, ESTILOS, MOVIMENTOS } from './tecnicas.js';
 import { keyCompatible } from '../sources/audius.js';
 
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -38,9 +38,11 @@ export class Piloto extends EventTarget {
    * @param {function} dep.sincronizar(id)
    * @param {function} dep.carregar(id, faixa) -> Promise<boolean>
    */
-  constructor({ decks, mixer, encaixar, sincronizar, carregar }) {
+  constructor({ decks, mixer, encaixar, sincronizar, carregar, pads = null }) {
     super();
-    Object.assign(this, { decks, mixer, encaixar, sincronizar, carregar });
+    Object.assign(this, { decks, mixer, encaixar, sincronizar, carregar, pads });
+    // o currículo: quantas vezes cada técnica e gesto já apareceu (entre sets)
+    try { this.vistos = JSON.parse(localStorage.getItem('garimpo.dj.vistos')) || {}; } catch { this.vistos = {}; }
     this.ativo = false;
     this.parar = false;
     this.pularAgora = false;
@@ -121,7 +123,7 @@ export class Piloto extends EventTarget {
    * graves, o corte). A transição começa `impacto` tempos antes e termina
    * dentro da faixa. Com `cedo` (o ⏭), vale a primeira frase que der.
    */
-  #planoSaida(S, { tempos, impacto, cedo = false }) {
+  #planoSaida(S, { tempos, impacto, cedo = false, em = 'quebra' }) {
     const l = momentos(S);
     if (!l.length || !S.grid?.bpm) return null;
     const p = per(S), pos = S.displayPosition;
@@ -133,7 +135,7 @@ export class Piloto extends EventTarget {
     const tarde = cabe.filter((m) => m.t >= S.duration * (est.uso ?? 0.66));
     const pote = tarde.length ? tarde : cabe;
     const ordem = (est.uso ?? 0.66) >= 0.6 ? [...pote].reverse() : pote;   // vive até o fim / sai cedo
-    const m = ordem.find((x) => x.tipo === 'quebra') || ordem.find((x) => x.bloco) || ordem[0];
+    const m = ordem.find((x) => x.tipo === em) || ordem.find((x) => x.bloco) || ordem[0];
     return { impactoT: m.t, inicioT: m.t - impacto * p, tipo: m.tipo };
   }
 
@@ -174,15 +176,19 @@ export class Piloto extends EventTarget {
     // o truque vira tique (os guias de técnica avisam, e soa robótico igual)
     const chave = id + ':' + (D.faixa?.id || D.faixa?.title);
     this.gestos ||= {};
-    if ((this.gestos[chave] || 0) >= 2) return true;
-    const mov = escolherMovimento({ tipo: m.tipo, estilo: this.estilo, anterior: this.ultimoMovimento });
-    if (mov) this.gestos[chave] = (this.gestos[chave] || 0) + 1;
+    // tocando JUNTO é aula: mais gestos por faixa (3) e mais chance de cada um
+    if ((this.gestos[chave] || 0) >= (this.juntos ? 3 : 2)) return true;
+    const mov = escolherMovimento({ tipo: m.tipo, estilo: this.estilo, anterior: this.ultimoMovimento,
+                                    vistos: this.vistos, extra: this.juntos ? 0.25 : 0 });
+    if (mov) { this.gestos[chave] = (this.gestos[chave] || 0) + 1; this.#viu(mov); }
     if (!mov) return true;
     const inicio = m.t - MOVIMENTOS[mov].alvo * p;
     if (inicio < pos + 0.5 * p) return true;              // já passou do começo do gesto
     this.ultimoMovimento = mov;
+    // o som do drop depende do estilo: buzina no baile, impacto no festival
+    const som = { baile: 'buzina', turntablista: 'rewind', festival: 'impacto' }[this.estilo] || 'palmas';
     return executar(mov, {
-      m: this.#acoes(), dorme: (ms) => this.#dorme(ms), deck: id, bpm: D.bpmEfetivo,
+      m: this.#acoes(), dorme: (ms) => this.#dorme(ms), deck: id, bpm: D.bpmEfetivo, param: { som },
       relogio: () => (D.displayPosition - inicio) / p,
       aoFalar: (x) => this.#narra(x.diz, x), aluno: this.juntos, ler: this.#ler(),
     });
@@ -212,6 +218,12 @@ export class Piloto extends EventTarget {
       if (!await this.#dorme(Math.max(20, Math.min(1000, f2 * 1000)), { pulavel })) return 'parou';
     }
     return 'parou';
+  }
+
+  /** Conta mais uma aula dada de `nome` (técnica ou gesto) e guarda. */
+  #viu(nome) {
+    this.vistos[nome] = (this.vistos[nome] || 0) + 1;
+    try { localStorage.setItem('garimpo.dj.vistos', JSON.stringify(this.vistos)); } catch {}
   }
 
   #kill(id, banda, ligado) {
@@ -247,6 +259,7 @@ export class Piloto extends EventTarget {
       loop: (id, n) => d[id].loopDeTempos(n),
       semLoop: (id) => d[id].clearLoop(),
       parar: (id) => d[id].pause({ brake: 1.2 }),
+      pad: (nome) => this.pads?.dispararNome?.(nome),
       rampa: (alvo, v) => {
         if (alvo === 'xf') { mx.setCrossfader(v); emitirXf(); return; }
         const [tipo, id, banda] = alvo.split(':');
@@ -271,10 +284,29 @@ export class Piloto extends EventTarget {
     const S = d[sai], E = d[entra];
 
     // a técnica vem ANTES do plano: é ela que diz quantos tempos e onde é o golpe
-    const tecnica = faixa?.tecnica && TECNICAS[faixa.tecnica]
-      ? faixa.tecnica
-      : escolherTecnica({ saiFaixa: S.faixa, entraFaixa: faixa || E.faixa,
-                          anterior, estilo: this.estilo });
+    /**
+     * Quem escolhe: o Jev, quando está seguro (60%+). Na dúvida, as chances
+     * dele entram como peso junto com o CURRÍCULO — entre as técnicas que ele
+     * acha que servem, a que você viu menos. Sem Jev, o estilo e o currículo.
+     */
+    const probs = faixa?.probsIA || null;
+    let tecnica;
+    if (faixa?.tecnica && TECNICAS[faixa.tecnica] && (!probs || (probs[faixa.tecnica] ?? 1) >= 0.6)) {
+      tecnica = faixa.tecnica;
+    } else if (probs && faixa?.tecnica && faixa.harmonicamenteOk !== false) {
+      // (tom que briga não reabre: ali a política já forçou eco/corte)
+      const pesos = {};
+      for (const [k, pr] of Object.entries(probs)) {
+        if (TECNICAS[k] && pr >= 0.08 && k !== anterior) pesos[k] = pr * novidade(this.vistos[k]);
+      }
+      const soma = Object.values(pesos).reduce((a, b) => a + b, 0);
+      let r = Math.random() * soma;
+      tecnica = Object.keys(pesos).find((k) => (r -= pesos[k]) <= 0) || faixa.tecnica;
+    } else {
+      tecnica = escolherTecnica({ saiFaixa: S.faixa, entraFaixa: faixa || E.faixa,
+                                  anterior, estilo: this.estilo, vistos: this.vistos });
+    }
+    this.#viu(tecnica);
     const est = ESTILOS[this.estilo] || ESTILOS.pista;
     /**
      * A duração em ESCALAS INTEIRAS do roteiro (¼, ½, ¾, 1, 1½, 2). Com uma
@@ -313,7 +345,7 @@ export class Piloto extends EventTarget {
       // técnica, escala menor) em vez de cair no jeito sem frase
       for (const e of [escala, ...ESCALAS.filter((x) => x < escala).reverse()]) {
         plano = this.#planoSaida(S, { tempos: base * e, impacto: (TECNICAS[tecnica].impacto ?? base / 2) * e,
-                                      cedo: this.pularAgora });
+                                      cedo: this.pularAgora, em: TECNICAS[tecnica].saidaEm || 'quebra' });
         if (plano) { escala = e; tempos = base * e; impacto = (TECNICAS[tecnica].impacto ?? base / 2) * e; break; }
       }
     }
@@ -339,8 +371,9 @@ export class Piloto extends EventTarget {
       E.seek(Math.max(0, pe.inicioE - w * (E.nominalRate || 1)));
       E.play();
       this.#diz('entrando', { deck: entra, faixa: E.faixa?.title });
-      if (!await this.#dorme(350)) return false;
-      this.encaixar(entra);              // o resto de fase, abaixo de um tempo
+      // o resto de fase (abaixo de um tempo) é acertado EM PARALELO: esperar
+      // por ele atrasava o 1º passo meio tempo quando a próxima começa do zero
+      setTimeout(() => { if (!this.parar) this.encaixar(entra); }, 350);
       this.#diz('encaixando');
       this.#narra('n.encaixar', { porque: 'n.encaixar.p', vars: { e: entra }, mostra: ['b-encaixar', 'fase'] });
       relogio = () => (E.displayPosition - pe.inicioE) / per(E);

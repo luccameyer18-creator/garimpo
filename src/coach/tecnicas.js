@@ -158,6 +158,67 @@ export const TECNICAS = {
     }),
   },
 
+  /**
+   * TROCA EM TRÊS BANDAS: a que entra chega só com os chimbais, depois os
+   * médios trocam de lado, depois o grave, e por fim os agudos da que sai
+   * somem. É a mistura "de EQ inteiro" dos guias: um pedaço de cada vez.
+   */
+  agudos: {
+    nome: 'troca em três bandas',
+    quando: 'músicas com muita coisa acontecendo — troca uma faixa de frequência de cada vez',
+    tempos: 32,
+    impacto: 16,
+    roteiro: ({ sai, entra, xfSai, xfEntra }) => ({
+      passos: [
+        { em: 0, faz: (m) => { m.kill(entra, 'grave', true); m.kill(entra, 'medio', true); },
+          diz: 'n.agudos.0', porque: 'n.agudos.0p', mostra: ['kill-{e}-grave', 'kill-{e}-medio', 'xf'] },
+        { em: 8, faz: (m) => { m.kill(entra, 'medio', false); m.kill(sai, 'medio', true); },
+          diz: 'n.agudos.8', porque: 'n.agudos.8p', mostra: ['kill-{e}-medio', 'kill-{s}-medio'] },
+        { em: 16, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); },
+          diz: 'n.graves.16', porque: 'n.graves.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'],
+          aluno: { pede: 'n.aluno.graves', porque: 'n.aluno.graves.p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'],
+                  feito: (ler) => ler.morto(sai, 'grave') && !ler.morto(entra, 'grave') } },
+        { em: 24, faz: (m) => m.kill(sai, 'agudo', true),
+          diz: 'n.agudos.24', porque: 'n.agudos.24p', mostra: ['kill-{s}-agudo'] },
+        { em: 30, faz: (m) => m.parar(sai), diz: 'n.fim' },
+      ],
+      rampas: [
+        { de: 0, ate: 8, alvo: 'xf', v0: xfSai, v1: 0.5 },
+        { de: 24, ate: 29, alvo: 'xf', v0: 0.5, v1: xfEntra },
+      ],
+    }),
+  },
+
+  /**
+   * DROP DUPLO: as duas faixas chegam no drop no MESMO 1. Por 8 tempos a
+   * pista ouve as duas explodindo juntas (com um grave só), e aí a que sai
+   * afina no filtro e vai embora. Precisa das duas no auge — o plano de saída
+   * procura um DROP da que está no ar, não uma quebra.
+   */
+  duplo: {
+    nome: 'drop duplo',
+    quando: 'duas faixas fortes no mesmo tom — as duas explodem juntas no mesmo 1',
+    tempos: 32,
+    impacto: 16,
+    saidaEm: 'drop',
+    roteiro: ({ sai, entra, xfSai, xfEntra }) => ({
+      passos: [
+        { em: 0, faz: (m) => m.kill(entra, 'grave', true),
+          diz: 'n.duplo.0', porque: 'n.duplo.0p', mostra: ['kill-{e}-grave', 'xf'] },
+        { em: 16, faz: (m) => { m.kill(sai, 'grave', true); m.kill(entra, 'grave', false); m.xf(0.5); },
+          diz: 'n.duplo.16', porque: 'n.duplo.16p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'],
+          aluno: { pede: 'n.aluno.graves', porque: 'n.aluno.graves.p', mostra: ['kill-{s}-grave', 'kill-{e}-grave'],
+                  feito: (ler) => ler.morto(sai, 'grave') && !ler.morto(entra, 'grave') } },
+        { em: 30, faz: (m) => { m.parar(sai); m.filtro(sai, 0); }, diz: 'n.fim' },
+      ],
+      rampas: [
+        { de: 0, ate: 15.5, alvo: 'xf', v0: xfSai, v1: 0.4 },
+        { de: 24, ate: 29, alvo: `filtro:${sai}`, v0: 0, v1: 0.7, curva: 'entra' },
+        { de: 24, ate: 29, alvo: 'xf', v0: 0.5, v1: xfEntra },
+      ],
+    }),
+  },
+
   blend: {
     nome: 'mistura longa de EQ',
     quando: 'mesmo tom e mesmo andamento — dá pra deixar as duas conversarem',
@@ -268,6 +329,49 @@ export const MOVIMENTOS = {
       depois: (m) => { m.filtro(d, 0); m.eco(d, 0); m.fader(d, 1); },
     }),
   },
+  chimbal: {
+    nome: 'chimbal que some antes do drop',
+    momento: 'drop', tempos: 16, alvo: 16,
+    roteiro: ({ d }) => ({
+      passos: [
+        { em: 14, faz: (m) => m.kill(d, 'agudo', true),
+          diz: 'n.vida.chimbal', porque: 'n.vida.chimbal.p', mostra: ['kill-{d}-agudo'],
+          aluno: { pede: 'n.aluno.chimbal', porque: 'n.vida.chimbal.p', mostra: ['kill-{d}-agudo'],
+                   feito: (ler) => ler.morto(d, 'agudo') } },
+        { em: 16, faz: (m) => m.kill(d, 'agudo', false) },
+      ],
+      rampas: [],
+      depois: (m) => m.kill(d, 'agudo', false),
+    }),
+  },
+  mergulho: {
+    nome: 'mergulho no filtro na quebra',
+    momento: 'quebra', tempos: 32, alvo: 8,
+    roteiro: ({ d }) => ({
+      passos: [
+        { em: 0, diz: 'n.vida.mergulho', porque: 'n.vida.mergulho.p', mostra: ['fil-{d}'] },
+        { em: 24, diz: 'n.vida.mergulho24', porque: 'n.vida.mergulho.p', mostra: ['fil-{d}'] },
+        { em: 32, faz: (m) => m.filtro(d, 0) },
+      ],
+      rampas: [
+        { de: 0, ate: 8, alvo: 'filtro:{d}', v0: 0, v1: -0.55, curva: 'sai' },
+        { de: 24, ate: 31.75, alvo: 'filtro:{d}', v0: -0.55, v1: 0, curva: 'entra' },
+      ],
+      depois: (m) => m.filtro(d, 0),
+    }),
+  },
+  /** um som dos pads no 1 do drop — o que estiver no pad (o seu, se trocou) */
+  soltaSom: {
+    nome: 'som no drop',
+    momento: 'drop', tempos: 16, alvo: 16,
+    roteiro: ({ d, som = 'buzina' }) => ({
+      passos: [
+        { em: 16, faz: (m) => m.pad(som),
+          diz: 'n.vida.som', porque: 'n.vida.som.p', mostra: ['pads'] },
+      ],
+      rampas: [],
+    }),
+  },
   respiro: {
     nome: 'agudo respirando na quebra',
     momento: 'quebra', tempos: 24, alvo: 16,
@@ -302,57 +406,66 @@ export const ESTILOS = {
     nome: 'hipnótico',
     escola: 'techno de Berlim e Detroit',
     como: 'misturas longas de EQ, quase nunca corta, deixa as duas faixas conversarem por minutos',
-    pesos: { blend: 5, graves: 3, filtro: 1, loop: 0.5, eco: 0.3, corte: 0 },
+    pesos: { blend: 5, graves: 3, agudos: 2.5, filtro: 1, loop: 0.5, eco: 0.3, duplo: 0.2, corte: 0 },
     escala: 1.5,
     uso: 0.72,
-    vida: { respiro: 2, subida: 1, provoca: 0.5, ecoFrase: 0.3 }, chanceVida: 0.35,
+    vida: { respiro: 2, mergulho: 2, subida: 1, chimbal: 1, provoca: 0.5, ecoFrase: 0.3 }, chanceVida: 0.35,
   },
   pista: {
     nome: 'pista house',
     escola: 'house de Chicago e Nova York',
     como: 'troca de graves na frase, filtro pra subir a energia, um loop de vez em quando',
-    pesos: { graves: 4, filtro: 3, loop: 1.5, blend: 1.5, eco: 0.5, corte: 0.3 },
+    pesos: { graves: 4, filtro: 3, agudos: 2, loop: 1.5, blend: 1.5, duplo: 1, eco: 0.5, corte: 0.3 },
     escala: 1,
     uso: 0.66,
-    vida: { provoca: 3, subida: 2, ecoFrase: 1, respiro: 1 }, chanceVida: 0.5,
+    vida: { provoca: 3, subida: 2, chimbal: 2, mergulho: 1, ecoFrase: 1, respiro: 1, soltaSom: 0.4 }, chanceVida: 0.5,
   },
   disco: {
     nome: 'disco edit',
     escola: 'disco e nu-disco',
     como: 'filtro quente abrindo devagar, loops de groove, entradas longas e macias',
-    pesos: { filtro: 4, loop: 2.5, blend: 2, graves: 2, eco: 0.5, corte: 0.2 },
+    pesos: { filtro: 4, loop: 2.5, blend: 2, graves: 2, agudos: 1.5, duplo: 0.5, eco: 0.5, corte: 0.2 },
     escala: 1.25,
     uso: 0.66,
-    vida: { subida: 3, respiro: 2, provoca: 1, ecoFrase: 1 }, chanceVida: 0.5,
+    vida: { subida: 3, mergulho: 2, respiro: 2, chimbal: 1, provoca: 1, ecoFrase: 1, soltaSom: 0.3 }, chanceVida: 0.5,
   },
   turntablista: {
     nome: 'turntablista',
     escola: 'hip-hop de toca-discos',
     como: 'cortes secos, echo out, loops curtos — troca rápido e no tempo certo',
-    pesos: { corte: 4, eco: 3, loop: 2.5, graves: 1, filtro: 0.5, blend: 0 },
+    pesos: { corte: 4, eco: 3, loop: 2.5, graves: 1, duplo: 1, filtro: 0.5, agudos: 0, blend: 0 },
     escala: 0.5,
     uso: 0.45,
-    vida: { ecoFrase: 3, provoca: 2, subida: 0.5, respiro: 0 }, chanceVida: 0.6,
+    vida: { ecoFrase: 3, provoca: 2, soltaSom: 2, chimbal: 1, subida: 0.5, respiro: 0 }, chanceVida: 0.6,
   },
   baile: {
     nome: 'baile',
     escola: 'funk brasileiro e open format',
     como: 'emenda rápida, corte no drop, pula de gênero sem pedir licença',
-    pesos: { corte: 3.5, eco: 2.5, loop: 2, filtro: 1.5, graves: 1, blend: 0 },
+    pesos: { corte: 3.5, eco: 2.5, loop: 2, duplo: 2, filtro: 1.5, graves: 1, agudos: 0, blend: 0 },
     escala: 0.6,
     uso: 0.5,
-    vida: { provoca: 3, ecoFrase: 2, subida: 1, respiro: 0 }, chanceVida: 0.6,
+    vida: { provoca: 3, soltaSom: 3, ecoFrase: 2, chimbal: 1, subida: 1, respiro: 0 }, chanceVida: 0.6,
   },
   festival: {
     nome: 'festival',
     escola: 'palco grande de EDM',
     como: 'loop que fecha criando tensão, filtro subindo, e explode no drop',
-    pesos: { loop: 4, filtro: 3, corte: 2.5, graves: 1, eco: 1, blend: 0 },
+    pesos: { loop: 4, filtro: 3, duplo: 3, corte: 2.5, graves: 1, eco: 1, agudos: 0.5, blend: 0 },
     escala: 0.8,
     uso: 0.58,
-    vida: { subida: 3, provoca: 3, ecoFrase: 1.5, respiro: 0.5 }, chanceVida: 0.7,
+    vida: { subida: 3, provoca: 3, soltaSom: 2.5, chimbal: 1.5, ecoFrase: 1.5, mergulho: 1, respiro: 0.5 }, chanceVida: 0.7,
   },
 };
+
+/**
+ * CURRÍCULO. O DJ é professor: ele precisa passar por TODAS as técnicas, não
+ * repetir as duas favoritas do estilo. `vistos` conta quantas vezes cada uma
+ * já apareceu (guardado entre sets); a que você ainda não viu ganha até 2,5×
+ * de peso, a vista dez vezes quase nada a mais. O gosto do estilo continua
+ * mandando — técnica com peso zero no estilo não entra por novidade.
+ */
+export const novidade = (n = 0) => 1 + 1.5 / (1 + n);
 
 /** Escolha ponderada: sorteia uma técnica pelos pesos do estilo. */
 function sortear(pesos, evitar = null) {
@@ -375,7 +488,7 @@ function sortear(pesos, evitar = null) {
  * - SALTO DE ANDAMENTO ou de gênero pede filtro, que disfarça a costura.
  * - No resto, varia — duas trocas de graves seguidas soam como um script.
  */
-export function escolherTecnica({ saiFaixa, entraFaixa, anterior = null, estilo = 'pista' }) {
+export function escolherTecnica({ saiFaixa, entraFaixa, anterior = null, estilo = 'pista', vistos = {} }) {
   const est = ESTILOS[estilo] || ESTILOS.pista;
   const harmonia = entraFaixa?.harmonicamenteOk !== false && (entraFaixa?.nivel ?? 0) < 2;
   const bpmS = saiFaixa?.bpm, bpmE = entraFaixa?.bpm;
@@ -388,7 +501,10 @@ export function escolherTecnica({ saiFaixa, entraFaixa, anterior = null, estilo 
   // nas outras situações, o estilo decide, mas a situação empurra os pesos
   const pesos = { ...est.pesos };
   if (saiFaixa?.camelot === entraFaixa?.camelot && saltoBpm < 0.01 && !mudaGenero) pesos.blend *= 2.5;
-  if (saltoBpm > 0.03 || mudaGenero) { pesos.filtro *= 2; pesos.corte *= 1.5; pesos.blend *= 0.2; }
+  if (saltoBpm > 0.03 || mudaGenero) { pesos.filtro *= 2; pesos.corte *= 1.5; pesos.blend *= 0.2; pesos.duplo *= 0.3; }
+  // drop duplo pede o mesmo tom: duas faixas no auge com tons vizinhos embolam
+  if (saiFaixa?.camelot !== entraFaixa?.camelot) pesos.duplo = (pesos.duplo || 0) * 0.3;
+  for (const k of Object.keys(pesos)) pesos[k] *= novidade(vistos[k]);
   // repetir a mesma técnica seguida soa como script
   return sortear(pesos, anterior);
 }
@@ -397,12 +513,12 @@ export function escolherTecnica({ saiFaixa, entraFaixa, anterior = null, estilo 
  * Um movimento pra este momento da faixa, pelo gosto do estilo — ou nenhum.
  * `tipo` é o do momento que vem ('drop' ou 'quebra'); `anterior` evita repetir.
  */
-export function escolherMovimento({ tipo, estilo = 'pista', anterior = null }) {
+export function escolherMovimento({ tipo, estilo = 'pista', anterior = null, vistos = {}, extra = 0 }) {
   const est = ESTILOS[estilo] || ESTILOS.pista;
-  if (Math.random() > (est.chanceVida ?? 0.5)) return null;
+  if (Math.random() > Math.min(0.95, (est.chanceVida ?? 0.5) + extra)) return null;
   const pesos = {};
   for (const [k, p] of Object.entries(est.vida || {})) {
-    if (MOVIMENTOS[k]?.momento === tipo && k !== anterior) pesos[k] = p;
+    if (p > 0 && MOVIMENTOS[k]?.momento === tipo && k !== anterior) pesos[k] = p * novidade(vistos[k]);
   }
   if (!Object.keys(pesos).length) return null;
   return sortear(pesos);
@@ -435,7 +551,7 @@ const CURVAS = {
  */
 export async function executar(nomeTecnica, { m, dorme, sai, entra, deck = null, bpm, tempos = null,
                                               aoPasso = () => {}, aoFalar = () => {}, aluno = false,
-                                              ler = null, relogio = null }) {
+                                              ler = null, relogio = null, param = {} }) {
   // um movimento de vida (um deck só) ou uma técnica de transição (dois)
   const tec = MOVIMENTOS[nomeTecnica] || TECNICAS[nomeTecnica] || TECNICAS.graves;
   const total = tempos || tec.tempos;
@@ -443,7 +559,7 @@ export async function executar(nomeTecnica, { m, dorme, sai, entra, deck = null,
   const escala = MOVIMENTOS[nomeTecnica] ? 1 : total / tec.tempos;
   const msPorTempo = 60000 / (bpm || 124);
   const xfSai = sai === 'A' ? 0 : 1, xfEntra = 1 - xfSai;
-  const r = tec.roteiro({ sai, entra, xfSai, xfEntra, d: deck });
+  const r = tec.roteiro({ sai, entra, xfSai, xfEntra, d: deck, ...param });
 
   // no modo junto, o gesto-chave é seu até o 1 dele; não fez, eu faço NO 1 —
   // esperar mais um tempo pela sua mão deixava a troca atrasada na pista

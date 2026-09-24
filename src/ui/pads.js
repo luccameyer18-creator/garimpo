@@ -328,5 +328,7 @@ export function montarPads({ el, ctx, destino, bpm, antes = async () => {} }) {
 
   rotular();
   lerTodos().then((todos) => { for (const [k, v] of Object.entries(todos)) if (v?.blob) meus[k] = v; rotular(); }).catch(() => {});
-  return { disparar, rotular };
+  /** O DJ dispara pelo NOME do som padrão (é a vaga dele — se você trocou, toca o seu). */
+  const dispararNome = (nome) => { const i = PADRAO.findIndex((p) => p.id === nome); if (i >= 0) disparar(i); };
+  return { disparar, dispararNome, rotular };
 }

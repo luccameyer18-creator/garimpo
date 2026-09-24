@@ -1829,7 +1829,7 @@ let piloto = null;
 function garantirPiloto() {
   if (piloto) return piloto;
   piloto = new Piloto({
-    decks, mixer,
+    decks, mixer, pads,           // pads: ele solta um som no drop, como a mão faria
     // encaixa QUEM ENTRA. O botão corrige sempre o B — com a nova entrando no
     // A, o piloto deslizava a faixa que estava NO AR, e a pista ouvia
     encaixar: (id = 'B') => {
@@ -2427,7 +2427,7 @@ montarPista({
  * Os pads de som do mixer. O BPM é o de quem está no ar — o lado do
  * crossfader decide; se só um toca, é ele.
  */
-montarPads({
+const pads = montarPads({
   el: $('pads'),
   ctx: () => ctx,
   destino: () => mixer?.master,
