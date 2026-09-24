@@ -22,7 +22,7 @@
  * inclusive pra você no meio de um set.
  */
 
-import { APP_NAME, GENRES, CRATES, DJS, APOSTAS, isDeckable, normalizeTrack } from './audius.js';
+import { APP_NAME, GENRES, CRATES, DJS, APOSTAS, ARTISTAS, isDeckable, normalizeTrack } from './audius.js';
 import { guardar as guardarLocal, contar, artistas, artistasVarridos, marcarVarrido,
          frentesEsgotadas, marcarEsgotada } from './crate.js';
 import { compartilhar } from './galera.js';
@@ -134,13 +134,21 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
        */
       frentes.push({
         nome: `${c.nome} · ${b.q}`,
-        pilha: ({ BR: 'br:', LAT: 'lat:', EST: 'est:', DJ: 'dj:' }[c.reg] || 'lat:') + c.nome,
+        pilha: ({ BR: 'br:', LAT: 'lat:', EST: 'est:', DJ: 'dj:', SLW: 'slw:' }[c.reg] || 'lat:') + c.nome,
         filtro: b.filtro !== undefined ? b.filtro : null,
         serie: PAGINAS_BUSCA.map((offset) =>
           `${H}/tracks/search?query=${encodeURIComponent(b.q)}&limit=${LIMITE}` +
           `&offset=${offset}&app_name=${APP_NAME}`),
       });
     }
+  }
+
+  // 1a. os artistas com conta (funk e rap): as faixas deles, página a página
+  for (const a of ARTISTAS) {
+    frentes.push({
+      nome: `artista · ${a.nome}`, pilha: 'dj:' + a.nome, filtro: null,
+      serie: [0, 100, 200].map((offset) => `${H}/users/${a.id}/tracks?limit=${LIMITE}&offset=${offset}&app_name=${APP_NAME}`),
+    });
   }
 
   /**

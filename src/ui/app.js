@@ -1402,19 +1402,52 @@ function pintarBiblioteca() {
     : n ? t('bib.generos', { n }) : t('bib.tudo');
 }
 
-/** Os chips de gênero, nos dois lugares: a lista e a fileira do DJ. */
+/**
+ * OS GÊNEROS NUM BLOCO SÓ, COM ABAS.
+ *
+ * Eram ~120 chips empilhados em seis grupos: abrir "gêneros" empurrava a lista
+ * de músicas pra fora da gaveta. Agora é um bloco: em cima, o que está
+ * MARCADO (com ✕ pra tirar) e o "tudo"; no meio, as abas (⚡ eletrônico,
+ * 🇧🇷 brasil… 🐢 slowed), cada uma com o número de marcados nela; embaixo, só
+ * os chips da aba. A fileira do DJ mostra a MESMA aba (◂ ▸ troca) — marcar
+ * lá marca aqui, é uma seleção só.
+ */
+let abaGen = (() => { try { return Number(localStorage.getItem('garimpo.bib.aba')) || 0; } catch { return 0; } })();
 function desenharChips() {
+  if (abaGen >= bib.GRUPOS.length) abaGen = 0;
+  const g = bib.GRUPOS[abaGen];
+  const sel = new Set(bib.estado.selecionadas);
+  const todos = bib.GRUPOS.flatMap((x) => x.itens);
+  const marcados = todos.filter((i) => sel.has(i.chave));
   $('crates').innerHTML =
-    `<div class="grupo-chips"><button data-pilha="*" class="chip-tudo">${t('bib.tudoChip')}</button></div>` +
-    bib.GRUPOS.map((g) =>
-      `<div class="grupo-chips"><span class="rot-chips" data-i18n="${g.grupo}">${t(g.grupo)}</span>` +
-      g.itens.map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('') +
-      '</div>').join('');
+    `<div class="gen-marcados"><button data-pilha="*" class="chip-tudo">${t('bib.tudoChip')}</button>` +
+      (marcados.length ? marcados.map((i) => `<button class="marcado" data-pilha="${i.chave}">${i.nome} <b>✕</b></button>`).join('')
+                       : `<span class="gen-nada">${t('bib.nadaMarcado')}</span>`) + '</div>' +
+    `<div class="gen-abas" role="tablist">` + bib.GRUPOS.map((x, k) => {
+      const n = x.itens.filter((i) => sel.has(i.chave)).length;
+      return `<button role="tab" class="gen-aba${k === abaGen ? ' lig' : ''}" data-aba="${k}" aria-selected="${k === abaGen}" title="${t(x.grupo)}">` +
+             `<i>${x.ic || '•'}</i><span>${t('aba.' + x.grupo.slice(10))}</span>${n ? `<b>${n}</b>` : ''}</button>`;
+    }).join('') + '</div>' +
+    `<div class="gen-chips" role="tabpanel"><span class="gen-desc">${t(g.grupo)}</span>` +
+      g.itens.map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('') + '</div>';
   $('dj-generos').innerHTML =
     `<button class="fav" data-fonte="favoritas">♥ ${t('dj.fav')}</button>` +
     `<button data-pilha="*" class="chip-tudo">${t('bib.tudoChip')}</button>` +
-    bib.GRUPOS.flatMap((g) => g.itens).map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('');
+    `<button class="dj-aba" data-passo="-1" title="${t('bib.abaAnterior')}">◂</button>` +
+    `<button class="dj-aba nome" data-passo="1" title="${t('bib.abaProxima')}">${g.ic || ''} ${t('aba.' + g.grupo.slice(10))} ▸</button>` +
+    // marcados de OUTRAS abas continuam à vista, na frente
+    marcados.filter((i) => !g.itens.includes(i)).map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('') +
+    g.itens.map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('');
 }
+function irAba(k) {
+  abaGen = ((k % bib.GRUPOS.length) + bib.GRUPOS.length) % bib.GRUPOS.length;
+  try { localStorage.setItem('garimpo.bib.aba', String(abaGen)); } catch {}
+  desenharChips(); pintarBiblioteca();
+}
+$('crates').addEventListener('click', (e) => {
+  const a = e.target.closest('[data-aba]');
+  if (a) { e.stopPropagation(); irAba(Number(a.dataset.aba)); }
+}, true);
 desenharChips();
 // as 🚀 apostas da semana chegam depois (rede): redesenha os chips quando vierem
 bib.carregarApostas().then((mudou) => { if (mudou) { desenharChips(); pintarBiblioteca(); } });
@@ -1438,12 +1471,14 @@ try { abrirGeneros(localStorage.getItem('garimpo.bib.generosAbertos') === '1'); 
 $('dj-generos').addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (!b) return;
+  if (b.dataset.passo) { irAba(abaGen + Number(b.dataset.passo)); return; }
   if (b.dataset.fonte) {
     fonteDj = fonteDj === 'favoritas' ? 'generos' : 'favoritas';
   } else {
     fonteDj = 'generos';
     bib.alternarGenero(b.dataset.pilha);
     if (bib.estado.ordem === 'favoritas') bib.escolherOrdem('embaralhar');
+    desenharChips();
   }
   try { localStorage.setItem('garimpo.dj.fonte', fonteDj); } catch {}
   recarregar();
@@ -1539,6 +1574,7 @@ $('crates').addEventListener('click', (e) => {
   bib.alternarGenero(b.dataset.pilha);
   // escolher gênero sai do modo favoritas: a pessoa quer ver o gênero
   if (bib.estado.ordem === 'favoritas') bib.escolherOrdem('embaralhar');
+  desenharChips();         // os marcados e o número de cada aba mudaram
   recarregar();
   refazerProximas();       // com o DJ tocando, as próximas seguem os gêneros novos
 });

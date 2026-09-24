@@ -331,6 +331,33 @@
   .crates button.lig { background:linear-gradient(180deg,#ffa2e6,var(--neon)); border-color:var(--neon);
                        color:#2b0420; box-shadow:0 0 12px rgba(255,78,205,.45); }
 
+  /* o BLOCO de gêneros: marcados · abas · chips da aba (ver desenharChips) */
+  .crates { gap:0; border:1px solid color-mix(in srgb, var(--neon) 30%, var(--linha)); border-radius:12px;
+            background:linear-gradient(180deg, rgba(40,14,48,.55), rgba(12,8,24,.75)); overflow:hidden; }
+  .gen-marcados { display:flex; flex-wrap:wrap; gap:4px; align-items:center; padding:7px 7px 6px; }
+  .gen-marcados .marcado { background:linear-gradient(180deg,#ffa2e6,var(--neon)); border-color:var(--neon); color:#2b0420; }
+  .gen-marcados .marcado b { font-size:9px; opacity:.7; margin-left:2px; }
+  .gen-nada { font:9.5px ui-monospace,monospace; color:var(--fraco); }
+  .gen-abas { display:flex; gap:2px; overflow-x:auto; scrollbar-width:none; padding:0 6px;
+              border-bottom:1px solid var(--linha); }
+  .gen-abas::-webkit-scrollbar { display:none; }
+  .crates .gen-aba { flex:none; display:flex; align-items:center; gap:4px; padding:6px 8px 7px; border:none;
+                     border-radius:9px 9px 0 0; background:none; box-shadow:none; color:var(--mut);
+                     font:700 10px ui-sans-serif,system-ui,sans-serif; position:relative; }
+  .crates .gen-aba i { font-style:normal; font-size:12px; }
+  .crates .gen-aba b { min-width:15px; height:15px; border-radius:8px; background:var(--neon); color:#2b0420;
+                       font:800 9px/15px ui-monospace,monospace; text-align:center; padding:0 3px; }
+  .crates .gen-aba.lig { color:#fff; background:color-mix(in srgb, var(--neon) 16%, transparent); }
+  .crates .gen-aba.lig::after { content:""; position:absolute; left:8px; right:8px; bottom:-1px; height:2px;
+                                border-radius:2px; background:var(--neon); box-shadow:0 0 8px var(--neon); }
+  .gen-chips { display:flex; flex-wrap:wrap; gap:4px; align-content:flex-start; padding:7px;
+               max-height:132px; overflow-y:auto; }
+  .gen-desc { width:100%; font:800 8px ui-monospace,monospace; letter-spacing:.12em; color:var(--fraco);
+              text-transform:uppercase; }
+  /* a aba na fileira do DJ: ◂ nome ▸ */
+  .dj-generos .dj-aba { color:var(--acc); border-color:color-mix(in srgb, var(--acc) 45%, var(--linha)); }
+  .dj-generos .dj-aba.nome { font-weight:800; }
+
   .transp { display:flex; flex-direction:column; gap:7px; flex:1; min-width:0; }
   .botoes { display:grid; grid-template-columns:1fr 1fr; gap:6px; flex:none; }
   .botoes button { padding:11px 8px; font-size:11.5px; }
@@ -1061,7 +1088,7 @@
     .faixa .browse::before { content:"♫"; font-size:13px; }
     button { min-height:40px; }
     .knob .kill, .faixa-sel button, .mini-b { min-height:24px !important; }
-    .crates { max-height:96px; }
+    .gen-chips { max-height:96px; }
     /* a barra de cima passava de 375px e ESTICAVA a página inteira pra 473
        (o celular alarga a viewport até caber o que transborda) — tudo ficava
        deslocado pra direita. No celular ela leva só o essencial. */
@@ -1587,6 +1614,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260924e"></script>
+<script type="module" src="./src/ui/app.js?v=20260924f"></script>
 </body>
 </html>

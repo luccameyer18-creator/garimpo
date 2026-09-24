@@ -17,31 +17,41 @@
  *     e aí o DJ toca só elas
  */
 
-import { GENRES, CRATES, DJS, APOSTAS, trending, search, crateBr, revelacoes, apostasDaSemana, faixasDoArtista } from '../sources/audius.js';
+import { GENRES, CRATES, DJS, APOSTAS, ARTISTAS, trending, search, crateBr, revelacoes, apostasDaSemana, faixasDoArtista } from '../sources/audius.js';
 import * as crate from '../sources/crate.js';
 import { sinaisAudius } from '../coach/jev.js';
 
 /** Todas as pilhas, cada uma com chave única e rótulo. */
+/**
+ * Cada grupo é uma ABA do bloco de gêneros (`ic` é o ícone dela). A ordem é a
+ * das abas.
+ */
+const artista = (a) => ({ chave: 'dj:' + a.nome, nome: a.nome, rede: () => faixasDoArtista(a.id, { limite: 60 }) });
 export const GRUPOS = [
-  { grupo: 'app.grupo.eletronico',
+  { grupo: 'app.grupo.eletronico', ic: '⚡',
     itens: GENRES.map((g) => ({ chave: 'gen:' + g, nome: g, rede: () => trending({ genre: g, limit: 40 }) })) },
-  { grupo: 'app.grupo.brasil',
+  { grupo: 'app.grupo.brasil', ic: '⚽',
     itens: CRATES.filter((c) => c.reg === 'BR').map((c) => ({ chave: 'br:' + c.nome, nome: c.nome,
       rede: () => crateBr(c.nome, { limite: 40 }) })) },
-  { grupo: 'app.grupo.latino',
+  { grupo: 'app.grupo.latino', ic: '🌎',
     itens: CRATES.filter((c) => c.reg === 'LAT').map((c) => ({ chave: 'lat:' + c.nome, nome: c.nome,
       rede: () => crateBr(c.nome, { limite: 40 }) })) },
-  { grupo: 'app.grupo.estilos',
+  { grupo: 'app.grupo.estilos', ic: '✨',
     itens: CRATES.filter((c) => c.reg === 'EST').map((c) => ({ chave: 'est:' + c.nome, nome: c.nome,
       rede: () => crateBr(c.nome, { limite: 40 }) })) },
   // as apostas: o que está estourando. Revelações é FRESCA (quem está
   // chegando muda toda semana: volta à rede a cada 6 h mesmo com acervo); as
   // 🚀 da semana entram logo depois dela, ver carregarApostas()
-  { grupo: 'app.grupo.apostas',
+  { grupo: 'app.grupo.apostas', ic: '🔥',
     itens: [{ chave: 'dj:Revelações', nome: '🔥 Revelações', fresca: true, rede: () => revelacoes({ limite: 60 }) },
       ...APOSTAS.map((c) => ({ chave: 'dj:' + c.nome, nome: c.nome, rede: () => crateBr(c.nome, { limite: 60 }) }))] },
-  { grupo: 'app.grupo.djs',
+  { grupo: 'app.grupo.djs', ic: '🎧',
     itens: DJS.map((c) => ({ chave: 'dj:' + c.nome, nome: c.nome, rede: () => crateBr(c.nome, { limite: 60 }) })) },
+  { grupo: 'app.grupo.funk', ic: '🥁', itens: ARTISTAS.filter((a) => a.reg === 'FUNK').map(artista) },
+  { grupo: 'app.grupo.rap', ic: '🎤', itens: ARTISTAS.filter((a) => a.reg === 'RAP').map(artista) },
+  { grupo: 'app.grupo.slowed', ic: '🐢',
+    itens: CRATES.filter((c) => c.reg === 'SLW').map((c) => ({ chave: 'slw:' + c.nome, nome: c.nome,
+      rede: () => crateBr(c.nome, { limite: 40 }) })) },
 ];
 let TODAS = GRUPOS.flatMap((g) => g.itens);
 

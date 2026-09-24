@@ -580,6 +580,19 @@ export const CRATES = [
              { q: 'acid rave', filtro: /acid/i }, { q: 'acid electro', filtro: /acid/i },
              { q: 'acid breaks', filtro: /acid/i }, { q: 'acid', filtro: ACID_TECHNO }],
     filtro: /acid|303/i },
+  // ── slowed & sped up: a versão lenta/acelerada que a internet ama ──
+  // Medido (4 páginas, título com a palavra): slowed 287, slowed+reverb 309,
+  // sped up 126, speed up 128, nightcore 152. O BPM delas é o da versão.
+  { nome: 'Slowed', reg: 'SLW', termo: 'slowed',
+    buscas: [{ q: 'slowed', filtro: /slowed/i }, { q: 'slowed reverb', filtro: /slowed|reverb/i },
+             { q: 'ultra slowed', filtro: /slowed/i }, { q: 'slowed funk', filtro: /slowed/i }],
+    filtro: /slowed|reverb/i },
+  { nome: 'Sped up', reg: 'SLW', termo: 'sped up',
+    buscas: [{ q: 'sped up', filtro: /sped ?up|speed ?up/i }, { q: 'speed up', filtro: /sped ?up|speed ?up/i },
+             { q: 'sped up funk', filtro: /sped ?up|speed ?up/i }],
+    filtro: /sped ?up|speed ?up/i },
+  { nome: 'Nightcore', reg: 'SLW', termo: 'nightcore',
+    buscas: [{ q: 'nightcore', filtro: /nightcore/i }], filtro: /nightcore/i },
   { nome: 'Acid Trance', reg: 'EST', termo: 'acid trance',
     buscas: [{ q: 'acid trance', filtro: /acid/i }, { q: 'acid psy', filtro: /acid/i },
              { q: 'acid', filtro: ACID_TRANCE }],
@@ -704,6 +717,37 @@ export async function faixasDoArtista(id, { limite = 60, signal } = {}) {
   const data = await api(`/users/${id}/tracks`, { limit: '100', sort: 'plays' }, { signal });
   return (data || []).filter(isDeckable).slice(0, limite).map(normalizeTrack);
 }
+
+/**
+ * ARTISTAS COM CONTA NO AUDIUS — aqui o chip toca as faixas DELES (as mais
+ * ouvidas primeiro), não uma busca pelo nome.
+ *
+ * FUNK: os DJs de funk famosos não estão no Audius (DJ Petroski, Arana, GBR,
+ * Rennan da Penha, Marlboro…: nenhum tem conta, e o nome aparece em 0–2
+ * faixas). Quem FAZ funk brasileiro lá, medido pelas faixas das buscas de
+ * funk/montagem: KARAN! (baile a 130), DJ BDF, JAUM (mashups de MC), rezzo
+ * (funk e tecnobrega), Samuel Farias Barbosa (montagens). Ficou de fora quem
+ * só sobe versão slowed/sped up — essas moram na aba delas.
+ *
+ * RAP: artistas verificados do Hip-Hop/Rap do Audius com faixas de sobra
+ * (medido: trending de mês/ano/sempre, conta verificada ou 3 mil+
+ * seguidores, 12+ faixas que cabem num deck).
+ */
+export const ARTISTAS = [
+  { nome: 'KARAN!', id: 'naYNA', reg: 'FUNK' }, { nome: 'DJ BDF', id: 'nVMlQ', reg: 'FUNK' },
+  { nome: 'JAUM', id: 'ezGNP', reg: 'FUNK' }, { nome: 'rezzo', id: 'DE9M4', reg: 'FUNK' },
+  { nome: 'Samuel Farias Barbosa', id: 'aNAYq1', reg: 'FUNK' },
+  { nome: 'POUYA', id: 'ebq0y', reg: 'RAP' }, { nome: 'MadeinTYO', id: 'P5l1X', reg: 'RAP' },
+  { nome: 'KILLY', id: '91Xm0', reg: 'RAP' }, { nome: 'trillsammy', id: 'NzMW8', reg: 'RAP' },
+  { nome: 'Fat Nick', id: 'oGKZd', reg: 'RAP' }, { nome: 'Connor Price', id: 'KEWjl', reg: 'RAP' },
+  { nome: 'AKTHESAVIOR', id: 'PdzOp', reg: 'RAP' }, { nome: 'Darnell William$', id: '6EEYG', reg: 'RAP' },
+  { nome: 'ollie', id: '5QmM6', reg: 'RAP' }, { nome: 'Cam Archer', id: 'n0X3V', reg: 'RAP' },
+  { nome: 'Lido', id: 'eJ5Qz', reg: 'RAP' }, { nome: 'Nocturnal', id: 'rmk5g', reg: 'RAP' },
+  { nome: 'capshun', id: 'nogRn', reg: 'RAP' }, { nome: 'GOON DES GARCONS', id: 'nlOdQ', reg: 'RAP' },
+  { nome: 'grouptherapy.', id: 'JdQpp', reg: 'RAP' }, { nome: 'Darci', id: 'PWBYp', reg: 'RAP' },
+  { nome: 'DECAP', id: 'ePPq0', reg: 'RAP' }, { nome: 'MATTRICK', id: 'lzwQ6', reg: 'RAP' },
+  { nome: 'MR.CARMACK', id: 'D7Mgn', reg: 'RAP' },
+];
 
 /** Compatibilidade: a primeira versão só tinha crates do Brasil. */
 export const CRATES_BR = CRATES.filter((c) => c.reg === 'BR');
