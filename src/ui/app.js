@@ -25,6 +25,7 @@ import { montarCena } from './cena.js';
 import { montarViagem } from './viagem.js';
 import { qualidade } from './qualidade.js';
 import * as bib from './biblioteca.js';
+import { abrirGuia, guiaVisto } from './tour.js';
 import { montarControladora } from '../controle/controladora.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
@@ -193,8 +194,12 @@ const tentarLigar = () => {
         // faz a coluna virar a moldura de tudo que é position:fixed dentro dela
         // — o visualizador em tela cheia ficava do tamanho da coluna
         setTimeout(() => document.body.classList.remove('entrou'), 900);
-        // deck vazio: a primeira coisa a fazer é escolher música
-        if (!decks.A?.faixa) abrirBibPara('A');
+        // primeira vez: o guia mostra a cabine antes de tudo; no fim dele (ou
+        // nas outras vezes, direto) a gaveta abre, que o primeiro passo é
+        // escolher música
+        const escolher = () => { if (!decks.A?.faixa) abrirBibPara('A'); };
+        if (!guiaVisto()) setTimeout(() => abrirGuia({ depois: escolher }), 700);
+        else escolher();
       }
       $('porta').classList.add('saiu');
       return garantirRodando();
@@ -1851,6 +1856,11 @@ $('b-compat').onclick = () => {
 
 $('b-ajuda').onclick = () => $('ajuda').showModal();
 $('fechar-ajuda').onclick = () => $('ajuda').close();
+// o guia da primeira vez, quantas vezes quiser: fecha a ajuda e a gaveta e começa
+$('b-rever-guia').onclick = () => {
+  $('ajuda').close();
+  abrirGuia({ antes: () => abrirBib(false) });
+};
 
 const arquivo = $('arquivo');
 $('b-arquivo').onclick = () => arquivo.click();

@@ -812,6 +812,40 @@
   dialog dt { font-weight:700; color:var(--acc); margin-top:13px; font-size:12.5px; }
   dialog dd { margin:3px 0 0; color:var(--mut); font-size:12.5px; }
   dialog .fechar { margin-top:20px; width:100%; padding:12px; font-size:12px; }
+  #b-rever-guia { margin-top:16px; width:100%; padding:11px; font-size:12px; border-color:var(--neon); color:var(--neon); }
+
+  /* ───────── o guia da primeira vez (ver src/ui/tour.js) ───────── */
+  /* A cortina é a SOMBRA do holofote: um buraco que anda por transform em
+     cima do controle de verdade. Sem blur, e só opacity/transform animam. */
+  #guia { position:fixed; inset:0; z-index:200; }
+  #guia .guia-luz { position:fixed; left:0; top:0; border-radius:14px; pointer-events:none;
+    box-shadow:0 0 0 2px var(--neon), 0 0 22px 4px color-mix(in srgb, var(--neon) 55%, transparent), 0 0 0 200vmax rgba(5,3,12,.78);
+    transition:transform .38s cubic-bezier(.2,.85,.25,1); }
+  #guia.sem-alvo .guia-luz { box-shadow:0 0 0 200vmax rgba(5,3,12,.84); }
+  #guia .guia-cartao { position:fixed; left:0; top:0; width:min(360px, calc(100vw - 24px)); padding:16px 18px 14px;
+    border-radius:16px; border:1px solid color-mix(in srgb, var(--neon) 55%, var(--linha));
+    background:linear-gradient(180deg,#241a3e,#140e24); color:var(--fg); box-shadow:0 18px 50px rgba(0,0,0,.6);
+    transition:transform .38s cubic-bezier(.2,.85,.25,1); }
+  #guia .guia-cartao.entra { animation:guia-entra .32s ease-out; }
+  @keyframes guia-entra { from { opacity:0; } to { opacity:1; } }
+  #guia.sem-alvo .guia-cartao { width:min(420px, calc(100vw - 24px)); }
+  .guia-quem { display:flex; align-items:center; gap:7px; font:800 10px ui-monospace,monospace; letter-spacing:.1em;
+               text-transform:uppercase; color:var(--neon); }
+  .guia-ic { font-size:15px; }
+  .guia-n { margin-left:auto; color:var(--fraco); letter-spacing:.05em; }
+  .guia-tit { margin:8px 0 4px; font:800 17px/1.25 ui-sans-serif,system-ui,sans-serif; }
+  .guia-txt { margin:0; font-size:13px; line-height:1.55; color:#d9d2ef; }
+  .guia-txt b { color:var(--acc); }
+  .guia-pontos { display:flex; gap:5px; margin:12px 0 10px; }
+  .guia-pontos i { width:6px; height:6px; border-radius:50%; background:var(--linha); transition:transform .2s, background .2s; }
+  .guia-pontos i.lig { background:var(--neon); transform:scale(1.35); }
+  .guia-bts { display:flex; align-items:center; gap:6px; }
+  .guia-bts > span { flex:1; }
+  .guia-bts button { padding:8px 13px; border-radius:10px; font:700 12px ui-sans-serif,system-ui,sans-serif; }
+  .guia-bts button[hidden] { display:none; }
+  #guia .guia-pular { background:transparent; border-color:transparent; box-shadow:none; color:var(--fraco); padding-left:0; }
+  .guia-ir { border-color:var(--neon); color:#2b0420; background:linear-gradient(180deg,#ffa2e6,var(--neon)); }
+  @media (prefers-reduced-motion: reduce) { #guia .guia-luz, #guia .guia-cartao { transition:none; } }
 
   /* ───────── painel de músicas ───────── */
   /* Dois cartões: o DJ automático em cima, as músicas embaixo. Antes era uma
@@ -1714,6 +1748,7 @@
     <dt>CUE</dt>
     <dd>Marca um ponto de partida. Segure pra ouvir dali, solte pra voltar.</dd>
   </dl>
+  <button id="b-rever-guia" data-i18n="guia.rever">▶ ver o guia de novo</button>
   <button class="fechar" id="fechar-ajuda">entendi, vamos</button>
 </dialog>
 
