@@ -22,7 +22,7 @@
  * inclusive pra você no meio de um set.
  */
 
-import { APP_NAME, GENRES, CRATES, isDeckable, normalizeTrack } from './audius.js';
+import { APP_NAME, GENRES, CRATES, DJS, isDeckable, normalizeTrack } from './audius.js';
 import { guardar as guardarLocal, contar, artistas, artistasVarridos, marcarVarrido,
          frentesEsgotadas, marcarEsgotada } from './crate.js';
 import { compartilhar } from './galera.js';
@@ -120,7 +120,7 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
    * o acervo acumula entre sessões.
    */
   const PAGINAS_BUSCA = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100];
-  for (const c of CRATES) {
+  for (const c of [...CRATES, ...DJS]) {
     const buscas = c.buscas || [{ q: c.termo, filtro: c.filtro }];
     for (const b of buscas) {
       /**
@@ -134,7 +134,7 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
        */
       frentes.push({
         nome: `${c.nome} · ${b.q}`,
-        pilha: ({ BR: 'br:', LAT: 'lat:', EST: 'est:' }[c.reg] || 'lat:') + c.nome,
+        pilha: ({ BR: 'br:', LAT: 'lat:', EST: 'est:', DJ: 'dj:' }[c.reg] || 'lat:') + c.nome,
         filtro: b.filtro !== undefined ? b.filtro : null,
         serie: PAGINAS_BUSCA.map((offset) =>
           `${H}/tracks/search?query=${encodeURIComponent(b.q)}&limit=${LIMITE}` +

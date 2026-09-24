@@ -467,6 +467,11 @@ export const GENRES = [
  * `termo` é o que vai pro Audius; `filtro` é o que separa acerto de homônimo —
  * buscar "forró" devolve "forlorn" e buscar "axé" devolve "Maze of the Axe".
  */
+/** "acid"/"303" no nome E um gênero da família — senão é rap ou dubstep com a palavra. */
+const ACID_HOUSE = /^(?=.*(acid|303))(?=.*(house|jack|chicago))/i;
+const ACID_TECHNO = /^(?=.*(acid|303))(?=.*(techno|electro|rave|break|industrial))/i;
+const ACID_TRANCE = /^(?=.*acid)(?=.*(trance|psy|goa))/i;
+
 export const CRATES = [
   // ── Brasil ──
   { nome: 'Funk',      reg: 'BR',  termo: 'baile funk',
@@ -559,18 +564,118 @@ export const CRATES = [
     buscas: [{ q: 'boom bap' }, { q: 'boombap' }, { q: 'boom bap beat' },
              { q: '90s hip hop beat', filtro: /boom|90s|bap/i }],
     filtro: /boom\s?bap|90s|hip ?hop/i },
+  // ── acid: a linha do TB-303 e o que nasceu dela ──
+  // Medido (1ª página, faixas de deck): "acid house" 14 com acid no nome,
+  // "acid techno" 22, "acid trance" 18, "hard acid" 16, "acid rave" 20,
+  // "chicago house" 25, "303" 42. A busca solta ("acid", "303") traz rap,
+  // dubstep e synthwave com a palavra no nome — essas exigem gênero eletrônico
+  // junto (ACID_ELETRONICO); o resto da busca entra no acervo sem o rótulo.
+  { nome: 'Acid House', reg: 'EST', termo: 'acid house',
+    buscas: [{ q: 'acid house', filtro: /acid|303/i }, { q: 'chicago house', filtro: /chicago|jack|acid|warehouse/i },
+             { q: 'jackin house', filtro: /jack/i }, { q: 'acid house 303', filtro: /acid|303/i },
+             { q: '303', filtro: ACID_HOUSE }],
+    filtro: /acid|303|chicago|jack/i },
+  { nome: 'Acid Techno', reg: 'EST', termo: 'acid techno',
+    buscas: [{ q: 'acid techno', filtro: /acid|303/i }, { q: 'hard acid', filtro: /acid/i },
+             { q: 'acid rave', filtro: /acid/i }, { q: 'acid electro', filtro: /acid/i },
+             { q: 'acid breaks', filtro: /acid/i }, { q: 'acid', filtro: ACID_TECHNO }],
+    filtro: /acid|303/i },
+  { nome: 'Acid Trance', reg: 'EST', termo: 'acid trance',
+    buscas: [{ q: 'acid trance', filtro: /acid/i }, { q: 'acid psy', filtro: /acid/i },
+             { q: 'acid', filtro: ACID_TRANCE }],
+    filtro: /acid/i },
 ];
+
+/**
+ * DJs: famoso quase não sobe faixa no Audius — o que existe são REMIXES,
+ * EDITS e BOOTLEGS deles feitos por produtor independente. Medido (5 páginas
+ * de "<nome>" e "<nome> remix", faixas de deck, nome no título/artista E
+ * gênero de pista): Alok 120, Deadmau5 220, Skrillex 202, Daft Punk 103,
+ * David Guetta 70, Avicii 53, Calvin Harris 50, Armin 52, Fred again 47,
+ * Martin Garrix 47, Tiësto 43, John Summit 42, Chris Lake 34, Swedish House
+ * Mafia 30, Illusionize 29, Carl Cox 19, Charlotte de Witte 18, Hugel 17,
+ * Meduza 17, Richie Hawtin 17, Dom Dolla 13, Anyma 12, KVSH 12, Eric Prydz 11,
+ * Vintage Culture 10. Ficaram de fora por falta de faixa: Mochakk (1),
+ * Beltran (nenhuma — os "Beltran" do Audius são outros), Peggy Gou (2),
+ * Keinemusik (1), Solardo (2), Amelie Lens (3).
+ *
+ * `estrito`: se a rede não achar, não completa com o resto da busca — pedir
+ * set do Alok e receber qualquer coisa seria mentir.
+ */
+const PISTA = 'house|techno|electr|trance|dance|disco|edm|dubstep|drum|bass|break|progressive|melodic|minimal|garage|afro|_140|future|hardstyle|club|remix|edit|bootleg';
+const dj = (nome, nomeRe, termo = nome.toLowerCase()) => {
+  const filtro = new RegExp(`^(?=.*(${nomeRe}))(?=.*(${PISTA}))`, 'i');
+  return { nome, reg: 'DJ', termo, estrito: true, filtro,
+           buscas: [{ q: termo, filtro }, { q: termo + ' remix', filtro }] };
+};
+export const DJS = [
+  // Brasil primeiro
+  dj('Alok', '\\balok\\b'), dj('Vintage Culture', 'vintage culture'), dj('Illusionize', 'illusionize'), dj('KVSH', '\\bkvsh\\b'),
+  // house / tech house
+  dj('Fisher', '\\bfisher\\b(?! price)'), dj('Chris Lake', 'chris lake'), dj('John Summit', 'john summit'),
+  dj('Dom Dolla', 'dom dolla'), dj('Hugel', '\\bhugel\\b'), dj('Meduza', '\\bmeduza\\b'),
+  dj('Swedish House Mafia', 'swedish house mafia|\\bshm\\b'), dj('Fred again', 'fred again'),
+  // techno / melódico
+  dj('Charlotte de Witte', 'charlotte de witte'), dj('Carl Cox', 'carl cox'), dj('Richie Hawtin', 'richie hawtin'),
+  dj('Anyma', '\\banyma\\b'), dj('Eric Prydz', 'eric prydz'),
+  // os gigantes
+  dj('Daft Punk', 'daft punk'), dj('Deadmau5', 'deadmau5'), dj('Skrillex', 'skrillex'), dj('David Guetta', 'david guetta'),
+  dj('Calvin Harris', 'calvin harris'), dj('Avicii', 'avicii'), dj('Martin Garrix', 'martin garrix'),
+  dj('Tiësto', 'ti[eë]sto', 'tiesto'), dj('Armin van Buuren', 'armin van buuren'), dj('Diplo', '\\bdiplo\\b'),
+];
+
+/**
+ * REVELAÇÕES: quem está pegando tração sem ainda ser grande.
+ *
+ * O Audius já tem o "trending underground" (artistas com poucos seguidores),
+ * mas cru ele vem cheio de faixa com 2 plays. Então: underground da semana +
+ * trending do mês nos gêneros de pista, só artista entre 60 e 30 mil
+ * seguidores, e a nota é TRAÇÃO (favoritos + 2×reposts — repost é alguém
+ * mostrando pros outros) sobre o tamanho do artista. No máximo 3 faixas por
+ * artista, pra ser "quem está chegando", não "a faixa que viralizou".
+ */
+const GEN_REVELACAO = ['House', 'Tech House', 'Techno', 'Deep House', 'Progressive House', 'Electronic', 'Disco'];
+export async function revelacoes({ limite = 60, signal } = {}) {
+  const pedidos = [];
+  for (const genre of GEN_REVELACAO) {
+    pedidos.push(api('/tracks/trending/underground', { genre, limit: '100' }, { signal, tries: 3 }));
+    pedidos.push(api('/tracks/trending', { genre, time: 'month', limit: '100' }, { signal, tries: 3 }));
+  }
+  const brutos = (await Promise.allSettled(pedidos)).flatMap((r) => (r.status === 'fulfilled' && r.value) || []);
+  const porId = new Map();
+  for (const t of brutos) {
+    const seg = t.user?.follower_count ?? 0;
+    if (!isDeckable(t) || porId.has(t.id) || seg < 60 || seg > 30000) continue;
+    const tracao = (t.favorite_count || 0) + 2 * (t.repost_count || 0);
+    if ((t.play_count || 0) < 40 || tracao < 4) continue;
+    porId.set(t.id, { t, nota: tracao / Math.log10(seg + 10), artista: t.user?.id });
+  }
+  const porArtista = {};
+  const fora = [];
+  for (const x of [...porId.values()].sort((a, b) => b.nota - a.nota)) {
+    if ((porArtista[x.artista] = (porArtista[x.artista] || 0) + 1) > 3) continue;
+    fora.push(normalizeTrack(x.t));
+    if (fora.length >= limite) break;
+  }
+  return fora;
+}
 
 /** Compatibilidade: a primeira versão só tinha crates do Brasil. */
 export const CRATES_BR = CRATES.filter((c) => c.reg === 'BR');
 
 /** Busca uma crate e descarta o homônimo. */
 export async function crateBr(nome, { limite = 40, signal } = {}) {
-  const c = CRATES.find((x) => x.nome === nome);
+  const c = CRATES.find((x) => x.nome === nome) || DJS.find((x) => x.nome === nome);
   if (!c) throw new AudiusError(`crate desconhecida: ${nome}`);
-  const res = await search(c.termo, { limit: 50, signal });
+  // as duas primeiras buscas da pilha, não só o termo principal: pilha de DJ
+  // vive de "<nome> remix", que o termo sozinho não traz
+  const buscas = (c.buscas || [{ q: c.termo }]).slice(0, 2);
+  const res = (await Promise.all(buscas.map((b) => search(b.q, { limit: 50, signal }).catch(() => [])))).flat();
+  const vistos = new Set();
+  const unicos = res.filter((t) => !vistos.has(t.id) && vistos.add(t.id));
   const casa = (t) => c.filtro.test(`${t.title} ${t.artist} ${t.genre || ''}`);
-  const bons = res.filter(casa), resto = res.filter((t) => !casa(t));
-  // se o filtro foi severo demais, completa com o resto em vez de devolver vazio
-  return [...bons, ...resto].slice(0, limite);
+  const bons = unicos.filter(casa), resto = unicos.filter((t) => !casa(t));
+  // se o filtro foi severo demais, completa com o resto em vez de devolver
+  // vazio — menos em pilha estrita (DJ): aí vazio é a resposta honesta
+  return (c.estrito ? bons : [...bons, ...resto]).slice(0, limite);
 }

@@ -17,7 +17,7 @@
  *     e aí o DJ toca só elas
  */
 
-import { GENRES, CRATES, trending, search, crateBr } from '../sources/audius.js';
+import { GENRES, CRATES, DJS, trending, search, crateBr, revelacoes } from '../sources/audius.js';
 import * as crate from '../sources/crate.js';
 
 /** Todas as pilhas, cada uma com chave única e rótulo. */
@@ -33,6 +33,11 @@ export const GRUPOS = [
   { grupo: 'app.grupo.estilos',
     itens: CRATES.filter((c) => c.reg === 'EST').map((c) => ({ chave: 'est:' + c.nome, nome: c.nome,
       rede: () => crateBr(c.nome, { limite: 40 }) })) },
+  // Revelações é FRESCA: quem está chegando muda toda semana, então vai à
+  // rede de novo a cada poucas horas mesmo com o acervo cheio dela
+  { grupo: 'app.grupo.djs',
+    itens: [{ chave: 'dj:Revelações', nome: '🔥 Revelações', fresca: true, rede: () => revelacoes({ limite: 60 }) },
+      ...DJS.map((c) => ({ chave: 'dj:' + c.nome, nome: c.nome, rede: () => crateBr(c.nome, { limite: 60 }) }))] },
 ];
 const TODAS = GRUPOS.flatMap((g) => g.itens);
 
@@ -169,7 +174,8 @@ async function doAcervo({ bpmMin = null, bpmMax = null, porPilha = 250, tudo = 1
         if (s === t.pilha || (s.startsWith('gen:') && t.genre === s.slice(4))) porPilhaAchada[s] = (porPilhaAchada[s] || 0) + 1;
       }
     }
-    const faltam = TODAS.filter((i) => selecionadas.has(i.chave) && (porPilhaAchada[i.chave] || 0) < 30);
+    const faltam = TODAS.filter((i) => selecionadas.has(i.chave) &&
+      ((porPilhaAchada[i.chave] || 0) < 30 || (i.fresca && passada(i.chave))));
     await Promise.all(faltam.slice(0, 6).map(async (it) => {
       try {
         const novas = (await it.rede()).filter((t) => !t.isLongMix)
@@ -177,10 +183,17 @@ async function doAcervo({ bpmMin = null, bpmMax = null, porPilha = 250, tudo = 1
         for (const t of novas) t.pilha = t.pilha || it.chave;
         somar(novas);
         crate.guardar(novas, it.chave).catch(() => {});
+        if (it.fresca) { try { localStorage.setItem('garimpo.fresca.' + it.chave, String(Date.now())); } catch {} }
       } catch {}
     }));
   }
   return fora;
+}
+
+/** Pilha fresca buscada há mais de 6 h (ou nunca): vai à rede de novo. */
+function passada(chave) {
+  try { return Date.now() - Number(localStorage.getItem('garimpo.fresca.' + chave) || 0) > 6 * 3600e3; }
+  catch { return true; }
 }
 
 async function daRede() {
