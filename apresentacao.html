@@ -339,6 +339,14 @@
   body.video.f-reels .sticker { display:none; }
   body.video.f-story .cena { padding:24cqw 7cqw 27cqw; }
   body.video.f-story .cena.baixo { padding-bottom:27cqw; }
+  /* o de 1:00 é story também: mesma área segura, mas cenas cheias como as do Reels */
+  body.video.f-comunidade .cena { padding:22cqw 8cqw 26cqw; }
+  body.video.f-comunidade .fim { gap:3cqw; }
+  body.video.f-comunidade .sticker { display:none; }
+  /* a rampa de BPM do set (cena c-dj) */
+  .rampa { align-self:center; font:800 5cqw/1 ui-monospace, monospace; letter-spacing:.04em; color:var(--mut);
+           padding:2.2cqw 4.4cqw; border-radius:99px; border:.4cqw solid #ff4fd8; background:rgba(255,79,216,.12); }
+  .rampa b { color:#fff; } .rampa i { font-style:normal; color:#ff4fd8; margin:0 1.2cqw; }
   body.video .barras, body.video .topo, body.video .toque, body.video .pausado-aviso, body.video #comeco,
   body.video #b-rever { display:none; }
   body.video .cta { text-transform:none; letter-spacing:.02em; white-space:nowrap; font-size:5.6cqw; padding:4.6cqw 8cqw; }
@@ -562,6 +570,142 @@
     <p class="sub entra" data-b="4">Sem conta. Sem baixar nada.</p>
   </section>
 
+  <!-- ══ STORY de 1:00 "COMUNIDADE" (?formato=comunidade) — o limite de um
+       story do Instagram. Vende o Garimpo pra quem nunca ouviu falar e chama
+       pra fazer parte: o acervo é de todo mundo (o que um garimpa, todos
+       ouvem), o 👎 de dois tira a faixa pra todos, e o 💬 chega em quem faz.
+       Mesma música e mesma régua do Reels: DROP em 0:32. ══ -->
+  <section class="cena abre" data-formato="comunidade" data-nome="c-abre" data-efeito="abertura" data-comp="0-2">
+    <div class="masc-g entra" data-b="0" id="m-abre" data-masc="abre"></div>
+    <h2 class="entra" data-b="0.3">Sempre quis <span class="rosa">tocar?</span></h2>
+    <h1 class="slam" data-b="2.5">GARIM<span class="neon">PO</span></h1>
+    <p class="sub entra" data-b="4.5">Um DJ que toca <b>com você</b> — e te ensina. De graça.</p>
+  </section>
+
+  <section class="cena" data-formato="comunidade" data-nome="c-garimpo" data-efeito="garimpo" data-comp="2-4">
+    <div class="pepitas" id="pepitas" aria-hidden="true"></div>
+    <div class="masc-m entra" data-b="0" id="m-cava" data-masc="cava"></div>
+    <div class="contador entra" data-b="0" id="contador">0</div>
+    <h2 class="entra" data-b="1">músicas pra <span class="ambar">garimpar.</span></h2>
+    <div class="abas">
+      <span class="aba pop" data-b="2">⚡ eletrônico</span><span class="aba pop" data-b="2.4">⚽ brasil</span>
+      <span class="aba pop" data-b="2.8">🥁 funk</span><span class="aba pop" data-b="3.2">🎤 rap</span>
+      <span class="aba quente pop" data-b="3.6">🔥 apostas</span><span class="aba pop" data-b="4">🐢 slowed</span>
+    </div>
+    <p class="sub entra" data-b="5">E cresce todo dia: o que <b>um</b> garimpa, <b class="rosa">todo mundo</b> ouve.</p>
+  </section>
+
+  <section class="cena" data-formato="comunidade" data-nome="c-b2b" data-efeito="dois-jeitos" data-comp="4-6">
+    <h2 class="entra" data-b="0">Chama pro <span class="neon">b2b.</span></h2>
+    <div class="modos" id="modos">
+      <div class="modo entra" data-b="0.5"><div class="bt">🎧 b2b</div><span>Vocês dois na cabine: ele toca e te passa a vez nos gestos que importam.</span></div>
+      <div class="modo entra" data-b="1"><div class="bt">🎛 solo</div><span>Você comanda. Ele só aponta a hora e o botão.</span></div>
+    </div>
+  </section>
+
+  <section class="cena" data-formato="comunidade" data-nome="c-dj" data-efeito="dj" data-comp="6-8">
+    <h2 class="entra" data-b="0">O set do <span class="verde">seu jeito.</span></h2>
+    <div class="cdj-wrap entra" data-b="0.4">
+      <div class="cdj">
+        <div class="deck no-ar" data-d="A" id="deckA"><span class="rot">A</span><div class="onda" id="ondaA"></div></div>
+        <div class="mix">
+          <div class="ks"><i id="kA">×</i><i id="kB" class="cortado">×</i><i>×</i><i>×</i><i>×</i><i>×</i></div>
+          <div class="trilho"><div class="tampa" id="tampa"></div></div>
+        </div>
+        <div class="deck" data-d="B" id="deckB"><span class="rot">B</span><div class="onda" id="ondaB"></div></div>
+      </div>
+      <div class="um-frase pop" data-b="4">● 1 da frase: troca de graves</div>
+    </div>
+    <div class="rampa pop" data-b="1.5">BPM <b>120</b> <i>→</i> <b>128</b></div>
+    <p class="sub entra" data-b="2.5">Escolhe o estilo e o <b>BPM de começo e de fim</b>. Ele monta a rampa e mixa no 1 da frase.</p>
+  </section>
+
+  <section class="cena" data-formato="comunidade" data-nome="c-professor" data-efeito="professor" data-comp="8-10">
+    <h2 class="entra" data-b="0">Aprende <span class="verde">tocando.</span></h2>
+    <div class="prof entra" data-b="0.5">
+      <div class="mini" id="m-prof" data-masc="prof"></div><div class="num">1</div>
+      <div>Troca de graves no <b>1 da frase</b>: corta o grave do A.<small><em>POR QUÊ:</em> dois graves juntos viram lama.</small></div>
+    </div>
+    <div class="eqs entra" data-b="1">
+      <div class="col"><span class="lbl">A</span>
+        <div class="kn">GRAVE <i class="kill" id="killA">×</i></div><div class="kn">MÉDIO <i class="kill">×</i></div><div class="kn">AGUDO <i class="kill">×</i></div></div>
+      <div class="col b"><span class="lbl">B</span>
+        <div class="kn">GRAVE <i class="kill" id="killB">×</i></div><div class="kn">MÉDIO <i class="kill">×</i></div><div class="kn">AGUDO <i class="kill">×</i></div></div>
+      <div class="dedo" id="dedo"></div>
+      <div class="acertou pop" data-b="4.3">✓ no 1!</div>
+    </div>
+    <p class="sub entra" data-b="5">Nunca tocou? Na primeira vez <b>ele te mostra a cabine.</b></p>
+  </section>
+
+  <section class="cena" data-formato="comunidade" data-nome="c-galera" data-efeito="guarda" data-comp="10-12">
+    <h2 class="entra" data-b="0">A galera <span class="ambar">garimpa junto.</span></h2>
+    <div class="lista">
+      <div class="linha entra" data-b="0.5"><div class="capa"></div><div><b>achado de alguém</b><small>entrou pro acervo de todo mundo</small></div>
+        <span class="acao coracao pop" data-b="1.5">♥</span></div>
+      <div class="linha ruim entra" data-b="1" data-sai="4"><div class="capa c2"></div><div><b>essa não</b><small>2 👎 e sai pra galera toda</small></div>
+        <span class="acao pop" data-b="3">👎</span></div>
+      <div class="linha entra" data-b="4.5"><div class="capa arq">💬</div><div><b>sua ideia</b>
+        <small class="mede">chega direto <span class="pop" data-b="6">em quem faz o Garimpo ✓</span></small></div></div>
+    </div>
+    <p class="sub entra" data-b="5.5">Quanto mais gente, <b>melhor o garimpo.</b></p>
+  </section>
+
+  <section class="cena" data-formato="comunidade" data-nome="c-sons" data-efeito="sons" data-comp="12-16">
+    <h2 class="entra" data-b="0">Solta o <span class="rosa">som.</span></h2>
+    <div class="pads entra" data-b="0.25" id="pads">
+      <div class="pad"><kbd>1</kbd><span class="ic">📯</span><b>buzina</b></div><div class="pad"><kbd>2</kbd><span class="ic">🚨</span><b>sirene</b></div>
+      <div class="pad"><kbd>3</kbd><span class="ic">⏪</span><b>rewind</b></div><div class="pad"><kbd>4</kbd><span class="ic">💥</span><b>impacto</b></div>
+      <div class="pad"><kbd>5</kbd><div class="carga" id="carga"></div><span class="ic">🌪</span><b>subida</b></div><div class="pad"><kbd>6</kbd><span class="ic">🔫</span><b>laser</b></div>
+      <div class="pad"><kbd>7</kbd><span class="ic">👏</span><b>palmas</b></div><div class="pad"><kbd>8</kbd><span class="ic">🥁</span><b>808</b></div>
+    </div>
+    <p class="sub entra" data-b="2">8 pads na mão — ou grava <b>o seu</b>.</p>
+    <div class="segura-txt pop" data-b="8">🌪 segura…</div>
+  </section>
+
+  <section class="cena" data-formato="comunidade" data-nome="c-pista" data-efeito="pista" data-comp="16-20">
+    <div class="globo" aria-hidden="true"><i class="fio"></i><div class="bola"><div class="facetas"></div></div></div>
+    <div class="drop-txt" id="drop">DROP!</div>
+    <div class="pista-txt">
+      <h2 class="entra" data-b="2">Liga a <span class="rosa">pista.</span> 🎉</h2>
+      <p class="sub entra" data-b="3.5">Chama a galera: a sesh é <b>em qualquer lugar.</b></p>
+    </div>
+  </section>
+
+  <section class="cena baixo" data-formato="comunidade" data-nome="c-viagem" data-efeito="viagem" data-comp="20-24">
+    <div class="faixa-escura">
+      <h2 class="entra" data-b="1">Ou entra na <span class="lilas">viagem.</span></h2>
+      <p class="sub entra" data-b="3">O hiperespaço no ritmo da música — e <b>quem aparece por lá.</b></p>
+    </div>
+  </section>
+
+  <section class="cena" data-formato="comunidade" data-nome="c-celular" data-efeito="celular" data-comp="24-26">
+    <h2 class="entra" data-b="0">No celular <span class="neon">também.</span></h2>
+    <div class="fone-palco entra" data-b="0.3">
+      <div class="fone pe" id="fonePe"><div class="aviso"><span class="seta">↻</span>vira o celular</div></div>
+      <div class="fone deitado" id="foneDeitado">
+        <div class="tela-cdj">
+          <div class="barra">GARIM<span>PO</span> <em><b>①</b> Toque em PLAY no deck A.</em></div>
+          <div class="meio">
+            <div class="mini-deck"><div class="onda" id="ondaC"></div><div class="bts"><i></i><i></i></div></div>
+            <div class="mini-mix"></div>
+            <div class="mini-deck b"><div class="onda" id="ondaD"></div><div class="bts"><i></i><i></i></div></div>
+          </div>
+          <div class="pe-de-baixo"><i class="on">🎧 b2b</i><i>🎛 solo</i><i class="bora">▶ BORA DE B2B</i></div>
+        </div>
+      </div>
+    </div>
+    <p class="sub entra" data-b="4">Manda o link pro seu <b>parceiro de b2b.</b></p>
+  </section>
+
+  <section class="cena fim" data-formato="comunidade" data-nome="c-convite" data-efeito="convite" data-comp="26-30">
+    <div class="masc-g entra" data-b="0" id="m-fim" data-masc="fim"><div class="dedo" id="dedo2"></div></div>
+    <h1 class="slam" data-b="0.5">GARIM<span class="neon">PO</span></h1>
+    <h2 class="entra" data-b="2">Entra. Garimpa.<br><span class="verde">Chama a galera.</span></h2>
+    <div class="entra" data-b="3.5"><a class="cta" href="./">entrar no garimpo</a></div>
+    <p class="sub entra" data-b="5">De graça. Sem conta. Sem baixar nada.</p>
+    <p class="divirta entra" data-b="6.5">Bora fazer a cena junto. 🎧</p>
+  </section>
+
   <div id="apagao" aria-hidden="true"></div>
   <div id="clarao" aria-hidden="true"></div>
 
@@ -598,7 +742,9 @@
   // compasso 14, pra o DROP cair em 0:04. Os tempos da MÚSICA (mapa, subida,
   // drop) ficam sempre na régua do Reels; o story só começa DESLOC depois.
   const P = new URLSearchParams(location.search);
-  const FORMATO = P.get('formato') === 'story' ? 'story' : 'reels';
+  // e um TERCEIRO, o story de 1:00 "comunidade" (?formato=comunidade): o
+  // limite de um story, com a régua inteira do Reels e cenas próprias
+  const FORMATO = ['story', 'comunidade'].includes(P.get('formato')) ? P.get('formato') : 'reels';
   const DESLOC = FORMATO === 'story' ? 14 * COMP : 0;
   const FIM = FORMATO === 'story' ? 8 * COMP : 30 * COMP;
   const INICIO_F = INICIO + DESLOC;    // onde o formato começa dentro da faixa
@@ -636,6 +782,7 @@
 
   document.body.classList.add('f-' + FORMATO);
   if (FORMATO === 'story') document.querySelector('#comeco .sub').textContent = '1 story · 16 s · com som';
+  if (FORMATO === 'comunidade') document.querySelector('#comeco .sub').textContent = '1 story · 1 minuto · com som';
   if (VIDEO) {
     document.body.classList.add('video');
     document.querySelector('.cta').textContent = 'garimpo-topaz.vercel.app';
@@ -1010,7 +1157,8 @@
   // o começo da cena (b), o passo (dt) e a própria cena (C)
   const EFEITOS = {
     garimpo(t, b) {
-      const n = Math.round(39287 * (1 - Math.pow(1 - clamp((b - 0.2) / 3, 0, 1), 3)));
+      // o acervo inteiro: 39.287 do Audius + 24.230 do hearthis
+      const n = Math.round(63517 * (1 - Math.pow(1 - clamp((b - 0.2) / 3, 0, 1), 3)));
       if (n !== contAntes) { contAntes = n; $('contador').textContent = n.toLocaleString('pt-BR'); }
     },
     'dois-jeitos'(t, b) {
