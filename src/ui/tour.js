@@ -45,8 +45,28 @@ const achar = (sels) => (sels || []).map((s) => document.querySelector(s)).find(
  * Abre o guia. `antes()` roda ao começar (fecha a gaveta, por exemplo);
  * `depois(terminou)` roda ao sair — terminou = foi até o fim, não pulou.
  */
-export function abrirGuia({ antes = () => {}, depois = () => {} } = {}) {
+let esperandoGirar = false;
+export function abrirGuia(opcoes = {}) {
+  const { antes = () => {}, depois = () => {} } = opcoes;
   if (document.getElementById('guia')) return;
+  /**
+   * Celular EM PÉ: o "vira o celular" está na tela e a cabine não. Abrir o
+   * guia ali punha o cartão por cima do aviso e, pior, escolhia os passos com
+   * quase nada visível — deitado, sobravam 5 de 10. Espera deitar.
+   */
+  const girar = document.getElementById('girar');
+  if (girar && visivel(girar)) {
+    if (esperandoGirar) return;
+    esperandoGirar = true;
+    const ver = () => {
+      if (visivel(girar)) return;
+      removeEventListener('resize', ver);
+      esperandoGirar = false;
+      setTimeout(() => abrirGuia(opcoes), 700);   // a cabine termina de se arrumar
+    };
+    addEventListener('resize', ver);
+    return;
+  }
   antes();
   const passos = PASSOS.filter((p) => !p.alvo || achar(p.alvo));
   let i = 0;

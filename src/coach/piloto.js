@@ -513,7 +513,13 @@ export class Piloto extends EventTarget {
     const d = this.decks;
     try {
       this.#diz('carregando', { faixa: fila[0].title });
-      if (!await this.carregar('A', fila[0])) throw new Error('a primeira faixa não carregou');
+      /**
+       * A PRIMEIRA toca assim que o começo dela está decodificado. Esperar a
+       * faixa inteira baixar e ser analisada deixava 10–20 s de silêncio depois
+       * do play (medido no celular) — e a análise só serve pra transição, que
+       * vem minutos depois. Ela termina enquanto a música toca (ver o laço).
+       */
+      if (!await this.carregar('A', fila[0], { rapido: true })) throw new Error('a primeira faixa não carregou');
       this.dispatchEvent(new CustomEvent('tocou', { detail: { faixa: fila[0] } }));
       // a PRIMEIRA do set começa do começo: é a introdução que abre a noite
       d.A.seek(0);
@@ -528,6 +534,10 @@ export class Piloto extends EventTarget {
         const entra = noAr === 'A' ? 'B' : 'A';
         this.#diz('carregando', { deck: entra, faixa: fila[i].title, resta: fila.length - i });
         if (!await this.carregar(entra, fila[i])) { this.#diz('pulou', { faixa: fila[i].title }); continue; }
+        // a que está no ar começou pelo prefixo: a saída precisa da grade inteira
+        for (let k = 0; k < 140 && !d[noAr].pronta && d[noAr].estado !== 'erro'; k++) {
+          if (!await this.#dorme(500)) return;
+        }
 
         // a espera pela hora certa mora dentro da transição (ver o PLANO lá):
         // ela diz o que está esperando, conta os segundos e vive a faixa

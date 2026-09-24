@@ -2088,12 +2088,14 @@ function garantirPiloto() {
       if (r) decks[id].deslocar(-r.emMs / 1000, { emSeg: 0.5 });
     },
     sincronizar: (id) => sincronizar(id),
-    carregar: async (id, faixa) => {
+    carregar: async (id, faixa, { rapido = false } = {}) => {
       await carregarFaixa(id, faixa);
       const t0 = performance.now();
       while (performance.now() - t0 < 70000) {
         const d = decks[id];
         if (d.estado === 'erro') return false;
+        // `rapido`: basta o começo decodificado pra tocar (ver Piloto.tocar)
+        if (rapido && d.estado === 'pronto' && d.faixa?.id === faixa.id) return true;
         // espera a analise cobrir a faixa INTEIRA, nao so o prefixo: e a grade
         // da faixa toda que faz a fase fechar
         if (d.pronta) return true;   // inteira e analisada: ver Deck.pronta
@@ -2720,9 +2722,39 @@ $('b-bpm-auto').onclick = () => {
 };
 mostrarBpmSet();
 $('pref-variedade').onchange = () => { try { localStorage.setItem('garimpo.variedade', $('pref-variedade').value); } catch {} };
+/**
+ * TROCAR O ESTILO NO MEIO DO SET. Antes só mudava metade: os gestos e o tempo
+ * em cada faixa seguiam o estilo novo, mas as técnicas e durações das próximas
+ * passagens continuavam as que o Jev decidiu no começo, pro estilo VELHO — e
+ * nada avisava. Agora as próximas esquecem a decisão antiga (o escolhedor do
+ * estilo novo já vale na próxima passagem), o Jev decide de novo em segundo
+ * plano, e o Garimpeiro diz o que mudou. As músicas não mudam: estilo é o
+ * jeito de tocar, não o que tocar.
+ */
+let pedidoEstilo = 0;
 $('pref-estilo').onchange = () => {
-  try { localStorage.setItem('garimpo.estilo', $('pref-estilo').value); } catch {}
-  if (piloto) piloto.estilo = $('pref-estilo').value;
+  const est = $('pref-estilo').value;
+  try { localStorage.setItem('garimpo.estilo', est); } catch {}
+  if (!piloto) return;
+  piloto.estilo = est;
+  if (!piloto.ativo || !piloto.fila?.length) return;
+  const proximas = piloto.fila.slice(piloto.indice + 1);
+  for (const f of proximas) { delete f.tecnica; delete f.tempos; delete f.porqueIA; delete f.probsIA; }
+  avisarTroca('n.estilo', { e: ESTILOS[est]?.nome || est, n: proximas.length });
+  const meu = ++pedidoEstilo;
+  const base = piloto.fila.slice(piloto.indice);
+  decidirSet(base, est).then((decisao) => {
+    if (!decisao || meu !== pedidoEstilo || !piloto?.ativo || piloto.estilo !== est) return;
+    for (const d of aplicarDecisoes(base, decisao).slice(1)) {
+      const k = piloto.fila.findIndex((x) => x.id === d.id);
+      // só a que ainda não começou: a passagem em curso já tem técnica
+      if (k > piloto.indice) Object.assign(piloto.fila[k], { tecnica: d.tecnica, tempos: d.tempos, porqueIA: d.porqueIA, probsIA: d.probsIA });
+    }
+    fila = piloto.fila.slice(piloto.indice);
+    desenharFila();
+  }).catch(() => {});
+  fila = piloto.fila.slice(piloto.indice);
+  desenharFila();
 };
 
 
