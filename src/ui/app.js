@@ -6,6 +6,7 @@
 import { Deck } from '../mix/deck.js';
 import { t, idioma, setIdioma, traduzirDOM, IDIOMAS } from './i18n.js';
 import { Mixer, erroDeFase } from '../mix/mixer.js';
+import { montarPads } from './pads.js';
 import { plano, autoajuste } from '../coach/guia.js';
 import { montarFila, resumo as resumoFila } from '../coach/fila.js';
 import { momentos, proximoMomento, faltaPara } from '../coach/momentos.js';
@@ -2422,6 +2423,22 @@ montarPista({
 });
 
 // a viagem da página inteira (🌀): MilkDrop de fundo, formas voando na frente
+/**
+ * Os pads de som do mixer. O BPM é o de quem está no ar — o lado do
+ * crossfader decide; se só um toca, é ele.
+ */
+montarPads({
+  el: $('pads'),
+  ctx: () => ctx,
+  destino: () => mixer?.master,
+  antes: () => garantirRodando(),
+  bpm: () => {
+    const a = decks.A, b = decks.B;
+    const lado = (mixer?.crossfader ?? 0.5) <= 0.5 ? a : b, outro = lado === a ? b : a;
+    return (lado?.tocando ? lado : outro?.tocando ? outro : lado)?.bpmEfetivo || 124;
+  },
+});
+
 const viagem = montarViagem({ audio: () => (ctx && saidaMaster ? { ctx, no: saidaMaster } : null) });
 
 // a janela da pista, na cabine: o que o DJ vê

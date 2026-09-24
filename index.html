@@ -1204,6 +1204,45 @@
     .dj-linha #b-piloto { padding:10px 14px; font-size:12px; }
   }
 
+  /* ───────── SONS: os pads de disparo (ver src/ui/pads.js) ───────── */
+  .pads-cx { flex:none; display:flex; flex-direction:column; gap:4px; }
+  .pads-topo { display:flex; align-items:center; justify-content:space-between; }
+  .pads-topo b { font:800 9px ui-monospace,monospace; letter-spacing:.14em; color:var(--fraco); }
+  .pads-editar { padding:1px 7px; font-size:11px; border-radius:6px; }
+  .pads-cx.editando .pads-editar { border-color:var(--cue); color:var(--cue); }
+  .pads-grade { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:4px; }
+  .pad { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+         padding:5px 2px 4px; border-radius:9px; min-width:0; touch-action:manipulation;
+         border-color:color-mix(in srgb, var(--neon) 40%, var(--linha));
+         box-shadow:inset 0 0 12px color-mix(in srgb, var(--neon) 10%, transparent); }
+  .pad i { font-style:normal; font-size:15px; line-height:1; }
+  .pad span { font:700 8.5px ui-sans-serif,system-ui,sans-serif; color:var(--mut); max-width:100%;
+              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pad.seu { border-color:color-mix(in srgb, var(--cue) 55%, var(--linha)); }
+  .pad.seu i { color:var(--cue); font-size:13px; }
+  /* o brilho do toque: só opacity/transform (ver a regra de animação) */
+  .pad::after { content:""; position:absolute; inset:-1px; border-radius:inherit; pointer-events:none; opacity:0;
+                box-shadow:0 0 16px var(--neon), inset 0 0 14px color-mix(in srgb, var(--neon) 55%, transparent); }
+  .pad.bate::after { animation:pad-bate .45s ease-out; }
+  .pad.vivo::after { opacity:.7; }
+  @keyframes pad-bate { from { opacity:1; } to { opacity:0; } }
+  .pad.bate { transform:scale(.94); }
+  .pads-cx.editando .pad { border-style:dashed; }
+  .pads-cx.editando .pad.escolhido { border-style:solid; border-color:var(--cue); }
+  .pads-edita { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+  .pads-edita .pads-qual { flex:1 1 100%; font:9px ui-monospace,monospace; color:var(--cue); }
+  .pads-edita button { flex:1; padding:5px 4px; font-size:10px; }
+  .pads-edita button.gravando { border-color:var(--bad); color:var(--bad); }
+  @media (min-width:1041px) and (max-height:820px) {
+    .pads-grade { grid-template-columns:repeat(8, minmax(0,1fr)); gap:3px; }
+    .pad { padding:3px 1px; } .pad span { display:none; } .pad i { font-size:13px; }
+  }
+  @media (orientation:landscape) and (max-width:1040px) {
+    .pads-topo { display:none; }
+    .pads-grade { grid-template-columns:repeat(8, minmax(0,1fr)); gap:2px; }
+    .pad { padding:3px 0; border-radius:6px; } .pad span { display:none; } .pad i { font-size:12px; }
+  }
+
   /* ───────── celular em pé: vira ───────── */
   /* A CDJ é deitada. Em pé, depois da porta, um aviso pede pra girar — no
      Android o primeiro toque já põe em tela cheia e trava deitado. "Só a
@@ -1263,6 +1302,8 @@
           <span class="rot" id="rot-fase" style="margin:0"><b style="color:var(--mut)" data-i18n="mix.encaixe">ENCAIXE DAS BATIDAS</b></span>
         </div>
       </div>
+      <!-- os pads de som: buzina, sirene, rewind… trocáveis no ✎ (pads.js) -->
+      <div class="pads-cx" id="pads"></div>
       <div class="tiras">
         <div class="tira" data-d="A">
           <h3>A</h3>
@@ -1546,6 +1587,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260924a"></script>
+<script type="module" src="./src/ui/app.js?v=20260924b"></script>
 </body>
 </html>
