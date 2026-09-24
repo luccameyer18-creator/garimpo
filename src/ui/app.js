@@ -1829,7 +1829,13 @@ function garantirPiloto() {
   if (piloto) return piloto;
   piloto = new Piloto({
     decks, mixer,
-    encaixar: () => $('b-encaixar').click(),
+    // encaixa QUEM ENTRA. O botão corrige sempre o B — com a nova entrando no
+    // A, o piloto deslizava a faixa que estava NO AR, e a pista ouvia
+    encaixar: (id = 'B') => {
+      const outro = id === 'A' ? 'B' : 'A';
+      const r = erroDeFase(decks[outro], decks[id]);
+      if (r) decks[id].deslocar(-r.emMs / 1000, { emSeg: 0.5 });
+    },
     sincronizar: (id) => sincronizar(id),
     carregar: async (id, faixa) => {
       decks[id].carregarAudius(faixa);

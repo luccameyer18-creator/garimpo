@@ -80,7 +80,7 @@ function resumoFaixa(f) {
  * O que o Audius sabe de cada faixa e o acervo não guarda: quantas vezes
  * tocou, curtidas, reposts, tags, clima, descrição. Um pedido por 25 faixas.
  */
-async function sinaisAudius(faixas) {
+export async function sinaisAudius(faixas) {
   const mapa = {};
   for (let i = 0; i < faixas.length; i += 25) {
     const q = faixas.slice(i, i + 25).map((f) => 'id=' + encodeURIComponent(f.id)).join('&');

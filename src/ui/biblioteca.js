@@ -19,6 +19,7 @@
 
 import { GENRES, CRATES, DJS, APOSTAS, trending, search, crateBr, revelacoes, apostasDaSemana, faixasDoArtista } from '../sources/audius.js';
 import * as crate from '../sources/crate.js';
+import { sinaisAudius } from '../coach/jev.js';
 
 /** Todas as pilhas, cada uma com chave única e rótulo. */
 export const GRUPOS = [
@@ -317,5 +318,28 @@ export async function candidatasDoSet() {
   const tamanhos = marcadas.map((s) => grupos[s]?.length || 0).filter((n) => n > 0);
   const teto = marcadas.length ? Math.min(150, Math.max(40, 2 * Math.min(...tamanhos, 75))) : 80;
   lista = Object.entries(grupos).flatMap(([k, g]) => embaralhar(g).slice(0, k === 'outro' ? 60 : teto));
+  // no máximo 600 (sorteadas, o equilíbrio já foi feito): é o que dá pra
+  // perguntar ao Audius quem é bom em ~2 s
+  if (lista.length > 600) lista = embaralhar(lista).slice(0, 600);
+  await comSinais(lista);
   return lista;
+}
+
+/**
+ * O QUE O AUDIUS SABE DE CADA UMA — plays, curtidas, reposts — pra o
+ * montador preferir música que alguém ouviu e gostou (ver `qualidade` em
+ * setlist.js). O acervo não guarda isso (o Worker só leva o essencial), então
+ * se pergunta na hora, 25 por pedido, 6 pedidos de cada vez, e se lembra
+ * durante a sessão. Sem rede: tudo segue, só sem essa nota.
+ */
+const sinaisVistos = new Map();
+async function comSinais(lista) {
+  const faltam = lista.filter((t) => t.source !== 'local' && !sinaisVistos.has(t.id) && /^[A-Za-z0-9]{3,16}$/.test(t.id));
+  const lotes = [];
+  for (let i = 0; i < faltam.length; i += 25) lotes.push(faltam.slice(i, i + 25));
+  for (let i = 0; i < lotes.length; i += 6) {
+    const r = await Promise.all(lotes.slice(i, i + 6).map((l) => sinaisAudius(l).catch(() => ({}))));
+    for (const mapa of r) for (const [id, s] of Object.entries(mapa)) sinaisVistos.set(id, s);
+  }
+  for (const t of lista) t.sinais = sinaisVistos.get(t.id) || t.sinais || null;
 }

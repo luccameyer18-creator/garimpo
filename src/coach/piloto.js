@@ -22,10 +22,12 @@
  */
 
 import { momentos } from './momentos.js';
-import { executar, escolherTecnica, caminharBpm, TECNICAS, ESTILOS } from './tecnicas.js';
+import { executar, escolherTecnica, escolherMovimento, caminharBpm, TECNICAS, ESTILOS, MOVIMENTOS } from './tecnicas.js';
 import { keyCompatible } from '../sources/audius.js';
 
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Duração de um tempo, em segundos DE FAIXA (a grade é da faixa, não do relógio). */
+const per = (deck) => 60 / (deck?.grid?.bpm || 124);
 
 export class Piloto extends EventTarget {
   /**
@@ -63,8 +65,8 @@ export class Piloto extends EventTarget {
   /**
    * Pula a espera e faz a transição já.
    *
-   * O piloto espera a quebra da faixa no ar pra sair no lugar certo, e essa
-   * espera pode passar de um minuto. Quem já ouviu aquela faixa não quer
+   * O piloto espera a frase de saída da faixa no ar (ver o PLANO), e essa
+   * espera pode passar de dois minutos. Quem já ouviu aquela faixa não quer
    * esperar — e não ter como pular era o que fazia o set parecer travado.
    */
   pular() { if (this.ativo) this.pularAgora = true; }
@@ -106,13 +108,110 @@ export class Piloto extends EventTarget {
     return Math.max(1, (marca?.t ?? 25) - frase);
   }
 
-  /** Quando SAIR: a próxima quebra da faixa no ar, com folga pra preparar. */
-  #saida(deck) {
-    const l = momentos(deck);
-    const de = deck.displayPosition + 20;
-    return l.find((m) => m.tipo === 'quebra' && m.t > de)
-        || l.find((m) => m.bloco && m.t > de)
-        || null;
+  /**
+   * O PLANO DE SAÍDA: em que frase da faixa no ar a próxima assume.
+   *
+   * Antes ele saía na primeira quebra depois de 20 s — cada faixa tocava um
+   * minuto e pouco, muitas vezes sem chegar no drop principal. Agora a faixa
+   * vive: house e techno tocam até a SAÍDA (a última quebra, onde o outro
+   * começa, com pelo menos `uso` da faixa tocada); estilos de emenda rápida
+   * (baile, turntablista) saem na primeira quebra depois do meio.
+   *
+   * `impactoT` é o limite de frase em que a técnica dá o golpe (a troca de
+   * graves, o corte). A transição começa `impacto` tempos antes e termina
+   * dentro da faixa. Com `cedo` (o ⏭), vale a primeira frase que der.
+   */
+  #planoSaida(S, { tempos, impacto, cedo = false }) {
+    const l = momentos(S);
+    if (!l.length || !S.grid?.bpm) return null;
+    const p = per(S), pos = S.displayPosition;
+    const cabe = l.filter((m) => m.t - impacto * p > pos + 4 * (S.nominalRate || 1)
+                              && m.t + (tempos - impacto) * p <= S.duration - 0.3);
+    if (!cabe.length) return null;
+    if (cedo) return { impactoT: cabe[0].t, inicioT: cabe[0].t - impacto * p, tipo: cabe[0].tipo };
+    const est = ESTILOS[this.estilo] || ESTILOS.pista;
+    const tarde = cabe.filter((m) => m.t >= S.duration * (est.uso ?? 0.66));
+    const pote = tarde.length ? tarde : cabe;
+    const ordem = (est.uso ?? 0.66) >= 0.6 ? [...pote].reverse() : pote;   // vive até o fim / sai cedo
+    const m = ordem.find((x) => x.tipo === 'quebra') || ordem.find((x) => x.bloco) || ordem[0];
+    return { impactoT: m.t, inicioT: m.t - impacto * p, tipo: m.tipo };
+  }
+
+  /**
+   * O PLANO DE ENTRADA: de onde a próxima começa pra que o DROP dela caia
+   * exatamente no golpe da técnica, no 1 da frase da que sai. É o "drop
+   * swap" de cabine: a troca de graves não é num ponto qualquer, é a que
+   * entra explodindo onde a que sai abre espaço. Sem drop achado, entra pela
+   * introdução, alinhada de 16 em 16 tempos.
+   */
+  #planoEntrada(E, impacto) {
+    const p = per(E), l = momentos(E);
+    const drop = l.find((m) => m.tipo === 'drop' && m.t > 16 * p && m.t < E.duration * 0.6);
+    const alvo = drop?.t ?? l.find((m) => m.bloco && m.t >= 32 * p)?.t ?? ((E.grid?.ancora || 0) + 32 * p);
+    let ini = alvo - impacto * p;
+    while (ini < 0) ini += 16 * p;
+    return { inicioE: ini, comDrop: !!drop && ini === drop.t - impacto * p };
+  }
+
+  /**
+   * VIDA NA FAIXA enquanto espera: se um drop ou uma quebra da faixa no ar
+   * está chegando (e não colide com a transição), às vezes faz um gesto
+   * curto em cima dele — ver MOVIMENTOS. Um por frase no máximo, e o sorteio
+   * do estilo decide se faz. Devolve false se o usuário assumiu.
+   */
+  async #viver(id, limiteT) {
+    const D = this.decks[id];
+    if (!D?.grid?.bpm) return true;
+    const p = per(D), pos = D.displayPosition;
+    this.vividos ||= new Set();
+    const m = momentos(D).find((x) => (x.tipo === 'drop' || x.tipo === 'quebra') && !this.vividos.has(id + x.t)
+                                  && x.t > pos && x.t < limiteT - 8 * p);
+    if (!m) return true;
+    const faltaSeg = (m.t - pos) / (D.nominalRate || 1);
+    if (faltaSeg > 14) return true;                       // ainda longe: decide mais perto
+    this.vividos.add(id + m.t);
+    // com moderação: 2 gestos por faixa no máximo — repetido em toda frase,
+    // o truque vira tique (os guias de técnica avisam, e soa robótico igual)
+    const chave = id + ':' + (D.faixa?.id || D.faixa?.title);
+    this.gestos ||= {};
+    if ((this.gestos[chave] || 0) >= 2) return true;
+    const mov = escolherMovimento({ tipo: m.tipo, estilo: this.estilo, anterior: this.ultimoMovimento });
+    if (mov) this.gestos[chave] = (this.gestos[chave] || 0) + 1;
+    if (!mov) return true;
+    const inicio = m.t - MOVIMENTOS[mov].alvo * p;
+    if (inicio < pos + 0.5 * p) return true;              // já passou do começo do gesto
+    this.ultimoMovimento = mov;
+    return executar(mov, {
+      m: this.#acoes(), dorme: (ms) => this.#dorme(ms), deck: id, bpm: D.bpmEfetivo,
+      relogio: () => (D.displayPosition - inicio) / p,
+      aoFalar: (x) => this.#narra(x.diz, x), aluno: this.juntos, ler: this.#ler(),
+    });
+  }
+
+  #ler() {
+    return {
+      morto: (id, b) => this.mixer.canal(id).eq.morto(b),
+      fader: (id) => this.mixer.canal(id).valores.fader,
+      xf: () => this.mixer.crossfader,
+    };
+  }
+
+  /**
+   * Espera a faixa `id` chegar em `ateT` (segundos de faixa), vivendo a faixa
+   * no caminho. `pulavel`: o ⏭ interrompe e devolve 'pulou'.
+   */
+  async #esperarAte(id, ateT, { tipo = 'frase', antes = 0, pulavel = true } = {}) {
+    const D = this.decks[id];
+    while (!this.parar) {
+      const falta = (ateT - D.displayPosition) / (D.nominalRate || 1) - antes;
+      if (falta <= 0.05) return 'chegou';
+      if (pulavel && this.pularAgora) return 'pulou';
+      this.#diz('esperando', { deck: id, tipo, seg: Math.round(falta) });
+      if (!await this.#viver(id, ateT)) return 'parou';
+      const f2 = (ateT - D.displayPosition) / (D.nominalRate || 1) - antes;
+      if (!await this.#dorme(Math.max(20, Math.min(1000, f2 * 1000)), { pulavel })) return 'parou';
+    }
+    return 'parou';
   }
 
   #kill(id, banda, ligado) {
@@ -169,27 +268,94 @@ export class Piloto extends EventTarget {
    */
   async transicao(sai, entra, { faixa = null, anterior = null } = {}) {
     const d = this.decks;
+    const S = d[sai], E = d[entra];
+
+    // a técnica vem ANTES do plano: é ela que diz quantos tempos e onde é o golpe
+    const tecnica = faixa?.tecnica && TECNICAS[faixa.tecnica]
+      ? faixa.tecnica
+      : escolherTecnica({ saiFaixa: S.faixa, entraFaixa: faixa || E.faixa,
+                          anterior, estilo: this.estilo });
+    const est = ESTILOS[this.estilo] || ESTILOS.pista;
+    /**
+     * A duração em ESCALAS INTEIRAS do roteiro (¼, ½, ¾, 1, 1½, 2). Com uma
+     * escala qualquer (0,625) os passos caíam fora do tempo e o golpe saía um
+     * tempo antes do drop — medido na simulação. Assim duração, golpe e cada
+     * passo ficam em tempos inteiros, e o golpe cai no 1 da frase.
+     */
+    const base = TECNICAS[tecnica].tempos;
+    const pedida = (faixa?.tempos || base * est.escala) / base;
+    const ESCALAS = [0.25, 0.5, 0.75, 1, 1.5, 2].filter((e) => base * e >= 8);
+    let escala = ESCALAS.reduce((a, b) => (Math.abs(b - pedida) < Math.abs(a - pedida) ? b : a));
+    let tempos = base * escala;
+    let impacto = (TECNICAS[tecnica].impacto ?? base / 2) * escala;
+
+    // o andamento da que está no ar ainda pode estar voltando pro natural
+    // (ver caminharBpm, que agora corre em paralelo): o SYNC espera ele assentar
+    if (this.caminhando) { await this.caminhando; this.caminhando = null; }
+    if (this.parar) return false;
+
+    // SYNC com a que entra PARADA: casa o andamento sem ninguém ouvir
     this.#diz('sincronizando', { deck: entra });
     this.sincronizar(entra);
     this.#narra('n.sync', { porque: 'n.sync.p', vars: { e: entra, s: sai }, mostra: [`sync-${entra}`] });
     if (!await this.#dorme(400)) return false;
 
-    d[entra].seek(this.#entrada(d[entra]));
-    d[entra].play();
-    this.#diz('entrando', { deck: entra, faixa: d[entra].faixa?.title });
-    if (!await this.#dorme(1800)) return false;
+    /**
+     * O PLANO. Com grade nas duas faixas, tudo é marcado na MÚSICA: a frase
+     * de saída da que toca, a posição de entrada da próxima (o drop dela cai
+     * no golpe) e o relógio da técnica lido da posição da que entra. Sem
+     * grade (análise falhou), cai no jeito antigo, pelo relógio.
+     */
+    let relogio = null;
+    let plano = null;
+    if (S.grid?.bpm && E.grid?.bpm) {
+      // não coube a duração pedida no que resta da faixa? encurta (mesma
+      // técnica, escala menor) em vez de cair no jeito sem frase
+      for (const e of [escala, ...ESCALAS.filter((x) => x < escala).reverse()]) {
+        plano = this.#planoSaida(S, { tempos: base * e, impacto: (TECNICAS[tecnica].impacto ?? base / 2) * e,
+                                      cedo: this.pularAgora });
+        if (plano) { escala = e; tempos = base * e; impacto = (TECNICAS[tecnica].impacto ?? base / 2) * e; break; }
+      }
+    }
+    if (plano) {
+      const pe = this.#planoEntrada(E, impacto);
+      this.#narra('n.plano', { porque: pe.comDrop ? 'n.plano.pDrop' : 'n.plano.p',
+        vars: { s: sai, e: entra, t: TECNICAS[tecnica].nome,
+                m: Math.floor(plano.impactoT / 60) + ':' + String(Math.floor(plano.impactoT % 60)).padStart(2, '0') } });
+      // espera a hora, vivendo a faixa; o ⏭ replaneja pra primeira frase que der
+      const lead = () => Math.min(2.5, pe.inicioE / (E.nominalRate || 1));
+      let r = await this.#esperarAte(sai, plano.inicioT, { tipo: plano.tipo, antes: lead() });
+      if (r === 'parou') return false;
+      if (r === 'pulou') {
+        this.pularAgora = false;
+        plano = this.#planoSaida(S, { tempos, impacto, cedo: true }) || plano;
+        r = await this.#esperarAte(sai, plano.inicioT, { tipo: plano.tipo, antes: lead(), pulavel: false });
+        if (r === 'parou') return false;
+      }
+      this.pularAgora = false;
+      // começa a próxima de um jeito que ela chegue em inicioE junto com a
+      // que sai chegando em inicioT — calado: o crossfader ainda é da outra
+      const w = (plano.inicioT - S.displayPosition) / (S.nominalRate || 1);
+      E.seek(Math.max(0, pe.inicioE - w * (E.nominalRate || 1)));
+      E.play();
+      this.#diz('entrando', { deck: entra, faixa: E.faixa?.title });
+      if (!await this.#dorme(350)) return false;
+      this.encaixar(entra);              // o resto de fase, abaixo de um tempo
+      this.#diz('encaixando');
+      this.#narra('n.encaixar', { porque: 'n.encaixar.p', vars: { e: entra }, mostra: ['b-encaixar', 'fase'] });
+      relogio = () => (E.displayPosition - pe.inicioE) / per(E);
+    } else {
+      this.pularAgora = false;
+      E.seek(this.#entrada(E));
+      E.play();
+      this.#diz('entrando', { deck: entra, faixa: E.faixa?.title });
+      if (!await this.#dorme(1800)) return false;
+      this.encaixar(entra);
+      this.#diz('encaixando');
+      this.#narra('n.encaixar', { porque: 'n.encaixar.p', vars: { e: entra }, mostra: ['b-encaixar', 'fase'] });
+      if (!await this.#dorme(1200)) return false;
+    }
 
-    this.encaixar();
-    this.#diz('encaixando');
-    this.#narra('n.encaixar', { porque: 'n.encaixar.p', vars: { e: entra }, mostra: ['b-encaixar', 'fase'] });
-    if (!await this.#dorme(1200)) return false;
-
-    const tecnica = faixa?.tecnica && TECNICAS[faixa.tecnica]
-      ? faixa.tecnica
-      : escolherTecnica({ saiFaixa: d[sai].faixa, entraFaixa: faixa || d[entra].faixa,
-                          anterior, estilo: this.estilo });
-    const est = ESTILOS[this.estilo] || ESTILOS.pista;
-    const tempos = faixa?.tempos || Math.max(8, Math.round(TECNICAS[tecnica].tempos * est.escala / 4) * 4);
     this.ultimaTecnica = tecnica;
     this.#diz('tecnica', { tecnica: TECNICAS[tecnica].nome, tempos, porque: faixa?.porqueIA || null });
     /**
@@ -212,15 +378,11 @@ export class Piloto extends EventTarget {
 
     const ok = await executar(tecnica, {
       m: this.#acoes(), dorme: (ms) => this.#dorme(ms),
-      sai, entra, bpm: d[entra].bpmEfetivo, tempos,
+      sai, entra, bpm: d[entra].bpmEfetivo, tempos, relogio,
       aoPasso: ({ tempo, de }) => this.dispatchEvent(new CustomEvent('progresso', { detail: { tempo, de, tecnica } })),
       aoFalar: (x) => this.#narra(x.diz, x),
       aluno: this.juntos,
-      ler: {
-        morto: (id, b) => this.mixer.canal(id).eq.morto(b),
-        fader: (id) => this.mixer.canal(id).valores.fader,
-        xf: () => this.mixer.crossfader,
-      },
+      ler: this.#ler(),
     });
     if (!ok) return false;
 
@@ -233,15 +395,40 @@ export class Piloto extends EventTarget {
     for (const b of ['grave', 'medio', 'agudo']) this.#kill(entra, b, false);
     m.filtro(sai, 0); m.eco(sai, 0); m.fader(sai, 1);
 
-    // o andamento volta devagar pro natural da faixa que entrou
-    // sempre: cada faixa termina no andamento DELA (ver caminharBpm)
-    {
-      this.#diz('bpm caminhando', { deck: entra });
-      this.#narra('n.caminha', { porque: 'n.caminha.p', vars: { e: entra }, mostra: [`pitch-${entra}`] });
-      const tempos = this.estilo === 'hipnotico' ? 64 : 32;   // hipnótico volta mais devagar
-      if (!await caminharBpm(d[entra], { dorme: (ms) => this.#dorme(ms), tempos })) return false;
-    }
+    // o andamento volta devagar pro natural da faixa que entrou — sempre:
+    // cada faixa termina no andamento DELA (ver caminharBpm). EM PARALELO:
+    // esperar os 32–64 tempos antes de planejar a próxima comia o fim da
+    // faixa, e a mistura longa não cabia mais (medido na simulação)
+    this.#diz('bpm caminhando', { deck: entra });
+    this.#narra('n.caminha', { porque: 'n.caminha.p', vars: { e: entra }, mostra: [`pitch-${entra}`] });
+    const passosBpm = this.estilo === 'hipnotico' ? 64 : 32;   // hipnótico volta mais devagar
+    this.caminhando = caminharBpm(d[entra], { dorme: (ms) => this.#dorme(ms), tempos: passosBpm });
     return true;
+  }
+
+  /**
+   * O FIM DO SET: a última faixa toca até a última frase inteira, e aí o
+   * fechamento (filtro, eco, volume descendo, freio). Antes o set "acabava"
+   * quando a fila acabava — a última música seguia sozinha e parava seca.
+   */
+  async #fechar(id) {
+    const D = this.decks[id];
+    if (this.caminhando) { await this.caminhando; this.caminhando = null; }
+    if (!D?.grid?.bpm) return true;
+    const p = per(D);
+    this.#narra('n.ultima', { porque: 'n.ultima.p', vars: { d: id } });
+    const ultimas = momentos(D).filter((m) => m.t + 16 * p <= D.duration - 0.2 && m.t > D.displayPosition + 4);
+    const alvo = ultimas.length ? ultimas[ultimas.length - 1].t : null;
+    if (alvo == null) return true;
+    const r = await this.#esperarAte(id, alvo, { tipo: 'frase', antes: 0.2 });
+    if (r === 'parou') return false;
+    this.pularAgora = false;
+    // relógio de parede de propósito: começou no 1 da frase, e o freio no fim
+    // PARA a faixa — um relógio lido da posição dela pararia junto
+    return executar('final', {
+      m: this.#acoes(), dorme: (ms) => this.#dorme(ms), deck: id, bpm: D.bpmEfetivo,
+      aoFalar: (x) => this.#narra(x.diz, x), aluno: this.juntos, ler: this.#ler(),
+    });
   }
 
   /** Toca a fila inteira. Volta quando acaba ou quando você assume. */
@@ -254,7 +441,8 @@ export class Piloto extends EventTarget {
       this.#diz('carregando', { faixa: fila[0].title });
       if (!await this.carregar('A', fila[0])) throw new Error('a primeira faixa não carregou');
       this.dispatchEvent(new CustomEvent('tocou', { detail: { faixa: fila[0] } }));
-      d.A.seek(this.#entrada(d.A));
+      // a PRIMEIRA do set começa do começo: é a introdução que abre a noite
+      d.A.seek(0);
       this.mixer.setCrossfader(0);
       d.A.play();
       this.#diz('no ar', { deck: 'A', faixa: fila[0].title });
@@ -267,29 +455,14 @@ export class Piloto extends EventTarget {
         this.#diz('carregando', { deck: entra, faixa: fila[i].title, resta: fila.length - i });
         if (!await this.carregar(entra, fila[i])) { this.#diz('pulou', { faixa: fila[i].title }); continue; }
 
-        /**
-         * Espera chegar perto da quebra da faixa no ar.
-         *
-         * Esta espera pode ser longa — medi 79 s numa faixa de 307 s — e
-         * enquanto ela durava a tela continuava dizendo "carregando", que era
-         * mentira: já tinha carregado, ele estava esperando a hora certa. Agora
-         * ele diz o que está esperando, e conta os segundos.
-         */
-        const q = this.#saida(d[noAr]);
-        if (q && !this.pularAgora) {
-          const ate = performance.now() + Math.min((q.t - d[noAr].displayPosition - 16) * 1000, 120000);
-          while (performance.now() < ate && !this.pularAgora) {
-            const falta = Math.round((ate - performance.now()) / 1000);
-            this.#diz('esperando', { deck: noAr, tipo: q.tipo, seg: falta });
-            if (!await this.#dorme(Math.min(2000, ate - performance.now()), { pulavel: true })) return;
-          }
-        }
-        this.pularAgora = false;
+        // a espera pela hora certa mora dentro da transição (ver o PLANO lá):
+        // ela diz o que está esperando, conta os segundos e vive a faixa
         if (!await this.transicao(noAr, entra, { faixa: fila[i], anterior: this.ultimaTecnica })) return;
         this.dispatchEvent(new CustomEvent('tocou', { detail: { faixa: fila[i] } }));
         noAr = entra;
         this.#diz('transição pronta', { noAr, resta: fila.length - i - 1 });
       }
+      if (!this.parar && !await this.#fechar(noAr)) return;
       this.#diz('fim do set');
     } catch (e) {
       this.#diz('erro', { erro: e.message });

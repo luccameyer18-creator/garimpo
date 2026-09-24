@@ -49,6 +49,43 @@ function distanciaCamelot(a, b) {
   return d + (x.l === y.l ? 0 : 1);
 }
 
+/**
+ * QUALIDADE de uma faixa, de 0 a 1 — "essa é boa?" sem ouvir.
+ *
+ * O montador só olhava tom, andamento e gênero: qualquer faixa que encaixasse
+ * servia, e o set saía cheio de rascunho com 12 plays. Agora pesa o que a
+ * galera do Audius já disse:
+ *   ALCANCE  — log dos plays (10 mil plays = nota cheia)
+ *   CARINHO  — curtidas + 2×reposts sobre plays: quem ouviu GOSTOU? (12% = cheia)
+ *   CORPO    — faixa com menos de 2:30 costuma ser edit curto ou esboço, sem
+ *              introdução nem saída pra mixar
+ * Sem sinais (sem rede, arquivo local): 0,5, neutro — nem premia nem pune.
+ */
+export function qualidade(t) {
+  const corpo = Math.min(1, (t?.duration || 0) / 150);
+  const s = t?.sinais;
+  if (!s) return 0.35 + 0.15 * corpo;
+  const plays = s.plays ?? 0;
+  const amor = (s.curtidas ?? 0) + 2 * (s.reposts ?? 0);
+  const alcance = Math.min(1, Math.log10(plays + 1) / 4);
+  const carinho = Math.min(1, (amor / Math.max(20, plays)) * 8);
+  return 0.45 * alcance + 0.35 * carinho + 0.2 * corpo;
+}
+
+/**
+ * A RAIZ de uma música: o título sem versão. "Stop It (Bessey Remix)" e
+ * "Stop It (Zanon Remix)" são a mesma música — um set com as duas soa como
+ * disco riscado. Tira o que está entre parênteses/colchetes, o "Artista - "
+ * da frente e as palavras de versão.
+ */
+export function raiz(t) {
+  let s = String(t?.title || '').toLowerCase().replace(/[([][^)\]]*[)\]]/g, ' ');
+  const partes = s.split(/\s[-–—]\s/);
+  if (partes.length > 1) s = partes.slice(1).join(' ');
+  s = s.replace(/\b(remix|edit|bootleg|flip|rework|vip|extended|original mix|radio|version|feat\.?|ft\.?)\b.*$/, '');
+  return s.replace(/[^\p{L}\p{N}]+/gu, ' ').trim() || String(t?.id);
+}
+
 /** As pilhas que o professor conhece, e como buscar cada uma. */
 export const PILHAS = [
   { nome: 'Disco',     buscar: () => trending({ genre: 'Disco', limit: 50 }) },
@@ -109,6 +146,7 @@ export async function juntarCandidatas({ pilhas = null, bpmMin = 100, bpmMax = 1
 function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
                                         recentes = null, sorte = 0 }) {
   const usadas = new Set([semente.id]);
+  const raizes = new Set([raiz(semente)]);
   const fila = [semente];
   // 0.8 porque as transições se sobrepõem: ninguém toca a faixa inteira
   let dur = semente.duration * 0.8;
@@ -144,7 +182,7 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
   ];
 
   const encaixaNivel = (de, t, n) => {
-    if (usadas.has(t.id) || !t.bpm) return false;
+    if (usadas.has(t.id) || !t.bpm || raizes.has(raiz(t))) return false;
     const lv = NIVEIS[n];
     if (Math.abs(t.bpm / de.bpm - 1) > lv.bpm) return false;
     if (lv.roda === 0) return keyCompatible({ camelot: de.camelot }, { camelot: t.camelot }).ok;
@@ -209,6 +247,8 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
                * melhores continuam ganhando.
                */
               + (recentes?.has(t.id) ? 14 : 0)
+              // música boa ganha: até 8 pontos entre um rascunho e um hit
+              + (1 - qualidade(t)) * 8
               + Math.random() * sorte;
         if (pendentes.length) {
           // ponte boa é a que CAMINHA até a obrigatória: menos passos de roda
@@ -232,6 +272,7 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
       motivo: harm.reason,
       pitch: esc.bpm / atual.bpm - 1 });
     usadas.add(esc.id);
+    raizes.add(raiz(esc));
     dur += esc.duration * 0.8;
     atual = esc;
   }
@@ -308,7 +349,10 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
   const sementes = semente ? [comPilha(semente)]
     : obrigatorias.length ? [comPilha(obrigatorias[0])]
     : baralhar(pote.filter((t) => t.bpm <= (energia === 'descer' ? 134 : 125)))
-        .sort((a, b) => (jaOuvidas.has(a.id) ? 1 : 0) - (jaOuvidas.has(b.id) ? 1 : 0))
+        // já ouvidas pro fim; entre as outras, as melhores primeiro (com
+        // folga de sorteio, senão todo set abriria com o mesmo hit)
+        .map((t) => ({ t, k: (jaOuvidas.has(t.id) ? 10 : 0) - qualidade(t) * 2 + Math.random() }))
+        .sort((a, b) => a.k - b.k).map((x) => x.t)
         .slice(0, 40);
   if (!sementes.length) sementes.push(pote[0]);
 
@@ -319,7 +363,8 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
     // quantas faixas, quantos gêneros, quantas escolhidas entraram, e quão
     // perto da duração pedida. As suas escolhas pesam mais que tudo.
     const novas = r.fila.filter((x) => !jaOuvidas.has(x.id)).length;
-    const pontos = r.fila.length + generos * 4 + novas * 2
+    const q = r.fila.reduce((s, x) => s + qualidade(x), 0) / Math.max(1, r.fila.length);
+    const pontos = r.fila.length + generos * 4 + novas * 2 + q * 12
                  + (obrigatorias.length - r.naoCoube.length) * 20
                  + (Math.abs(r.minutos - minutos) < 6 ? 8 : 0)
                  - Math.abs(r.minutos - minutos) / 3;
