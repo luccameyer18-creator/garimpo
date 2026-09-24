@@ -25,6 +25,7 @@ import { montarCena } from './cena.js';
 import { montarViagem } from './viagem.js';
 import { qualidade } from './qualidade.js';
 import * as bib from './biblioteca.js';
+import { montarControladora } from '../controle/controladora.js';
 import {
   trending, search, GENRES, attribution, prefetch, compativeis,
   keyCompatible, resolveStreamUrl, CRATES, crateBr,
@@ -634,6 +635,8 @@ function ligarLoops(id) {
   }
   v.loopSair.onclick = () => { d.clearLoop(); pintar(); };
   d.addEventListener('loaded', () => { d.clearLoop(); pintar(); });
+  // loop que veio de fora (o piloto, a controladora): acende o botão certo
+  d.addEventListener('loop', pintar);
 }
 
 /** 1 volta no anel vale isto de áudio. Baixo de proposito: é o ajuste fino. */
@@ -737,6 +740,7 @@ function espelharMixer(agora) {
     igualar($(`eco-${d}`), c.valores.eco);
   }
   igualar($('xf'), mixer.crossfader);
+  igualar($('master'), mixer.valorMaster);   // a controladora também mexe no volume geral
   for (const d of ['A', 'B']) {
     const dk = decks[d], faixa = dk?.transport?.pitchRange;
     if (faixa) igualar($('pitch-' + d), -dk.pitch / faixa);
@@ -815,6 +819,16 @@ let ultimoProf = 0, ultimaLista = '', apontados = [];
  * mesma barra, mesma luz no controle — o DJ ensina pelo mesmo canal.
  */
 let narracao = null, nNarracao = 0;
+/**
+ * O que a controladora de DJ tem a dizer ("senti sua DDJ-FLX4", "seu knob está
+ * em outro lugar"): entra no topo do professor por alguns segundos, com a luz
+ * no controle da tela — o Garimpeiro fala da mão da pessoa pelo mesmo canal.
+ */
+let avisoCtl = null;
+function avisoControladora({ fala, porque = null, apontar = [], cor = 'agora', ms = 7000 }) {
+  avisoCtl = { ate: performance.now() + ms, item: { id: 'ctl:' + (++nNarracao), cor, fala, porque, apontar } };
+  ultimoProf = 0;
+}
 function itemNarracao(n) {
   return {
     // o número muda a cada fala: é o que faz a luz reacender no controle novo
@@ -854,6 +868,8 @@ function rodarProfessor() {
     const urgentes = itens.filter((i) => ['grave-esquecido', 'limitador', 'audio'].includes(i.id));
     itens = [...urgentes, itemNarracao(narracao)].slice(0, 3);
   }
+  // a controladora fala pelo mesmo canal, por alguns segundos (ver avisoControladora)
+  if (avisoCtl && performance.now() < avisoCtl.ate) itens = [avisoCtl.item, ...itens].slice(0, 3);
 
   // o Garimpeiro: lâmpada na cor do conselho mais urgente, e dança no BPM
   // do deck que está no ar — sem precisar ler texto
@@ -2892,3 +2908,49 @@ function pintarTrilhos() {
 document.addEventListener('input', (ev) => { if (ev.target.type === 'range') pintarTrilhos(); });
 setInterval(pintarTrilhos, 120);
 pintarTrilhos();
+
+// ─────────────────────────── controladora de DJ ───────────────────────────
+
+/**
+ * A controladora de verdade (ver src/controle/controladora.js). Ela recebe o
+ * que a mão usa na tela — os mesmos decks, o mesmo mixer, os mesmos botões —
+ * e nada além disso: se a controladora consegue, a tela consegue.
+ */
+montarControladora({
+  g: {
+    deck: (id) => decks[id],
+    mixer: () => mixer,
+    pads: () => pads,
+    sampleRate: () => ctx?.sampleRate || 48000,
+    ligarAudio: () => { garantirRodando(); },
+    // mexer na controladora é encostar num controle: o piloto solta (a mesma regra do pointerdown)
+    gesto: () => {
+      if (!piloto?.ativo || piloto.juntos) return;
+      pararPiloto();
+      $('piloto-nota').textContent = 'você assumiu — o piloto soltou';
+      $('piloto-nota').style.color = 'var(--cue)';
+    },
+    sincronizar: (id) => sincronizar(id),
+    encaixar: (id) => {
+      const r = erroDeFase(decks[id === 'A' ? 'B' : 'A'], decks[id]);
+      if (r) decks[id].deslocar(-r.emMs / 1000, { emSeg: 0.5 });
+    },
+    fone: (id, on) => { const b = $('fone-' + id); if (b && b.classList.contains('lig') !== on) b.click(); },
+    faixaPitch: (id, r) => {
+      const b = [...(vistas[id]?.faixaSel?.querySelectorAll('button') || [])].find((x) => Math.abs(Number(x.dataset.r) - r) < 1e-6);
+      if (b) b.click(); else decks[id]?.setPitchRange(r);
+    },
+    curva: (c) => mixer?.setCurva(c),
+    jogTela: (id, on) => { vistas[id]?.jog?.classList.toggle('ativo', on); vistas[id]?.jog?.classList.toggle('scratch', on); },
+    loopMudou: (id) => decks[id]?.dispatchEvent(new CustomEvent('loop', { detail: {} })),
+    piloto: { ativo: () => !!piloto?.ativo, alternar: () => $('b-piloto').click(), pular: () => piloto?.pular() },
+  },
+  gaveta: {
+    abrir: (on = true) => abrirBib(on),
+    aberta: () => document.body.classList.contains('bib-aberta'),
+    alvo: () => alvoBib,
+    deckLivre,
+  },
+  avisar: avisoControladora,
+  mascote: () => mascote,
+});

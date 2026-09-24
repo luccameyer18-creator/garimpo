@@ -228,7 +228,10 @@ export class Mixer extends EventTarget {
   }
 
   setCurva(c) { this.curva = c; this.setCrossfader(this.crossfader); }
+  /** A POSIÇÃO do volume geral (0..1), não o ganho curvado: é o que a tela e a controladora mostram. */
+  valorMaster = 0.85;
   setMaster(v01) {
+    this.valorMaster = v01;
     const t = this.ctx.currentTime;
     this.master.gain.cancelScheduledValues(t);
     this.master.gain.linearRampToValueAtTime(Math.pow(v01, 1.6), t + 0.02);

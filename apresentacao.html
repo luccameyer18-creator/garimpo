@@ -4,22 +4,38 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Garimpo — stories</title>
-<meta name="description" content="Garimpo: garimpe músicas novas, mixe sozinho, junto com um professor, ou deixe o Garimpeiro tocar o set inteiro. De graça.">
+<meta name="description" content="Garimpo: vira DJ no navegador. Garimpe músicas livres, mixe sozinho, junto com o Garimpeiro ou deixe ele tocar o set inteiro. Pista, viagem e pads. De graça.">
+<script>
+  // Gravando (?video=1): o sorteio ganha semente, pra gravação sair igual toda vez
+  if (/[?&]video\b/.test(location.search)) {
+    let s = 20260924;
+    Math.random = () => {
+      s = (s + 0x6D2B79F5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+</script>
 <style>
   /*
-   * A apresentação do Garimpo em formato de STORIES: vertical 9:16, barrinhas
-   * no topo (uma por cena), toque na direita avança, na esquerda volta,
-   * segurar pausa. No celular ocupa a tela; no computador fica no centro,
-   * como um celular em pé.
+   * A apresentação do Garimpo em STORIES: vertical 9:16, barrinhas no topo
+   * (uma por cena), toque na direita avança, na esquerda volta, segurar
+   * pausa. No celular ocupa a tela; no computador fica no centro, como um
+   * celular em pé.
    *
-   * Mesma paleta do app. Tudo CSS + um canvas pequeno de lasers; a batida é
-   * sintetizada na hora com Web Audio (nenhum arquivo de áudio) e só toca
-   * depois do primeiro toque — navegador não deixa som começar sozinho.
-   * As medidas usam cqw (largura do story), então o texto cabe igual em
-   * qualquer tamanho.
+   * A TRILHA é "Funk Faker", do Hallmarc — do acervo do próprio Garimpo, no
+   * Audius, com licença CC BY (pode ir pra vídeo, com crédito). Toca do
+   * Audius do mesmo jeito que o app toca. Cada cena troca no compasso dela e
+   * o DROP da música é o drop da pista.
+   *
+   * DESEMPENHO (a regra do app): por quadro, só opacity/transform em poucos
+   * elementos e só quando o valor muda; nada de variável CSS no :root, blur
+   * ou backdrop-filter. Os efeitos grandes são canvas pequenos, e só a cena
+   * que está na tela desenha.
    */
   :root { --fundo:#07040f; --fg:#f2eefc; --mut:#b3a8d6; --neon:#ff4ecd; --acc:#4cc9f0; --cue:#ffb347;
-          --ok:#2ee6a8; --lock:#c77dff; --b:0; }
+          --ok:#2ee6a8; --lock:#c77dff; --vio:#9b5cff; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; margin:0; }
   body { background:radial-gradient(80% 60% at 50% 30%, #1d1033, #050309); color:var(--fg); overflow:hidden;
@@ -27,182 +43,302 @@
          font:16px/1.35 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing:antialiased; }
 
   .story { position:relative; width:min(100vw, 56.25dvh); height:min(100dvh, 177.78vw); overflow:hidden;
-           background:#07040f; container-type:inline-size; border-radius:0; }
+           background:#07040f; container-type:inline-size; }
   @media (min-width:700px) { .story { border-radius:22px; box-shadow:0 30px 90px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.08);
                                       height:min(94dvh, 177.78vw); width:min(100vw, 52.9dvh); } }
-  #lasers { position:absolute; inset:0; width:100%; height:100%; }
+  .camada { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  #fundo { z-index:0; }
+  #hiper { z-index:0; opacity:0; }
+  #luz { z-index:1; opacity:0; }
 
-  /* barrinhas do topo */
-  .barras { position:absolute; top:10px; left:10px; right:10px; z-index:6; display:flex; gap:4px; }
+  /* barrinhas do topo: a da cena atual enche (transform, não width) */
+  .barras { position:absolute; top:10px; left:10px; right:10px; z-index:6; display:flex; gap:3px; }
   .barras span { flex:1; height:3px; border-radius:2px; background:rgba(255,255,255,.28); overflow:hidden; }
-  .barras i { display:block; height:100%; width:0; background:#fff; }
+  .barras i { display:block; height:100%; background:#fff; transform:scaleX(0); transform-origin:0 50%; }
   .topo { position:absolute; top:20px; left:12px; right:12px; z-index:6; display:flex; align-items:center; gap:8px; }
-  .topo .quem { display:flex; align-items:center; gap:8px; font:800 13px ui-sans-serif, system-ui; }
+  .topo .quem { display:flex; align-items:center; gap:8px; font:800 13px ui-sans-serif, system-ui; text-shadow:0 1px 4px #000; }
   .topo .quem .av { width:30px; height:30px; } .topo .quem .av .gp { width:100%; height:100%; }
-  .topo .quem small { color:rgba(255,255,255,.6); font-weight:600; }
+  .topo .quem small { color:rgba(255,255,255,.65); font-weight:600; }
   .topo button { margin-left:auto; background:none; border:none; color:#fff; font-size:20px; padding:6px; cursor:pointer; }
   .topo button + button { margin-left:0; }
 
-  /* toque: metade esquerda volta, direita avança */
+  /* toque: esquerda volta, direita avança, segurar pausa */
   .toque { position:absolute; top:0; bottom:0; z-index:4; }
   .toque.esq { left:0; width:32%; } .toque.dir { right:0; width:68%; }
 
-  /* cenas */
+  /* ── cenas ── */
   .cena { position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center;
-          gap:4cqw; padding:18cqw 7cqw 12cqw; text-align:center; opacity:0; visibility:hidden;
-          transition:opacity .5s ease, visibility .5s; pointer-events:none; }
+          gap:3.6cqw; padding:19cqw 7cqw 13cqw; text-align:center; opacity:0; visibility:hidden;
+          transition:opacity .3s ease, visibility .3s; pointer-events:none; }
   .cena.ativa { opacity:1; visibility:visible; }
-  .cena.ativa .entra { animation:entra .7s cubic-bezier(.2,.8,.2,1) both; }
-  .cena.ativa .entra:nth-child(2) { animation-delay:.35s; }
-  .cena.ativa .entra:nth-child(3) { animation-delay:.8s; }
-  .cena.ativa .entra:nth-child(4) { animation-delay:1.3s; }
-  .cena.ativa .entra:nth-child(5) { animation-delay:1.8s; }
-  @keyframes entra { from { opacity:0; transform:translateY(5cqw); filter:blur(6px); } to { opacity:1; transform:none; filter:none; } }
-  h1, h2 { margin:0; font-weight:900; line-height:1.05; }
-  h1 { font-size:15cqw; letter-spacing:.12em; }
-  h2 { font-size:9cqw; }
-  .sub { margin:0; color:var(--mut); font-size:4.6cqw; }
+  .cena.corta { transition:none; }                /* no drop a troca é seca, sem fusão */
+  /* o que entra no tempo certo: [data-b] = em qual tempo da cena (o JS liga .on) */
+  .entra { opacity:0; transform:translateY(4cqw); transition:opacity .4s ease, transform .55s cubic-bezier(.2,.8,.2,1); }
+  .entra.on { opacity:1; transform:none; }
+  .slam { opacity:0; transform:scale(1.45); transition:opacity .16s ease, transform .5s cubic-bezier(.2,1.5,.4,1); }
+  .slam.on { opacity:1; transform:none; }
+  .pop { opacity:0; transform:scale(.2); transition:opacity .15s, transform .45s cubic-bezier(.3,1.8,.5,1); }
+  .pop.on { opacity:1; transform:none; }
+
+  h1, h2 { margin:0; font-weight:900; line-height:1.04; }
+  h1 { font-size:15cqw; letter-spacing:.12em; padding-left:.12em; }
+  h2 { font-size:8.4cqw; letter-spacing:-.01em; }
+  .sub { margin:0; color:var(--mut); font-size:4.4cqw; max-width:86cqw; line-height:1.32; }
+  .sub b { color:var(--fg); }
   .neon { color:var(--acc); text-shadow:0 0 6cqw rgba(76,201,240,.7); }
   .rosa { color:var(--neon); text-shadow:0 0 6cqw rgba(255,78,205,.7); }
   .ambar { color:var(--cue); text-shadow:0 0 6cqw rgba(255,179,71,.6); }
   .verde { color:var(--ok); text-shadow:0 0 6cqw rgba(46,230,168,.6); }
+  .lilas { color:var(--lock); text-shadow:0 0 6cqw rgba(199,125,255,.7); }
+  .masc-g { width:40cqw; height:40cqw; } .masc-g .gp { width:100%; height:100%; }
+  .masc-m { width:24cqw; height:24cqw; } .masc-m .gp { width:100%; height:100%; }
 
-  /* 1 — garimpo */
-  .mascote-g { width:38cqw; height:38cqw; } .mascote-g .gp { width:100%; height:100%; }
+  /* 1 — abertura */
+  .abre .masc-g { width:52cqw; height:52cqw; margin-bottom:-2cqw; }
+  .selo { position:absolute; right:8cqw; top:52cqw; padding:1.6cqw 3.4cqw; border:.7cqw solid var(--ok); border-radius:2.4cqw;
+          color:var(--ok); font:900 6.4cqw/1 ui-sans-serif, system-ui; letter-spacing:.08em; rotate:-12deg;
+          background:rgba(7,4,15,.7); box-shadow:0 0 6cqw rgba(46,230,168,.35), inset 0 0 3cqw rgba(46,230,168,.25); }
+  .sticker { position:absolute; bottom:7cqw; left:50%; translate:-50% 0; display:flex; align-items:center; gap:2cqw;
+             padding:1.8cqw 3.6cqw; border-radius:6cqw; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18);
+             font:700 3.4cqw ui-sans-serif, system-ui; white-space:nowrap; color:#fff; }
+  .eq { display:inline-flex; align-items:flex-end; gap:.5cqw; height:3.2cqw; }
+  .eq i { width:.8cqw; height:100%; border-radius:.3cqw; background:var(--neon); transform-origin:50% 100%;
+          animation:eq .5s ease-in-out infinite alternate; }
+  .eq i:nth-child(2) { animation-delay:-.2s; background:var(--acc); } .eq i:nth-child(3) { animation-delay:-.35s; background:var(--cue); }
+  @keyframes eq { from { transform:scaleY(.25); } to { transform:scaleY(1); } }
+
+  /* 2 — garimpo */
+  .contador { font:900 19cqw/1 ui-monospace, "Cascadia Mono", Consolas, monospace; color:var(--cue);
+              text-shadow:0 0 10cqw rgba(255,179,71,.55); letter-spacing:-.02em; }
+  .abas { display:flex; flex-wrap:wrap; justify-content:center; gap:2cqw; max-width:90cqw; }
+  .aba { padding:1.8cqw 3.4cqw; border-radius:6cqw; font:800 3.7cqw ui-sans-serif, system-ui; white-space:nowrap;
+         background:rgba(29,18,52,.92); border:1px solid rgba(199,125,255,.45); }
+  .aba.quente { border-color:var(--neon); background:rgba(255,78,205,.2); box-shadow:0 0 5cqw rgba(255,78,205,.45); }
   .pepitas { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
-  .pepita { position:absolute; bottom:-8cqw; font-size:6cqw; color:var(--cue); text-shadow:0 0 4cqw var(--cue); opacity:0; }
-  .cena.ativa .pepita { animation:sobe 3.4s ease-in infinite; }
+  .pepita { position:absolute; bottom:-8cqw; font-size:5.6cqw; color:var(--cue); text-shadow:0 0 4cqw var(--cue); opacity:0; }
+  .cena.ativa .pepita { animation:sobe 3.2s ease-in infinite; }
   @keyframes sobe { 0% { opacity:0; transform:translateY(0) scale(.6); } 15% { opacity:1; }
                     100% { opacity:0; transform:translateY(-150cqw) scale(1.2) rotate(40deg); } }
 
-  /* 2 — descobrir */
-  .contador { font:900 20cqw/1 ui-monospace, monospace; color:var(--cue); text-shadow:0 0 10cqw rgba(255,179,71,.6); }
-  /* as etiquetas somem na faixa do meio, onde estão o número e o texto */
-  .chuva { position:absolute; inset:0; overflow:hidden; pointer-events:none;
-           -webkit-mask-image:linear-gradient(#000 0 24%, transparent 33% 71%, #000 80%);
-           mask-image:linear-gradient(#000 0 24%, transparent 33% 71%, #000 80%); }
-  .chip { position:absolute; top:-12cqw; padding:2cqw 4cqw; border-radius:8cqw; font-weight:800; font-size:4cqw; white-space:nowrap;
-          border:1px solid var(--neon); background:rgba(255,78,205,.16); box-shadow:0 0 4cqw rgba(255,78,205,.4); }
-  .cena.ativa .chip { animation:cai 5.2s linear both; }
-  @keyframes cai { from { transform:translateY(0) rotate(-6deg); } to { transform:translateY(200cqw) rotate(8deg); } }
-
-  /* 3 — ♥ e 👎 */
-  .cartas { position:relative; width:86cqw; height:30cqw; }
-  .carta { position:absolute; inset:0; display:flex; align-items:center; gap:4cqw; padding:4cqw; border-radius:5cqw;
-           background:linear-gradient(135deg, #2a1d4a, #150e27); border:1px solid rgba(255,255,255,.12);
-           box-shadow:0 5cqw 14cqw rgba(0,0,0,.6); text-align:left; }
-  .carta .capa { width:20cqw; height:20cqw; border-radius:3cqw; flex:none;
+  /* 3 — guarda o que é ouro */
+  .lista { display:flex; flex-direction:column; gap:2.6cqw; width:88cqw; }
+  .linha { position:relative; display:flex; align-items:center; gap:3.4cqw; padding:3cqw 3.4cqw; border-radius:4cqw; text-align:left;
+           background:linear-gradient(135deg, #2a1d4a, #150e27); border:1px solid rgba(255,255,255,.12); }
+  .linha .capa { width:13cqw; height:13cqw; border-radius:2.4cqw; flex:none;
                  background:conic-gradient(from 40deg, var(--neon), var(--lock), var(--acc), var(--neon)); }
-  .carta b { display:block; font-size:5cqw; } .carta small { color:var(--mut); font:700 3.6cqw ui-monospace, monospace; }
-  .selo { position:absolute; right:4cqw; top:50%; transform:translateY(-50%) scale(0); font-size:12cqw; }
-  .c2 { opacity:0; }
-  .cena.ativa .c1 .selo { animation:pop .6s 1.1s cubic-bezier(.3,1.8,.5,1) both; }
-  .cena.ativa .c1 { animation:sai .6s 2.5s ease-in both; }
-  .cena.ativa .c2 { animation:entraCarta .6s 2.7s ease-out both; }
-  .cena.ativa .c2 .selo { animation:pop .5s 3.6s cubic-bezier(.3,1.8,.5,1) both; }
-  .cena.ativa .c2 .corpo { animation:some .8s 4.4s ease-in both; }
-  @keyframes pop { to { transform:translateY(-50%) scale(1); } }
-  @keyframes sai { to { transform:translateX(130%) rotate(12deg); opacity:0; } }
-  @keyframes entraCarta { from { opacity:0; transform:translateY(8cqw) scale(.9); } to { opacity:1; transform:none; } }
-  @keyframes some { to { opacity:0; transform:scale(.6) rotate(-14deg); filter:blur(8px) grayscale(1); } }
-  .corpo { display:flex; align-items:center; gap:4cqw; }
+  .linha .capa.c2 { background:conic-gradient(from 90deg, #6d6a7d, #3b3552, #8a8599, #6d6a7d); }
+  .linha .capa.arq { display:grid; place-items:center; font-size:7cqw; background:linear-gradient(135deg, #1f4d44, #10261f); }
+  .linha b { display:block; font-size:4.4cqw; } .linha small { color:var(--mut); font:700 3.3cqw ui-monospace, Consolas, monospace; }
+  .linha .acao { position:absolute; right:3.6cqw; top:50%; margin-top:-5cqw; font-size:9cqw; line-height:10cqw; }
+  .linha .coracao { color:var(--neon); text-shadow:0 0 5cqw var(--neon); }
+  .linha.ruim { transition:opacity .45s ease, transform .55s ease; }
+  .linha.ruim.fora { opacity:.12 !important; transform:scale(.86) rotate(-3deg) !important; }
+  .linha .mede .pop { display:inline-block; color:var(--ok); }
 
-  /* 4 — três jeitos */
+  /* 4 — dois jeitos */
   .modos { display:flex; flex-direction:column; gap:3cqw; width:88cqw; }
-  .modo { display:flex; gap:4cqw; align-items:center; padding:4cqw; border-radius:5cqw; text-align:left;
-          background:rgba(22,14,40,.88); border:1px solid rgba(255,255,255,.12); }
-  .modo .ic { font-size:9cqw; flex:none; }
-  .modo b { display:block; font-size:5cqw; } .modo span { color:var(--mut); font-size:3.6cqw; }
-  .modo.r { border-color:var(--neon); box-shadow:0 0 8cqw rgba(255,78,205,.35); }
+  .modo { display:flex; flex-direction:column; align-items:flex-start; gap:1.6cqw; padding:3.4cqw 4cqw; border-radius:4.4cqw; text-align:left;
+          background:rgba(22,14,40,.9); border:1px solid rgba(255,255,255,.12); transition:border-color .25s, background .25s, opacity .4s ease, transform .55s cubic-bezier(.2,.8,.2,1); }
+  .modo .bt { font:900 5.4cqw ui-sans-serif, system-ui; padding:1.6cqw 3.6cqw; border-radius:3cqw;
+              border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.05); transition:color .25s, border-color .25s, background .25s; }
+  .modo span { color:var(--mut); font-size:4.1cqw; line-height:1.35; }
+  .modo span b { color:var(--fg); }
+  .modo.aceso { border-color:var(--neon); background:rgba(56,16,52,.92); }
+  .modo.aceso .bt { color:var(--neon); border-color:var(--neon); background:rgba(255,78,205,.14); }
 
-  /* 5 — professor */
-  .cdj { display:grid; grid-template-columns:1fr 18cqw 1fr; gap:2.4cqw; width:90cqw; }
-  .deck { height:34cqw; border-radius:3cqw; background:rgba(16,10,30,.92); border:1px solid rgba(76,201,240,.5); overflow:hidden; position:relative; }
-  .deck.b { border-color:rgba(255,179,71,.5); }
-  .deck::after { content:""; position:absolute; left:50%; top:0; bottom:0; width:2px; background:#fff; }
-  .onda { position:absolute; inset:4cqw 0; display:flex; align-items:center; gap:1px; width:200%; }
-  .onda i { flex:none; width:1.2cqw; border-radius:1px; }
-  .cena.ativa .onda { animation:corre 6s linear infinite; }
+  /* 5 — o DJ pela música */
+  .cdj { display:grid; grid-template-columns:1fr 19cqw 1fr; gap:2cqw; width:90cqw; }
+  .deck { height:36cqw; border-radius:3cqw; background:rgba(16,10,30,.94); border:1px solid rgba(76,201,240,.35); overflow:hidden;
+          position:relative; transition:border-color .25s; }
+  .deck[data-d="B"] { border-color:rgba(255,179,71,.35); }
+  .deck.no-ar { border-color:var(--acc); } .deck[data-d="B"].no-ar { border-color:var(--cue); }
+  .deck .rot { position:absolute; top:1.4cqw; left:2cqw; z-index:1; font:900 3.4cqw ui-sans-serif, system-ui; color:var(--acc); }
+  .deck[data-d="B"] .rot { color:var(--cue); }
+  .deck::after { content:""; position:absolute; left:50%; top:0; bottom:0; width:2px; background:#fff; opacity:.9; }
+  .onda { position:absolute; inset:6cqw 0 4cqw; display:flex; align-items:center; gap:1px; width:200%; }
+  .onda i { flex:none; width:1.1cqw; border-radius:1px; }
+  .cena.ativa .onda { animation:corre 5s linear infinite; }
   @keyframes corre { to { transform:translateX(-50%); } }
-  .mix { border-radius:3cqw; background:rgba(16,10,30,.92); border:1px solid rgba(199,125,255,.5); position:relative; }
-  .mix .kill { position:absolute; top:4cqw; width:6cqw; height:6cqw; border-radius:1.6cqw; border:1px solid var(--neon);
-               display:grid; place-items:center; font-size:3.2cqw; color:var(--neon); }
-  .mix .kill.a { left:2cqw; } .mix .kill.b { right:2cqw; }
-  .cena.ativa .mix .kill { animation:acende 1s 1.4s ease-in-out 3 both; }
-  @keyframes acende { 50% { background:var(--neon); color:#2b0420; box-shadow:0 0 5cqw var(--neon); } }
-  .mix .trilho { position:absolute; left:2cqw; right:2cqw; bottom:5cqw; height:1.4cqw; border-radius:1cqw; background:#1a1230; }
-  .mix .tampa { position:absolute; bottom:3.2cqw; left:2cqw; width:6cqw; height:5cqw; border-radius:1.2cqw; background:linear-gradient(180deg, #f4f0ff, #8d84a8); }
-  .cena.ativa .mix .tampa { animation:xf 6s ease-in-out infinite; }
-  @keyframes xf { 0%, 20% { left:2cqw; } 60%, 100% { left:calc(100% - 8cqw); } }
-  .balao { display:flex; gap:3cqw; align-items:center; width:90cqw; padding:3.4cqw; border-radius:4cqw; text-align:left;
-           background:rgba(22,14,40,.92); border:1px solid rgba(46,230,168,.5); font-size:4cqw; }
-  .balao .mini { width:15cqw; height:15cqw; flex:none; } .balao .mini .gp { width:100%; height:100%; }
-  .balao b { color:var(--ok); }
-  .balao small { display:block; margin-top:1cqw; color:var(--mut); font-size:3.4cqw; }
-  .balao small::before { content:"POR QUÊ: "; color:var(--ok); font-weight:800; font-size:3cqw; letter-spacing:.06em; }
+  .mix { border-radius:3cqw; background:rgba(16,10,30,.94); border:1px solid rgba(199,125,255,.45); position:relative;
+         display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:2.4cqw 1.6cqw 3cqw; }
+  .mix .ks { display:grid; grid-template-columns:1fr 1fr; gap:1.2cqw 1.6cqw; }
+  .mix .ks i { width:6.4cqw; height:5.4cqw; border-radius:1.4cqw; border:1px solid rgba(255,78,205,.55); display:grid; place-items:center;
+               font:900 3cqw ui-sans-serif, system-ui; font-style:normal; color:var(--neon); transition:background .15s, color .15s, box-shadow .15s; }
+  .mix .ks i.cortado { background:var(--neon); color:#2b0420; box-shadow:0 0 4cqw var(--neon); }
+  .mix .trilho { position:relative; width:100%; height:1.4cqw; border-radius:1cqw; background:#1a1230; }
+  .mix .tampa { position:absolute; top:-1.8cqw; left:0; width:5.4cqw; height:5cqw; border-radius:1.2cqw; background:linear-gradient(180deg, #f4f0ff, #8d84a8); }
+  /* a etiqueta do "1" fica na borda de cima da CDJ: não tapa o mixer */
+  .um-frase { position:absolute; left:50%; top:0; translate:-50% -50%; z-index:2; padding:1.6cqw 4cqw; border-radius:5cqw;
+              font:900 4.2cqw ui-sans-serif, system-ui; color:#062a1f; background:var(--ok); white-space:nowrap;
+              box-shadow:0 0 8cqw rgba(46,230,168,.7); }
+  .cdj-wrap { position:relative; margin-top:3cqw; }
+  .tecs { display:flex; flex-wrap:wrap; justify-content:center; gap:1.8cqw; max-width:90cqw; }
+  .tec { padding:1.4cqw 3cqw; border-radius:5cqw; font:800 3.4cqw ui-sans-serif, system-ui; color:var(--mut);
+         border:1px solid rgba(255,255,255,.14); background:rgba(22,14,40,.8); transition:color .15s, border-color .15s, background .15s; }
+  .tec.aceso { color:#062a1f; border-color:var(--ok); background:var(--ok); }
+  .variedade { font:700 3.6cqw ui-sans-serif, system-ui; color:var(--mut); }
+  .variedade b { color:var(--fg); padding:.6cqw 2cqw; border-radius:3cqw; border:1px solid var(--acc); margin:0 .6cqw; }
 
-  /* 6 — pista */
-  .galera { position:absolute; left:0; right:0; bottom:0; height:40cqw; display:flex; justify-content:space-around;
-            align-items:flex-end; padding:0 2cqw; pointer-events:none; }
-  .pessoa { width:9cqw; height:24cqw; border-radius:50% 50% 3cqw 3cqw / 30% 30% 3cqw 3cqw; border:2px solid var(--c, var(--neon));
-            border-bottom:none; box-shadow:0 0 4cqw var(--c, var(--neon)); position:relative;
-            transform:translateY(calc(var(--b) * var(--s, 4) * -1cqw)); }
-  .pessoa::before { content:""; position:absolute; left:50%; top:-32%; width:64%; aspect-ratio:1; transform:translateX(-50%);
-                    border-radius:50%; border:2px solid var(--c, var(--neon)); box-shadow:0 0 3cqw var(--c, var(--neon)); }
-  .globo { width:22cqw; height:22cqw; border-radius:50%; background:
-    radial-gradient(circle at 34% 28%, #fff 0 6%, transparent 22%),
-    linear-gradient(90deg, rgba(10,6,20,.55) 1px, transparent 1px) 0 0 / 3cqw 3cqw,
-    linear-gradient(0deg, rgba(10,6,20,.55) 1px, transparent 1px) 0 0 / 3cqw 3cqw,
-    radial-gradient(circle, #e6e0f6, #5e5680 75%);
-    box-shadow:0 0 calc(6cqw + var(--b) * 8cqw) rgba(255,255,255,.4); }
-  .drop { font:900 24cqw/1 ui-sans-serif, system-ui; color:#fff; text-shadow:0 0 8cqw var(--neon), 0 0 18cqw var(--acc);
-          transform:scale(calc(1 + var(--b) * .07)); }
-  .confete { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
-  .confete i { position:absolute; top:-5cqw; width:2cqw; height:3.4cqw; border-radius:.5cqw; }
-  .cena.ativa .confete i { animation:cai 3s linear both; }
+  /* 6 — o professor */
+  .prof { display:flex; align-items:center; gap:2.6cqw; width:90cqw; padding:3cqw; border-radius:4cqw; text-align:left;
+          background:rgba(22,14,40,.94); border:1px solid rgba(46,230,168,.45); font-size:4cqw; }
+  .prof .mini { width:15cqw; height:15cqw; flex:none; } .prof .mini .gp { width:100%; height:100%; }
+  .prof .num { flex:none; width:6cqw; height:6cqw; border-radius:50%; background:var(--neon); color:#2b0420;
+               display:grid; place-items:center; font:900 3.4cqw ui-sans-serif, system-ui; }
+  .prof b { color:var(--neon); }
+  .prof small { display:block; margin-top:1cqw; color:var(--mut); font-size:3.4cqw; }
+  .prof small em { font-style:normal; color:var(--ok); font-weight:900; font-size:3cqw; letter-spacing:.06em; }
+  .eqs { position:relative; display:grid; grid-template-columns:1fr 1fr; gap:4cqw; width:78cqw; padding:3.4cqw 4cqw;
+         border-radius:4cqw; background:rgba(16,10,30,.94); border:1px solid rgba(199,125,255,.4); }
+  .eqs .col { display:flex; flex-direction:column; gap:2cqw; }
+  .eqs .lbl { font:900 3.6cqw ui-sans-serif, system-ui; color:var(--acc); }
+  .eqs .col.b .lbl { color:var(--cue); }
+  .kn { display:flex; align-items:center; justify-content:space-between; font:800 3.2cqw ui-sans-serif, system-ui; color:var(--mut); }
+  .kn .bola { width:4.6cqw; height:4.6cqw; border-radius:50%; background:radial-gradient(circle at 35% 30%, #fff, #8d84a8 70%); }
+  .kn .kill { width:7cqw; height:6cqw; border-radius:1.6cqw; border:1px solid rgba(255,78,205,.5); display:grid; place-items:center;
+              font:900 3.4cqw ui-sans-serif, system-ui; font-style:normal; color:var(--neon); position:relative;
+              transition:background .15s, color .15s, border-color .2s, box-shadow .2s; }
+  .kill.sua-vez { border-color:var(--neon); box-shadow:0 0 0 .8cqw rgba(255,78,205,.35), 0 0 6cqw rgba(255,78,205,.6); }
+  .kill.feito { background:var(--neon); color:#2b0420; }
+  .kill.dj-mexeu { border-color:var(--vio); color:var(--vio); box-shadow:0 0 0 .8cqw rgba(155,92,255,.35), 0 0 6cqw rgba(155,92,255,.6); }
+  .dedo { position:absolute; width:12cqw; height:12cqw; margin:-6cqw 0 0 -6cqw; border-radius:50%; border:.8cqw solid #fff; opacity:0; pointer-events:none; }
+  .dedo.on { animation:toca .7s ease-out both; }
+  @keyframes toca { 0% { opacity:.95; transform:scale(.3); } 100% { opacity:0; transform:scale(1.6); } }
+  .acertou { position:absolute; right:-2cqw; top:-4cqw; padding:1.2cqw 2.6cqw; border-radius:4cqw; background:var(--ok); color:#062a1f;
+             font:900 3.4cqw ui-sans-serif, system-ui; white-space:nowrap; rotate:6deg; }
+  .legenda { display:flex; gap:3cqw; font:800 3.5cqw ui-sans-serif, system-ui; }
+  .legenda .r { color:var(--neon); } .legenda .v { color:var(--vio); }
 
-  /* 7 — feedback */
-  .barra-app { width:90cqw; display:flex; align-items:center; gap:3cqw; padding:3cqw 4cqw; border-radius:3cqw;
-               background:linear-gradient(180deg, #1d1633, #120d20); border:1px solid #332750; font-size:4cqw; }
-  .barra-app .marca { font-weight:900; letter-spacing:.1em; font-size:3.6cqw; } .barra-app .marca span { color:var(--acc); }
-  .barra-app .ics { margin-left:auto; display:flex; gap:3cqw; color:#8a7fa8; font-size:5cqw; }
-  .barra-app .alvo { position:relative; color:#fff; }
-  .cena.ativa .barra-app .alvo { animation:pulsa 1.1s ease-in-out infinite; }
-  @keyframes pulsa { 50% { text-shadow:0 0 5cqw var(--neon), 0 0 10cqw var(--neon); transform:scale(1.25); } }
-  .seta { font-size:10cqw; color:var(--neon); text-shadow:0 0 5cqw var(--neon); margin-top:-2cqw; }
-  .cena.ativa .seta { animation:aponta .8s ease-in-out infinite alternate; }
-  @keyframes aponta { to { transform:translateY(-3cqw); } }
-  .caixa-sug { width:90cqw; padding:4cqw; border-radius:4cqw; background:rgba(22,14,40,.92); border:1px solid rgba(255,78,205,.45);
-               text-align:left; font-size:4cqw; }
-  .caixa-sug .digita { display:block; min-height:12cqw; padding:3cqw; border-radius:2.4cqw; background:#07040f;
-                       border:1px solid #332750; color:#e8e2f8; font-size:3.8cqw; }
-  .caixa-sug .enviar { display:inline-block; margin-top:3cqw; padding:2.4cqw 6cqw; border-radius:6cqw; border:1px solid var(--ok);
-                       color:var(--ok); font-weight:800; }
+  /* 7 — SONS */
+  .pads { position:relative; display:grid; grid-template-columns:repeat(4, 1fr); gap:2.4cqw; width:86cqw; }
+  .pad { position:relative; aspect-ratio:1/1.02; border-radius:3.4cqw; background:linear-gradient(180deg, #221736, #150e25);
+         border:1px solid rgba(255,255,255,.14); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.8cqw;
+         transition:background .12s, border-color .12s, box-shadow .12s, transform .12s; }
+  .pad .ic { font-size:8cqw; line-height:1; }
+  .pad b { font:800 3.2cqw ui-sans-serif, system-ui; color:var(--mut); }
+  .pad kbd { position:absolute; top:1.2cqw; left:1.8cqw; font:800 2.6cqw ui-monospace, Consolas, monospace; color:#8a7fa8; }
+  .pad.bate { border-color:var(--neon); background:linear-gradient(180deg, #5a1a4c, #2a0f2a); box-shadow:0 0 7cqw rgba(255,78,205,.55); transform:scale(.94); }
+  .pad.bate b { color:#fff; }
+  .pad.segura { z-index:2; border-color:var(--acc); background:linear-gradient(180deg, #123e57, #0b1f2d); box-shadow:0 0 9cqw rgba(76,201,240,.6); }
+  .pad.segura b { color:#fff; }
+  /* o anel que carrega enquanto o 🌪 fica apertado (a subida da música) */
+  .carga { position:absolute; left:50%; top:50%; width:20cqw; height:20cqw; margin:-10cqw 0 0 -10cqw; border-radius:50%;
+           border:.9cqw solid var(--acc); box-shadow:0 0 5cqw rgba(76,201,240,.6), inset 0 0 5cqw rgba(76,201,240,.4);
+           opacity:0; pointer-events:none; }
+  .segura-txt { font:900 5cqw ui-sans-serif, system-ui; color:var(--acc); text-shadow:0 0 6cqw rgba(76,201,240,.8); letter-spacing:.06em; }
 
-  /* 8 — convite */
-  .cta { pointer-events:auto; display:inline-block; padding:4.6cqw 10cqw; border-radius:12cqw; text-decoration:none;
+  /* 8 — a pista */
+  .pista-txt { position:absolute; top:26cqw; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:3cqw; padding:0 7cqw; }
+  .pista-txt h2, .pista-txt .sub { text-shadow:0 2px 12px #000, 0 0 2px #000; }
+  .pista-txt .sub { color:#e0d8f5; }
+  .niveis { display:flex; gap:2cqw; font:800 3.6cqw ui-sans-serif, system-ui; }
+  .niveis span { padding:1.4cqw 3cqw; border-radius:5cqw; border:1px solid rgba(255,255,255,.2); background:rgba(7,4,15,.7); color:var(--mut); }
+  .niveis span.on { color:#2b0420; background:var(--cue); border-color:var(--cue); box-shadow:0 0 5cqw rgba(255,179,71,.6); }
+  .globo { position:absolute; left:50%; top:0; translate:-50% 0; display:flex; flex-direction:column; align-items:center; z-index:1; }
+  .globo .fio { width:1px; height:11cqw; background:rgba(255,255,255,.35); }
+  .globo .bola { width:13cqw; height:13cqw; border-radius:50%; overflow:hidden; position:relative;
+                 background:radial-gradient(circle at 50% 50%, #cfc8e6, #5e5680 75%); box-shadow:0 0 8cqw rgba(255,255,255,.35); }
+  .globo .facetas { position:absolute; top:0; left:0; width:26cqw; height:13cqw;
+    background:linear-gradient(90deg, rgba(10,6,20,.55) 1px, transparent 1px) 0 0 / 2.2cqw 2.2cqw,
+               linear-gradient(0deg, rgba(10,6,20,.55) 1px, transparent 1px) 0 0 / 2.2cqw 2.2cqw,
+               linear-gradient(90deg, #f2eefc, #7b7298 20%, #e6e0f6 40%, #6f6790 60%, #f2eefc 80%, #7b7298);
+    animation:globo 2.4s linear infinite; }
+  .globo .bola::after { content:""; position:absolute; inset:0; border-radius:50%;
+    background:radial-gradient(circle at 34% 28%, rgba(255,255,255,.9) 0 8%, transparent 26%), radial-gradient(circle at 50% 50%, transparent 55%, rgba(20,12,40,.55)); }
+  @keyframes globo { to { transform:translateX(-13cqw); } }
+  .drop-txt { position:absolute; left:0; right:0; top:50%; margin-top:-14cqw; font:900 26cqw/1 ui-sans-serif, system-ui; color:#fff;
+              text-shadow:0 0 8cqw var(--neon), 0 0 18cqw var(--acc); opacity:0; z-index:3; }
+  .drop-txt.on { animation:drop 1.7s cubic-bezier(.2,1.2,.3,1) both; }
+  @keyframes drop { 0% { opacity:0; transform:scale(.3); } 12% { opacity:1; transform:scale(1.12); } 22% { transform:scale(1); }
+                    70% { opacity:1; transform:scale(1.04); } 100% { opacity:0; transform:scale(1.25); } }
+
+  /* 9 — a viagem: o texto embaixo, numa faixa escura (sem blur) */
+  .cena.baixo { justify-content:flex-end; padding-bottom:12cqw; }
+  .faixa-escura { display:flex; flex-direction:column; align-items:center; gap:2.6cqw; padding:6cqw 6cqw 5cqw; margin:0 -7cqw;
+                  width:100cqw; background:linear-gradient(180deg, transparent, rgba(4,2,10,.82) 30%, rgba(4,2,10,.9)); }
+  .faixa-escura .sub { color:#d9d0f2; }
+
+  /* 10 — celular */
+  .fone-palco { position:relative; width:86cqw; height:62cqw; display:grid; place-items:center; }
+  .fone { position:absolute; left:50%; top:50%; border-radius:5cqw; background:#05030a; border:1.2cqw solid #2b2440;
+          box-shadow:0 4cqw 14cqw rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.12); overflow:hidden; }
+  .fone.pe { width:30cqw; height:58cqw; margin:-29cqw 0 0 -15cqw; transition:transform .6s cubic-bezier(.5,0,.3,1), opacity .25s ease .45s; }
+  .fone.pe.gira { transform:rotate(-90deg); opacity:0; }
+  .fone.pe .aviso { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3cqw;
+                    color:var(--mut); font:800 3.4cqw ui-sans-serif, system-ui; }
+  .fone.pe .aviso .seta { font-size:10cqw; color:var(--acc); }
+  .fone.deitado { width:84cqw; height:42cqw; margin:-21cqw 0 0 -42cqw; opacity:0; transform:scale(.9); transition:opacity .35s ease, transform .5s cubic-bezier(.2,.8,.2,1); }
+  .fone.deitado.on { opacity:1; transform:none; }
+  .tela-cdj { position:absolute; inset:0; display:grid; grid-template-rows:auto 1fr auto; gap:1cqw; padding:1.4cqw; }
+  .tela-cdj .barra { display:flex; align-items:center; gap:1.6cqw; font:900 2.2cqw ui-sans-serif, system-ui; letter-spacing:.12em; color:#fff; }
+  .tela-cdj .barra span { color:var(--acc); }
+  .tela-cdj .barra em { font-style:normal; letter-spacing:0; font-weight:700; color:var(--mut); }
+  .tela-cdj .barra em b { color:var(--neon); }
+  .tela-cdj .meio { display:grid; grid-template-columns:1fr 12cqw 1fr; gap:1cqw; }
+  .mini-deck { border-radius:1.6cqw; border:1px solid rgba(76,201,240,.6); background:#0d0818; position:relative; overflow:hidden; }
+  .mini-deck.b { border-color:rgba(255,179,71,.6); }
+  .mini-deck .onda { inset:2cqw 0 7cqw; }
+  .mini-deck .onda i { width:.6cqw; }
+  .mini-deck .bts { position:absolute; left:1cqw; right:1cqw; bottom:1cqw; display:grid; grid-template-columns:1fr 1fr; gap:.8cqw; }
+  .mini-deck .bts i { height:2.6cqw; border-radius:.8cqw; border:1px solid var(--ok); }
+  .mini-deck .bts i + i { border-color:var(--cue); }
+  .mini-mix { border-radius:1.6cqw; border:1px solid rgba(199,125,255,.5); background:#0d0818;
+              background-image:radial-gradient(circle, #cfc8e6 0 .8cqw, transparent 1cqw); background-size:5cqw 4.6cqw; background-position:1.2cqw 1cqw; }
+  .tela-cdj .pe-de-baixo { display:flex; gap:1cqw; font:800 2cqw ui-sans-serif, system-ui; }
+  .tela-cdj .pe-de-baixo i { font-style:normal; padding:.6cqw 1.6cqw; border-radius:2cqw; border:1px solid rgba(255,255,255,.2); color:var(--mut); }
+  .tela-cdj .pe-de-baixo i.on { border-color:var(--neon); color:var(--neon); }
+  .tela-cdj .pe-de-baixo i.bora { margin-left:auto; border-color:var(--neon); color:#fff; background:rgba(255,78,205,.25); }
+  .linguas { display:flex; gap:2cqw; }
+  .linguas span { padding:1.6cqw 3.4cqw; border-radius:5cqw; border:1px solid rgba(76,201,240,.45); background:rgba(22,14,40,.9);
+                  font:800 3.8cqw ui-sans-serif, system-ui; }
+
+  /* 11 — o convite */
+  .fim .masc-g { width:38cqw; height:38cqw; position:relative; }
+  .fim .dedo { left:50%; top:30%; }
+  .cta { pointer-events:auto; display:inline-block; padding:4.6cqw 9cqw; border-radius:12cqw; text-decoration:none;
          font:900 4.8cqw/1 ui-sans-serif, system-ui; letter-spacing:.1em; text-transform:uppercase; color:#2b0420;
          background:linear-gradient(90deg, #ff7ad9, var(--neon) 40%, #c77dff);
          box-shadow:0 0 0 0 rgba(255,78,205,.6), 0 4cqw 12cqw rgba(255,78,205,.4); animation:chama 2s ease-in-out infinite; }
   @keyframes chama { 50% { box-shadow:0 0 0 4cqw rgba(255,78,205,0), 0 4cqw 12cqw rgba(255,78,205,.4); } }
-  .creditos { color:#7f74a3; font-size:3cqw; }
-  .cena:last-of-type { pointer-events:none; }
-  .cena:last-of-type .cta, .cena:last-of-type .rever { pointer-events:auto; }
-  .rever { background:none; border:1px solid rgba(255,255,255,.25); color:var(--mut); border-radius:6cqw; padding:2.4cqw 5cqw;
+  .divirta { margin:0; font:900 5.4cqw ui-sans-serif, system-ui; }
+  .creditos { margin:0; color:#8f84b3; font-size:2.9cqw; line-height:1.4; max-width:84cqw; }
+  .fim-extra { display:flex; flex-direction:column; align-items:center; gap:2.4cqw; }
+  .rever { pointer-events:auto; background:none; border:1px solid rgba(255,255,255,.25); color:var(--mut); border-radius:6cqw; padding:2.2cqw 5cqw;
            font:700 3.6cqw ui-sans-serif, system-ui; cursor:pointer; }
+  .fim .cta, .fim .rever { position:relative; z-index:5; }
+
+  /* camadas por cima: o apagão do respiro e o clarão do drop (só opacidade) */
+  #apagao, #clarao { position:absolute; inset:0; z-index:5; pointer-events:none; opacity:0; }
+  #apagao { background:#000; } #clarao { background:#fff; }
 
   /* começo: o toque que libera o som */
   #comeco { position:absolute; inset:0; z-index:8; display:flex; flex-direction:column; align-items:center; justify-content:center;
-            gap:4cqw; text-align:center; padding:8cqw; background:radial-gradient(70% 60% at 50% 45%, rgba(29,16,51,.5), rgba(7,4,15,.97)); }
+            gap:4cqw; text-align:center; padding:8cqw; background:radial-gradient(70% 60% at 50% 45%, rgba(29,16,51,.6), rgba(7,4,15,.97)); }
   #comeco .bt { padding:4.4cqw 9cqw; border-radius:10cqw; border:none; cursor:pointer; color:#2b0420;
                 font:900 4.6cqw ui-sans-serif, system-ui; letter-spacing:.08em; text-transform:uppercase;
                 background:linear-gradient(90deg, #ff7ad9, var(--neon) 40%, #c77dff); box-shadow:0 4cqw 12cqw rgba(255,78,205,.4); }
+  #comeco .bt:disabled { cursor:progress; background:linear-gradient(90deg, #d8b4ff, #ff9be4); }
   #comeco .sem { background:none; border:none; color:var(--mut); font:600 3.6cqw ui-sans-serif, system-ui; cursor:pointer; text-decoration:underline; }
+  #comeco .trilha { color:#8f84b3; font-size:3.2cqw; margin:0; }
   .pausado-aviso { position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); z-index:7; font-size:14cqw; opacity:0;
                    transition:opacity .2s; pointer-events:none; }
   .story.pausado .pausado-aviso { opacity:.8; }
+
+  /* story de 16 s (?formato=story): letra grande, uma ideia por compasso */
+  .curta h2 { font-size:10.4cqw; }
+  .curta .sub { font-size:5cqw; }
+  .curta .contador { font-size:22cqw; }
+
   /* ?video=1: pra gravar e postar — sem barrinhas, avatar e ✕ (a rede põe os dela) */
   body.video .story { width:100vw; height:100vh; border-radius:0; box-shadow:none; }
+  /* ÁREA SEGURA de cada formato: no Reels a legenda, o nome e o áudio cobrem
+     ~18% de baixo e os botões ficam na direita; no story, a barrinha e o perfil
+     em cima e o "enviar mensagem" embaixo */
+  body.video.f-reels .cena { padding:16cqw 11cqw 33cqw 8cqw; }
+  body.video.f-reels .fim { gap:3cqw; }
+  body.video.f-reels .sticker { display:none; }
+  body.video.f-story .cena { padding:24cqw 7cqw 27cqw; }
+  body.video.f-story .cena.baixo { padding-bottom:27cqw; }
   body.video .barras, body.video .topo, body.video .toque, body.video .pausado-aviso, body.video #comeco,
   body.video #b-rever { display:none; }
   body.video .cta { text-transform:none; letter-spacing:.02em; white-space:nowrap; font-size:5.6cqw; padding:4.6cqw 8cqw; }
@@ -211,7 +347,11 @@
 </head>
 <body>
 <main class="story" id="story" aria-label="Apresentação do Garimpo em stories">
-  <canvas id="lasers" aria-hidden="true"></canvas>
+  <canvas class="camada" id="fundo" aria-hidden="true"></canvas>
+  <canvas class="camada" id="hiper" aria-hidden="true"></canvas>
+  <canvas class="camada" id="luz" aria-hidden="true"></canvas>
+  <!-- o "deck no ar" de mentira: o Garimpeiro olha pra ele (troca de lado a cada compasso) -->
+  <i class="deck no-ar" id="olhar" data-d="A" hidden></i>
   <div class="barras" id="barras"></div>
   <div class="topo">
     <div class="quem"><div class="av" id="av"></div><div>garimpo <small>· agora</small></div></div>
@@ -222,303 +362,895 @@
   <div class="toque dir" id="t-dir" aria-hidden="true"></div>
   <div class="pausado-aviso" aria-hidden="true">⏸</div>
 
-  <!-- 1 — o garimpo -->
-  <section class="cena" data-ms="5500">
+  <!-- 1 — abertura (compassos 0–2) -->
+  <section class="cena abre" data-nome="abertura" data-comp="0-2">
+    <div class="masc-g entra" data-b="0" id="m-abre" data-masc="abre"></div>
+    <h1 class="slam" data-b="0">GARIM<span class="neon">PO</span></h1>
+    <h2 class="entra" data-b="2">Vira DJ <span class="rosa">hoje.</span></h2>
+    <p class="sub entra" data-b="4">O Garimpeiro toca <b>com você</b> — e te ensina.</p>
+    <div class="selo pop" data-b="5.5">GRÁTIS</div>
+    <div class="sticker entra" data-b="1"><span class="eq"><i></i><i></i><i></i></span> Hallmarc — Funk Faker</div>
+  </section>
+
+  <!-- 2 — o garimpo (2–4) -->
+  <section class="cena" data-nome="garimpo" data-comp="2-4">
     <div class="pepitas" id="pepitas" aria-hidden="true"></div>
-    <div class="mascote-g entra" id="m1"></div>
-    <h2 class="entra">Toda noite tem <span class="ambar">música boa escondida.</span></h2>
-    <p class="sub entra">O Garimpo cava por você.</p>
-  </section>
-
-  <!-- 2 — descobrir -->
-  <section class="cena" data-ms="6000">
-    <div class="chuva" id="chuva" aria-hidden="true"></div>
-    <div class="contador entra" id="contador">0</div>
-    <h2 class="entra">faixas livres pra <span class="neon">descobrir.</span></h2>
-    <p class="sub entra">House, techno, disco, funk, megafunk, psy, boombap, amapiano… sempre uma que você nunca ouviu.</p>
-  </section>
-
-  <!-- 3 — ♥ e 👎 -->
-  <section class="cena" data-ms="6500">
-    <h2 class="entra">Gostou? <span class="rosa">♥</span><br>Não curtiu? <span class="ambar">👎</span></h2>
-    <div class="cartas entra">
-      <div class="carta c1"><div class="capa"></div><div><b>faixa garimpada</b><small>House · 124 BPM · 8A</small></div><span class="selo">♥</span></div>
-      <div class="carta c2"><div class="corpo"><div class="capa" style="filter:hue-rotate(120deg)"></div><div><b>outra faixa</b><small>??? · 97 BPM · 3B</small></div></div><span class="selo">👎</span></div>
+    <div class="masc-m entra" data-b="0" id="m-cava" data-masc="cava"></div>
+    <div class="contador entra" data-b="0" id="contador">0</div>
+    <h2 class="entra" data-b="1">músicas liberadas pra <span class="ambar">garimpar.</span></h2>
+    <div class="abas">
+      <span class="aba pop" data-b="2">⚡ eletrônico</span><span class="aba pop" data-b="2.4">⚽ brasil</span>
+      <span class="aba pop" data-b="2.8">🌎 latino</span><span class="aba pop" data-b="3.2">✨ estilos</span>
+      <span class="aba quente pop" data-b="3.6">🔥 apostas</span><span class="aba pop" data-b="4">🎧 DJs</span>
+      <span class="aba pop" data-b="4.4">🥁 funk</span><span class="aba pop" data-b="4.8">🎤 rap</span><span class="aba pop" data-b="5.2">🐢 slowed</span>
     </div>
-    <p class="sub entra">A favorita fica com você. A que não presta sai do garimpo — de todo mundo.</p>
+    <p class="sub entra" data-b="5.5">Sempre uma que você nunca ouviu — e quem tá <b class="rosa">estourando</b> agora.</p>
   </section>
 
-  <!-- 4 — dois jeitos -->
-  <section class="cena" data-ms="6500">
-    <h2 class="entra">Dois jeitos de tocar.</h2>
-    <div class="modos">
-      <div class="modo r entra"><div class="ic">🎧</div><div><b>Junto com o professor</b><span>Ele conduz e te passa a vez. Não quer mexer? Ele toca o set inteiro, explicando cada virada.</span></div></div>
-      <div class="modo entra"><div class="ic">🎛</div><div><b>Eu toco</b><span>Você mixa. O Garimpeiro só sinaliza a hora e o botão.</span></div></div>
+  <!-- 3 — guarda o que é ouro (4–6) -->
+  <section class="cena" data-nome="guarda" data-comp="4-6">
+    <h2 class="entra" data-b="0">Guarda o que é <span class="ambar">ouro.</span></h2>
+    <div class="lista">
+      <div class="linha entra" data-b="0.5"><div class="capa"></div><div><b>faixa garimpada</b><small>House · 124 BPM · 8A</small></div>
+        <span class="acao coracao pop" data-b="1.5">♥</span></div>
+      <div class="linha ruim entra" data-b="1" data-sai="4"><div class="capa c2"></div><div><b>essa não</b><small>??? · 97 BPM · 3B</small></div>
+        <span class="acao pop" data-b="3">👎</span></div>
+      <div class="linha entra" data-b="4.5"><div class="capa arq">🎵</div><div><b>minha-musica.mp3</b>
+        <small class="mede">📁 minhas músicas · <span class="pop" data-b="6">124 BPM · 5A ✓</span></small></div></div>
     </div>
+    <p class="sub entra" data-b="5.5">♥ favoritas · 👎 sai do garimpo · 📁 pastas suas — <b>até com as suas músicas.</b></p>
   </section>
 
-  <!-- 5 — o professor -->
-  <section class="cena" data-ms="7000">
-    <h2 class="entra">Aprende <span class="verde">tocando.</span></h2>
-    <div class="cdj entra">
-      <div class="deck"><div class="onda" id="ondaA"></div></div>
-      <div class="mix"><div class="kill a">×</div><div class="kill b">×</div><div class="trilho"></div><div class="tampa"></div></div>
-      <div class="deck b"><div class="onda" id="ondaB"></div></div>
-    </div>
-    <div class="balao entra">
-      <div class="mini" id="m2"></div>
-      <div>🎧 Troca de graves no <b>1 da frase</b>: corta o grave do A, solta o do B.
-        <small>dois graves juntos viram lama — é aí que a pista sente a música nova.</small></div>
+  <!-- 4 — dois jeitos (6–8) -->
+  <section class="cena" data-nome="dois-jeitos" data-comp="6-8">
+    <h2 class="entra" data-b="0">Dois jeitos <span class="neon">de tocar.</span></h2>
+    <div class="modos" id="modos">
+      <div class="modo entra" data-b="0.5"><div class="bt">🎧 junto</div><span>Ele toca com você e te passa a vez. Não mexeu? Ele toca o set inteiro.</span></div>
+      <div class="modo entra" data-b="1"><div class="bt">🎛 eu toco</div><span>Você mixa. Ele sinaliza a hora e o botão.</span></div>
     </div>
   </section>
 
-  <!-- 6 — a pista -->
-  <section class="cena" data-ms="6000">
-    <div class="confete" id="confete" aria-hidden="true"></div>
-    <div class="globo entra"></div>
-    <div class="drop entra">DROP!</div>
-    <h2 class="entra">Lasers, globo, galera <span class="rosa">e viagem.</span></h2>
-    <div class="galera" id="galera" aria-hidden="true"></div>
+  <!-- 5 — o DJ que toca pela música (8–10) -->
+  <section class="cena" data-nome="dj" data-comp="8-10">
+    <h2 class="entra" data-b="0">Mixa no <span class="verde">1 da frase.</span></h2>
+    <div class="cdj-wrap entra" data-b="0.5">
+      <div class="cdj">
+        <div class="deck no-ar" data-d="A" id="deckA"><span class="rot">A</span><div class="onda" id="ondaA"></div></div>
+        <div class="mix">
+          <div class="ks"><i id="kA">×</i><i id="kB" class="cortado">×</i><i>×</i><i>×</i><i>×</i><i>×</i></div>
+          <div class="trilho"><div class="tampa" id="tampa"></div></div>
+        </div>
+        <div class="deck" data-d="B" id="deckB"><span class="rot">B</span><div class="onda" id="ondaB"></div></div>
+      </div>
+      <div class="um-frase pop" data-b="4">● 1 da frase: troca de graves</div>
+    </div>
+    <div class="tecs entra" data-b="1" id="tecs">
+      <span class="tec">troca de graves</span><span class="tec">drop duplo</span><span class="tec">loop que segura</span>
+      <span class="tec">3 bandas</span><span class="tec">echo out</span><span class="tec">filtro</span><span class="tec">corte</span><span class="tec">eco</span>
+    </div>
+    <div class="variedade entra" data-b="2.5">set: coeso · <b>equilibrado</b> · eclético</div>
+    <p class="sub entra" data-b="5">Frase, drop, faixa inteira. E uma <b>IA</b> confere cada passagem.</p>
   </section>
 
-  <!-- 7 — feedback -->
-  <section class="cena" data-ms="7000">
-    <h2 class="entra">Tem ideia? <span class="ambar">Achou um bug?</span></h2>
-    <div class="barra-app entra"><span class="marca">GARIM<span>PO</span></span>
-      <span class="ics"><span>◐</span><span class="alvo">💬</span><span>?</span><span>⚙</span></span></div>
-    <div class="seta entra">⬆</div>
-    <div class="caixa-sug entra">Toca no <b>💬</b> lá em cima do app e escreve:
-      <span class="digita" id="digita"></span><span class="enviar">enviar ✓</span></div>
-    <p class="sub entra">Chega direto em quem faz o Garimpo. Sem conta, sem e-mail.</p>
+  <!-- 6 — o professor (10–12) -->
+  <section class="cena" data-nome="professor" data-comp="10-12">
+    <h2 class="entra" data-b="0">Aprende <span class="verde">tocando junto.</span></h2>
+    <div class="prof entra" data-b="0.5">
+      <div class="mini" id="m-prof" data-masc="prof"></div><div class="num">1</div>
+      <div>Troca de graves no <b>1 da frase</b>: corta o grave do A.<small><em>POR QUÊ:</em> dois graves juntos viram lama.</small></div>
+    </div>
+    <div class="eqs entra" data-b="1">
+      <div class="col"><span class="lbl">A</span>
+        <div class="kn">GRAVE <i class="kill" id="killA">×</i></div><div class="kn">MÉDIO <i class="kill">×</i></div><div class="kn">AGUDO <i class="kill">×</i></div></div>
+      <div class="col b"><span class="lbl">B</span>
+        <div class="kn">GRAVE <i class="kill" id="killB">×</i></div><div class="kn">MÉDIO <i class="kill">×</i></div><div class="kn">AGUDO <i class="kill">×</i></div></div>
+      <div class="dedo" id="dedo"></div>
+      <div class="acertou pop" data-b="4.3">✓ no 1!</div>
+    </div>
+    <div class="legenda entra" data-b="2"><span class="r">● rosa: sua vez</span><span class="v">● violeta: o DJ mexeu</span></div>
+    <p class="sub entra" data-b="5">Ele lembra o que já te mostrou — e ensina <b>o que falta.</b></p>
   </section>
 
-  <!-- 8 — o convite -->
-  <section class="cena" data-ms="0">
-    <h1 class="entra">GARIM<span class="neon">PO</span></h1>
-    <h2 class="entra">Tudo de graça.<br>Sem conta, sem baixar nada.</h2>
-    <p class="sub entra"><span class="verde">Divirtam-se.</span></p>
-    <div class="entra" style="display:flex;flex-direction:column;align-items:center;gap:3cqw">
-      <a class="cta" href="./">entrar no garimpo</a>
+  <!-- 7 — SONS, com a subida da música (12–16) -->
+  <section class="cena" data-nome="sons" data-comp="12-16">
+    <h2 class="entra" data-b="0"><span class="rosa">SONS</span> na mão.</h2>
+    <div class="pads entra" data-b="0.25" id="pads">
+      <div class="pad"><kbd>1</kbd><span class="ic">📯</span><b>buzina</b></div><div class="pad"><kbd>2</kbd><span class="ic">🚨</span><b>sirene</b></div>
+      <div class="pad"><kbd>3</kbd><span class="ic">⏪</span><b>rewind</b></div><div class="pad"><kbd>4</kbd><span class="ic">💥</span><b>impacto</b></div>
+      <div class="pad"><kbd>5</kbd><div class="carga" id="carga"></div><span class="ic">🌪</span><b>subida</b></div><div class="pad"><kbd>6</kbd><span class="ic">🔫</span><b>laser</b></div>
+      <div class="pad"><kbd>7</kbd><span class="ic">👏</span><b>palmas</b></div><div class="pad"><kbd>8</kbd><span class="ic">🥁</span><b>808</b></div>
+    </div>
+    <p class="sub entra" data-b="2">8 pads tipo Stream Deck — ou grava <b>o seu</b> no microfone.</p>
+    <div class="segura-txt pop" data-b="8">🌪 segura…</div>
+  </section>
+
+  <!-- 8 — o DROP e a pista (16–20) -->
+  <section class="cena" data-nome="pista" data-comp="16-20">
+    <div class="globo" aria-hidden="true"><i class="fio"></i><div class="bola"><div class="facetas"></div></div></div>
+    <div class="drop-txt" id="drop">DROP!</div>
+    <div class="pista-txt">
+      <h2 class="entra" data-b="2">Liga a <span class="rosa">pista.</span> 🎉</h2>
+      <p class="sub entra" data-b="3.5">Canhões de luz, laser e a galera — no bumbo da música.</p>
+      <div class="niveis entra" data-b="6"><span>✨ leve</span><span>médio</span><span class="on">bombando</span></div>
+    </div>
+  </section>
+
+  <!-- 9 — a viagem (20–24) -->
+  <section class="cena baixo" data-nome="viagem" data-comp="20-24">
+    <div class="faixa-escura">
+      <h2 class="entra" data-b="1">Ou entra na <span class="lilas">viagem.</span></h2>
+      <p class="sub entra" data-b="3">O hiperespaço dançando com a música — e <b>quem aparece por lá.</b></p>
+    </div>
+  </section>
+
+  <!-- 10 — celular, idiomas, sugestão (24–26) -->
+  <section class="cena" data-nome="celular" data-comp="24-26">
+    <h2 class="entra" data-b="0">No celular <span class="neon">também.</span></h2>
+    <div class="fone-palco entra" data-b="0.3">
+      <div class="fone pe" id="fonePe"><div class="aviso"><span class="seta">↻</span>vira o celular</div></div>
+      <div class="fone deitado" id="foneDeitado">
+        <div class="tela-cdj">
+          <div class="barra">GARIM<span>PO</span> <em><b>①</b> Toque em PLAY no deck A.</em></div>
+          <div class="meio">
+            <div class="mini-deck"><div class="onda" id="ondaC"></div><div class="bts"><i></i><i></i></div></div>
+            <div class="mini-mix"></div>
+            <div class="mini-deck b"><div class="onda" id="ondaD"></div><div class="bts"><i></i><i></i></div></div>
+          </div>
+          <div class="pe-de-baixo"><i class="on">🎧 junto</i><i>🎛 eu toco</i><i class="bora">▶ BORA TOCAR JUNTO</i></div>
+        </div>
+      </div>
+    </div>
+    <div class="linguas entra" data-b="3.5"><span>português</span><span>english</span><span>español</span></div>
+    <p class="sub entra" data-b="5">💬 Ideia ou bug? Chega direto em <b>quem faz o Garimpo.</b></p>
+  </section>
+
+  <!-- 11 — o convite (26–30) -->
+  <section class="cena fim" data-nome="convite" data-comp="26-30">
+    <div class="masc-g entra" data-b="0" id="m-fim" data-masc="fim"><div class="dedo" id="dedo2"></div></div>
+    <h1 class="slam" data-b="0.5">GARIM<span class="neon">PO</span></h1>
+    <h2 class="entra" data-b="2">Tudo de <span class="verde">graça.</span></h2>
+    <p class="sub entra" data-b="3">Sem conta. Sem baixar nada. <b>É só abrir.</b></p>
+    <div class="entra" data-b="4"><a class="cta" href="./">entrar no garimpo</a></div>
+    <p class="divirta entra" data-b="6">Divirtam-se. 🎧</p>
+    <div class="fim-extra entra" data-b="8">
       <button class="rever" id="b-rever">↺ ver de novo</button>
-      <p class="creditos">Músicas do Audius, de artistas independentes, sob a Open Music License.</p>
+      <p class="creditos">♫ Hallmarc — Funk Faker (CC BY) · no Audius.<br>Músicas de artistas independentes, sob a Open Music License.</p>
     </div>
   </section>
+
+  <!-- ══ STORY de 16 s (?formato=story) — um story só: 8 compassos da mesma
+       música, da subida (0:28 do Reels) até 0:44, com o DROP em 0:04 ══ -->
+  <section class="cena abre curta" data-formato="story" data-nome="st-abre" data-comp="0-2">
+    <div class="masc-g entra" data-b="0" id="ms-abre" data-masc="abre"></div>
+    <h2 class="entra" data-b="0.5">Pra quem é<br><span class="rosa">apaixonado por música.</span></h2>
+    <h1 class="slam" data-b="4.6">GARIM<span class="neon">PO</span></h1>
+  </section>
+  <section class="cena curta" data-formato="story" data-nome="st-drop" data-efeito="pista" data-comp="2-3">
+    <div class="globo" aria-hidden="true"><i class="fio"></i><div class="bola"><div class="facetas"></div></div></div>
+    <div class="drop-txt" id="drop">DROP!</div>
+  </section>
+  <section class="cena curta" data-formato="story" data-nome="st-musica" data-efeito="garimpo" data-comp="3-4">
+    <div class="contador entra" data-b="0" id="contador">0</div>
+    <h2 class="entra" data-b="0.3">Música nova<br><span class="ambar">toda hora.</span></h2>
+    <div class="abas">
+      <span class="aba pop" data-b="1">⚡ eletrônico</span><span class="aba pop" data-b="1.3">🥁 funk</span>
+      <span class="aba pop" data-b="1.6">🎤 rap</span><span class="aba quente pop" data-b="1.9">🔥 apostas</span>
+    </div>
+  </section>
+  <section class="cena curta" data-formato="story" data-nome="st-dj" data-efeito="dj" data-comp="4-5">
+    <h2 class="entra" data-b="0">Um DJ <span class="verde">particular.</span></h2>
+    <div class="cdj-wrap entra" data-b="0.3">
+      <div class="cdj">
+        <div class="deck no-ar" data-d="A" id="deckA"><span class="rot">A</span><div class="onda" id="ondaA"></div></div>
+        <div class="mix">
+          <div class="ks"><i id="kA">×</i><i id="kB" class="cortado">×</i><i>×</i><i>×</i><i>×</i><i>×</i></div>
+          <div class="trilho"><div class="tampa" id="tampa"></div></div>
+        </div>
+        <div class="deck" data-d="B" id="deckB"><span class="rot">B</span><div class="onda" id="ondaB"></div></div>
+      </div>
+    </div>
+    <p class="sub entra" data-b="1">Toca com você — <b>ou te ensina a tocar.</b></p>
+  </section>
+  <section class="cena baixo curta" data-formato="story" data-nome="st-viagem" data-efeito="viagem" data-comp="5-6">
+    <div class="faixa-escura"><h2 class="entra" data-b="0.2">Um ambiente <span class="lilas">foda</span><br>pra sesh.</h2></div>
+  </section>
+  <section class="cena fim curta" data-formato="story" data-nome="st-fim" data-efeito="convite" data-comp="6-8">
+    <div class="masc-g entra" data-b="0" id="ms-fim" data-masc="fim"><div class="dedo" id="dedo2"></div></div>
+    <h1 class="slam" data-b="0.3">GARIM<span class="neon">PO</span></h1>
+    <h2 class="entra" data-b="1.5">Tudo de <span class="verde">graça.</span></h2>
+    <div class="entra" data-b="2.5"><a class="cta" href="./">entrar no garimpo</a></div>
+    <p class="sub entra" data-b="4">Sem conta. Sem baixar nada.</p>
+  </section>
+
+  <div id="apagao" aria-hidden="true"></div>
+  <div id="clarao" aria-hidden="true"></div>
 
   <div id="comeco">
-    <div class="mascote-g" id="m0"></div>
+    <div class="masc-g" id="m0"></div>
     <h1>GARIM<span class="neon">PO</span></h1>
-    <p class="sub">8 stories · 45 segundos</p>
+    <p class="sub">11 stories · 1 minuto · com som</p>
     <button class="bt" id="b-comecar">▶ toque pra ver</button>
     <button class="sem" id="b-sem-som">ver sem som</button>
+    <p class="trilha">♫ Hallmarc — Funk Faker</p>
   </div>
 </main>
 
 <script type="module">
   import { montarMascote } from './src/ui/mascote.js';
+  import { estadoPista as E } from './src/ui/pista.js';
+  import { montarHiperespaco } from './src/ui/hiperespaco.js';
+  import { desenharAparicao } from './src/ui/aparicoes.js';
+  import { resolveStreamUrl } from './src/sources/audius.js';
 
-  const BPM = 124, TEMPO = 60 / BPM;
+  // ── A MÚSICA: Hallmarc — Funk Faker, do acervo do Garimpo (Audius, CC BY) ──
+  // O story é o trecho de 1:00 que começa no 1 da frase do compasso 16 da
+  // faixa (0:31,94): 8 compassos de groove, 8 de quebra com a subida, um
+  // tempo de silêncio e o DROP cravado em 0:32 do story. Grade medida no
+  // áudio: 119,995 BPM, bumbo no tempo com ~13 ms de folga.
+  const FAIXA = 'nqGQa';
+  const BPM = 119.995, T = 60 / BPM, INICIO = 31.9379;
+  const COMP = 4 * T;              // um compasso
+  const DROP = 16 * COMP;          // 0:32
+  const RESPIRO = DROP - T;        // o tempo de silêncio antes do drop
+  const SUBIDA = [13 * COMP, 15 * COMP + 0.3];   // a subida da quebra (0:26–0:30)
+  // DOIS FORMATOS na mesma página: o Reels (padrão, 1:00, 11 cenas) e um
+  // story de 16 s (?formato=story): 8 compassos da mesma música a partir do
+  // compasso 14, pra o DROP cair em 0:04. Os tempos da MÚSICA (mapa, subida,
+  // drop) ficam sempre na régua do Reels; o story só começa DESLOC depois.
+  const P = new URLSearchParams(location.search);
+  const FORMATO = P.get('formato') === 'story' ? 'story' : 'reels';
+  const DESLOC = FORMATO === 'story' ? 14 * COMP : 0;
+  const FIM = FORMATO === 'story' ? 8 * COMP : 30 * COMP;
+  const INICIO_F = INICIO + DESLOC;    // onde o formato começa dentro da faixa
+  // MAPA: grave, médio e agudo a cada semicolcheia (1/4 de tempo) do trecho,
+  // 0–61 em base 62, medidos na faixa. É ele que faz tudo dançar igual no
+  // site e no vídeo gravado (que grava sem som e junta o áudio depois).
+  const MAPA = {
+    g: 'sMVnjGZrkUZnjFYqkTZojHZqkSZnjGYrkUZmiIZqlSXmjFYqlSXmjHYqkszjgoaprQVpjHZrkUZnjFYqkTZojIZqkTZnjGYpkUZmiIZplSYmiGYqlil9fj8hpszignannmppne1hhih86baa97158542084362421611711616116116161161161643621665151515151515151525152535265655299a957fegc47lill3121221111000000TZjjHZokSVliIYokRYljIYoiRYkiHWpmGQjkDQnlERniEUslRYojHXujgf501332TZkjHZokSVmiHWokRUljHZnkRNpiHVplGPikDQmlETmgDTrlRXolHUplgf301320FYhiGXnkOVliFYnkNYkjHVmgNUjjGWomFKikFUpoOUmiFYrlEPikDNojgf611332MTkjHZnkOVliFTnkOYkiHZmkNNohFVn',
+    m: 'lka7gl5bii66gk5bhh65ik5chh65gj6bij66hk6bii56hk6bii56ik6bitg7klqklka9fk5cii69hk6dhh68ik6ehh6ahj6dij6bik6eih6bik6eiye7zhhpntgallsljrdjo67cfoaap878gxaao767eontzcotfybfo8anfn8go9bnjyceoaeokrwvsefoxAiBnEkFoGnEoFnFpFlDnylyowkxountltrsswrutsuwtstssZiuZA5ZxZx02510fi7dik5chg6aij6isf7fij6fjf7emj7gjtlPFwuytydpJi8ihf6gik7imZvgmZrZgi7hik6fhg6ehj7khfaeij7qigaenj7ijsmMGwuytzcpKj8jig6lqj8loZt51Zt5jBcWik5big6bkj6hqf7fgj8rtfabhj7fhslLBo9iqe8bij6hhqnKFwuxmZvkoZrZgh9hij6eif6eki8jif7hij7qifaemj7i',
+    a: 'c43y3j2v106w7ker10eq3jdt10fv7kiq10fx3jhu10iy7kks10iz3jithQleqzLnc31Fdj1Dc02FekgCd0dGejgIf0iMikhMh0fVkifRk1hVlkhRpYpiZwFYAQlfqyMofGrrFgnnpGqsKgrsrEnsIcjjiFuoDguoeCafC9dDhC9gB9dCgx9eB9eChBaeC9dCwwdwhtdugtdresdrgsdufudxfwdxgvdwhwvwvxxtuusywssqpd8ff6hk8hb08j31613D4j7Ek3cLojhyh7ku6jfGZ7izfikD7egpciewBciRpIkpf7gy5keyZbbj6jhj713Z5j3Zu3cZplnSl2kRliiPkeIhujmZzhgKlheMEaiZpJmNj2hVmknMmb5h5d5h6a4x4m9T7mcZtmhChlmM6khFXmjO8llH5mtBdkiJfoiUmmkxfoiz9leFYbbm6jhj6rnZ5k4ZuldZtooTlljYkkiSkqIHummZ',
+  };
+  const B62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const lv = (s, i) => B62.indexOf(s[Math.max(0, Math.min(s.length - 1, i))]) / 61;
+
   const $ = (id) => document.getElementById(id);
   const story = $('story');
-  const cenas = [...document.querySelectorAll('.cena')];
   const reduzido = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // modo vídeo: quem grava chama __comecarVideo(); a última cena dura 5 s e o
-  // botão de entrar mostra o endereço, porque num vídeo não se clica
-  const VIDEO = new URLSearchParams(location.search).has('video');
+  const VIDEO = P.has('video');
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const liso = (k) => { k = clamp(k, 0, 1); return k * k * (3 - 2 * k); };
+  E.reduzido = reduzido;
+  E.estilo = 'pista';
+
+  // ── as cenas: cada uma sabe seus compassos e o que entra em cada tempo ──
+  // As do outro formato saem da página (nem Garimpeiro escondido, nem id
+  // repetido). `efeito` é o que a cena faz: as do story reusam os do Reels.
+  for (const el of document.querySelectorAll('.cena')) if ((el.dataset.formato || 'reels') !== FORMATO) el.remove();
+  const CENAS = [...document.querySelectorAll('.cena')].map((el) => {
+    const [de, ate] = el.dataset.comp.split('-').map(Number);
+    const lista = (sel, attr) => [...el.querySelectorAll(sel)].map((x) => ({ x, b: Number(x.dataset[attr]), on: false }));
+    return { el, nome: el.dataset.nome, efeito: el.dataset.efeito || el.dataset.nome, ini: de * COMP, fim: ate * COMP,
+             entram: lista('[data-b]', 'b'), saem: lista('[data-sai]', 'sai') };
+  });
+  const cenaEm = (t) => { let i = 0; while (i < CENAS.length - 1 && t >= CENAS[i].fim) i++; return i; };
+
+  document.body.classList.add('f-' + FORMATO);
+  if (FORMATO === 'story') document.querySelector('#comeco .sub').textContent = '1 story · 16 s · com som';
   if (VIDEO) {
     document.body.classList.add('video');
-    cenas.at(-1).dataset.ms = '5000';
     document.querySelector('.cta').textContent = 'garimpo-topaz.vercel.app';
   }
 
-  // o Garimpeiro: no avatar, cavando na primeira, falando no professor
-  for (const [id, fn] of [['m0', (m) => m.humor(null)], ['av', (m) => m.humor(null)],
-                          ['m1', (m) => m.cavando(true)], ['m2', (m) => m.humor('agora')]]) {
-    const m = montarMascote($(id)); m.batida(BPM); fn(m);
+  // ── o Garimpeiro: no avatar, na porta, dançando, cavando, falando, no fim ──
+  // Gravando, o avatar e a porta ficam escondidos (display:none) e NÃO podem
+  // ter Garimpeiro: os gradientes dele (pele, palha, xadrez) têm id fixo, o
+  // navegador usa os do PRIMEIRO na página, e escondido eles não pintam — os
+  // outros saíam pretos.
+  const masc = {};
+  for (const el of [...(VIDEO ? [] : [$('m0'), $('av')]), ...document.querySelectorAll('[data-masc]')]) {
+    const m = montarMascote(el); m.batida(BPM); m.humor(el.dataset.masc === 'prof' ? 'agora' : null);
+    // o palheiro guardado do app não vale aqui: no story ele acende na hora certa
+    el.querySelector('.gp').classList.remove('fumando');
+    if (el.dataset.masc === 'cava') m.cavando(true);
+    masc[el.id] = m;
   }
+  const gpFim = document.querySelector('[data-masc="fim"] .gp');
 
-  // ── enfeites ──
-  for (let i = 0; i < 14; i++) {
+  // ── enfeites montados uma vez (só os que existem no formato) ──
+  for (let i = 0; i < 12 && $('pepitas'); i++) {
     const p = document.createElement('span');
     p.className = 'pepita'; p.textContent = ['✦', '◆', '♪', '✧'][i % 4];
-    p.style.left = (Math.random() * 90 + 4) + '%'; p.style.animationDelay = (Math.random() * 3.4) + 's';
+    p.style.left = (i * 37 % 92 + 4) + '%'; p.style.animationDelay = (i * 0.27) + 's';
     $('pepitas').appendChild(p);
   }
-  ['House', 'Techno', 'Disco', 'Megafunk', 'Psy', 'Boombap', 'Amapiano', 'Deep House', 'Funk', 'Minimal',
-   'Brega funk', 'Mega Disco', 'Trance', 'Pagodão', 'Axé', 'Reggaeton'].forEach((g, i) => {
-    const c = document.createElement('span');
-    c.className = 'chip'; c.textContent = g;
-    c.style.left = ((i * 29) % 78 + 2) + '%'; c.style.animationDelay = (i * 0.3) + 's';
-    $('chuva').appendChild(c);
-  });
-  for (const id of ['ondaA', 'ondaB']) {
-    for (let i = 0; i < 160; i++) {
+  for (const [id, n, w] of [['ondaA', 150, 1], ['ondaB', 150, 1.7], ['ondaC', 110, 1], ['ondaD', 110, 2.3]]) {
+    if (!$(id)) continue;
+    const fr = document.createDocumentFragment();
+    for (let i = 0; i < n; i++) {
       const b = document.createElement('i');
-      const e = Math.abs(Math.sin(i * 0.37) * Math.cos(i * 0.11)) * 0.8 + 0.15;
+      const e = Math.abs(Math.sin(i * 0.37 * w) * Math.cos(i * 0.11)) * 0.8 + 0.15;
       b.style.height = (e * 100) + '%';
       b.style.background = i % 4 === 0 ? '#2f6bff' : i % 3 === 0 ? '#f2f4ff' : '#ffa531';
-      $(id).appendChild(b);
+      fr.appendChild(b);
     }
+    $(id).appendChild(fr);
   }
-  const CORES = ['#ff4ecd', '#4cc9f0', '#ffb347', '#2ee6a8', '#c77dff'];
-  for (let i = 0; i < 8; i++) {
-    const p = document.createElement('div');
-    p.className = 'pessoa';
-    p.style.setProperty('--c', CORES[i % CORES.length]);
-    p.style.setProperty('--s', String(2 + (i * 3) % 5));
-    $('galera').appendChild(p);
-  }
-  for (let i = 0; i < 50; i++) {
-    const q = document.createElement('i');
-    q.style.left = Math.random() * 100 + '%'; q.style.background = CORES[i % CORES.length];
-    q.style.animationDelay = (Math.random() * 1.5) + 's';
-    $('confete').appendChild(q);
-  }
-
-  // ── barrinhas ──
-  for (let i = 0; i < cenas.length; i++) $('barras').insertAdjacentHTML('beforeend', '<span><i></i></span>');
+  for (let i = 0; i < CENAS.length; i++) $('barras').insertAdjacentHTML('beforeend', '<span><i></i></span>');
   const barras = [...$('barras').querySelectorAll('i')];
 
-  // ── contador e "digitando" ──
-  function contar() {
-    const alvo = 39287, t0 = performance.now();
-    const passo = (t) => {
-      const k = Math.min(1, (t - t0) / 2000);
-      $('contador').textContent = Math.round(alvo * (1 - Math.pow(1 - k, 3))).toLocaleString('pt-BR');
-      if (k < 1 && atual === 1) requestAnimationFrame(passo);
-    };
-    requestAnimationFrame(passo);
+  // ── o relógio do story: a MÚSICA manda (currentTime do áudio); sem som, o do navegador ──
+  const audio = new Audio();
+  audio.preload = 'auto';
+  let modo = 'parado';              // 'audio' | 'sintese' | 'mudo'
+  let base = 0, parouEm = null, pausado = false, acabou = false, streamPronto = false;
+  function relogio() {
+    let t = 0;
+    if (modo === 'audio') t = audio.currentTime - INICIO_F;
+    else if (modo === 'sintese') t = (parouEm ?? ctx.currentTime) - base;
+    else if (modo === 'mudo') t = ((parouEm ?? performance.now()) - base) / 1000;
+    return clamp(t, 0, FIM);
   }
-  let digitando = null;
-  function digitar() {
-    const texto = 'queria um modo só de funk 150 bpm 🔥';
-    let i = 0; $('digita').textContent = '';
-    clearInterval(digitando);
-    setTimeout(() => { digitando = setInterval(() => {
-      $('digita').textContent = texto.slice(0, ++i);
-      if (i >= texto.length) clearInterval(digitando);
-    }, 55); }, 1600);
+  function irPara(t) {
+    t = clamp(t, 0, FIM - 0.001);
+    acabou = false;
+    if (modo === 'audio') { audio.currentTime = INICIO_F + t; if (!pausado) audio.play().catch(() => {}); }
+    else if (modo === 'sintese') { base = (parouEm ?? ctx.currentTime) - t; proxK = Math.ceil(t / T - 0.01); }
+    else if (modo === 'mudo') base = (parouEm ?? performance.now()) - t * 1000;
   }
 
-  // ── a batida (Web Audio): bumbo, chimbal, palma, baixo ──
-  let ctx = null, mestre = null, proxBatida = 0, nBatida = 0, timerSom = null, mudo = false;
-  function ligarSom() {
+  // o áudio do Audius: resolve e aquece antes do toque, pra começar na hora
+  const resolvendo = VIDEO ? null : resolveStreamUrl(FAIXA).then((url) => {
+    audio.src = url;
+    audio.currentTime = INICIO_F;              // já pede o trecho do story, não o começo da faixa
+    streamPronto = true;
+  });
+  resolvendo?.catch((e) => console.warn('trilha do Audius indisponível — batida sintetizada:', e.message));
+  // 5 ms de silêncio: destrava o <audio> no próprio toque quando a URL ainda
+  // não chegou (o Safari do iPhone só deixa tocar depois se o 1º play() vier do toque)
+  const SILENCIO = 'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
+
+  // ── plano B: a batida sintetizada (Web Audio), seguindo o mesmo mapa ──
+  let ctx = null, mestre = null, proxK = 0, timerSom = null;
+  function ligarSintese(t0 = 0) {
     ctx = new AudioContext();
-    mestre = ctx.createGain(); mestre.gain.value = 0.5; mestre.connect(ctx.destination);
-    const bumbo = (t) => { const o = ctx.createOscillator(), g = ctx.createGain();
-      o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.14);
-      g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-      o.connect(g).connect(mestre); o.start(t); o.stop(t + 0.4); };
-    const ruido = (t, dur, vol, hp) => { const n = ctx.createBufferSource(), b = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
-      const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-      n.buffer = b; const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
-      const g = ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-      n.connect(f).connect(g).connect(mestre); n.start(t); };
-    const baixo = (t, nota) => { const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
-      o.type = 'sawtooth'; o.frequency.value = nota; f.type = 'lowpass'; f.frequency.value = 420;
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.26, t + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.001, t + TEMPO * 0.45);
-      o.connect(f).connect(g).connect(mestre); o.start(t); o.stop(t + TEMPO * 0.5); };
-    const NOTAS = [55, 55, 65.4, 49];
-    proxBatida = ctx.currentTime + 0.1;
-    timerSom = setInterval(() => {
-      if (ctx.state !== 'running') return;
-      while (proxBatida < ctx.currentTime + 0.25) {
-        const t = proxBatida;
-        bumbo(t); ruido(t + TEMPO / 2, 0.05, 0.2, 7000);
-        if (nBatida % 2 === 1) ruido(t, 0.18, 0.32, 1500);
-        baixo(t + TEMPO / 2, NOTAS[Math.floor(nBatida / 4) % 4]);
-        proxBatida += TEMPO; nBatida++;
-      }
-    }, 50);
+    mestre = ctx.createGain(); mestre.gain.value = 0.45; mestre.connect(ctx.destination);
+    base = ctx.currentTime + 0.1 - t0; proxK = Math.ceil(t0 / T);
+    timerSom = setInterval(agendar, 50);
   }
-  $('b-som').onclick = (e) => {
-    e.stopPropagation();
-    if (!ctx) { ligarSom(); mudo = false; }
-    else { mudo = !mudo; mestre.gain.value = mudo ? 0 : 0.5; }
-    $('b-som').textContent = mudo ? '🔇' : '🔊';
+  const bumbo = (t) => { const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.14);
+    g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    o.connect(g).connect(mestre); o.start(t); o.stop(t + 0.4); };
+  const ruido = (t, dur, vol, hp, tipo = 'highpass') => { const n = ctx.createBufferSource(), b = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+    const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    n.buffer = b; const f = ctx.createBiquadFilter(); f.type = tipo; f.frequency.value = hp;
+    const g = ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    n.connect(f).connect(g).connect(mestre); n.start(t); return f; };
+  const baixo = (t, nota) => { const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.value = nota; f.type = 'lowpass'; f.frequency.value = 420;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.26, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t + T * 0.45);
+    o.connect(f).connect(g).connect(mestre); o.start(t); o.stop(t + T * 0.5); };
+  const NOTAS = [55, 55, 65.4, 49];
+  function agendar() {
+    if (!ctx || ctx.state !== 'running' || modo !== 'sintese' || parouEm !== null) return;
+    const DK = Math.round(DESLOC / T);          // o tempo 0 do formato, em tempos da música
+    while (base + proxK * T < ctx.currentTime + 0.25) {
+      const k = proxK++, t = base + k * T, km = k + DK;
+      if (k * T >= FIM) break;
+      if (t < ctx.currentTime - 0.02) continue;
+      const g = lv(MAPA.g, km * 4);
+      if (g > 0.45) { bumbo(t); baixo(t + T / 2, NOTAS[Math.floor(km / 4) % 4]); if (km % 2) ruido(t, 0.16, 0.28, 1500); }
+      if (lv(MAPA.a, km * 4 + 2) > 0.3) ruido(t + T / 2, 0.05, 0.18, 7000);
+      if (km === 52 || (k === 0 && km > 52 && km < 63)) {   // a subida (no story ela já começou)
+        const fim = base + (63 - DK) * T - 0.2, dur = Math.max(0.5, fim - t);
+        const f = ruido(t, dur, 0.3, 400, 'bandpass'); f.frequency.exponentialRampToValueAtTime(6000, t + dur);
+      }
+      if (km === 64) ruido(t, 2.2, 0.35, 3000);
+    }
+  }
+
+  // ── o estado da música a cada quadro, no mesmo formato que a pista do app usa ──
+  // (o Garimpeiro, o hiperespaço e as aparições leem `estadoPista`)
+  let olharLado = 'A';
+  function sentir(t, dt) {
+    const i = Math.floor(t / (T / 4));
+    const k = clamp(dt * 9, 0, 1);
+    E.grave += (lv(MAPA.g, i) - E.grave) * k;
+    E.medio += (lv(MAPA.m, i) - E.medio) * k;
+    E.agudo += (lv(MAPA.a, i) - E.agudo) * k;
+    E.batida = t / T;
+    E.compasso = Math.floor(E.batida) % 4;
+    const f = E.batida % 1;
+    const bumboAgora = lv(MAPA.g, Math.floor(E.batida) * 4) > 0.45;
+    E.pulso = reduzido ? 0 : Math.exp(-f * 5) * (bumboAgora ? 1 : 0.25);
+    // energia por trecho da música (groove, quebra, subida, festa depois do drop)
+    const secao = t < 8 * COMP ? 0.5 : t < SUBIDA[0] ? 0.3 : t < RESPIRO ? 0.3 + 0.3 * (t - SUBIDA[0]) / (RESPIRO - SUBIDA[0])
+                : t < DROP ? 0.1 : 0.72;
+    E.energia = clamp(secao + (E.grave - 0.5) * 0.12, 0, 1);
+    E.quebra = t >= SUBIDA[0] && t < RESPIRO;
+    E.dropV = reduzido || t < DROP ? 0 : Math.exp(-(t - DROP) / 0.9);
+    E.bpm = BPM;
+    E.tocando = modo !== 'parado';
+    // os olhos do Garimpeiro vão de um deck pro outro a cada compasso
+    const lado = Math.floor(t / COMP) % 2 ? 'B' : 'A';
+    if (lado !== olharLado) { olharLado = lado; $('olhar').dataset.d = lado; }
+  }
+
+  // ── fundo: dois leques de laser nos cantos de cima, no bumbo ──
+  const cvF = $('fundo'), cf = cvF.getContext('2d');
+  const cvL = $('luz'), cl = cvL.getContext('2d');
+  const cvH = $('hiper');
+  const hiper = montarHiperespaco(cvH);
+  let W = 0, H = 0, u = 1;
+  function ajustar() {
+    const r = story.getBoundingClientRect();
+    cvF.width = Math.round(r.width / 2); cvF.height = Math.round(r.height / 2);
+    W = cvL.width = Math.round(r.width); H = cvL.height = Math.round(r.height);
+    u = W / 600;
+    hiper?.tamanho(Math.round(r.width / 3), Math.round(r.height / 3));
+    montarGente();
+    tAntes = -1;                               // redesenha mesmo pausado (o canvas limpou)
+  }
+  const INTENS = { abertura: 0.6, garimpo: 0.4, guarda: 0.35, 'dois-jeitos': 0.4, dj: 0.3, professor: 0.3, sons: 0.4, celular: 0.4, convite: 0.75 };
+  function fundo(nome, t) {
+    const Wf = cvF.width, Hf = cvF.height;
+    cf.clearRect(0, 0, Wf, Hf);
+    let I = INTENS[nome] ?? 0;
+    // na subida da música os lasers enchem a tela até o respiro
+    if (nome === 'sons' || nome === 'st-abre') I = t < SUBIDA[0] ? 0.35 : 0.35 + 0.65 * liso((t - SUBIDA[0]) / (RESPIRO - SUBIDA[0]));
+    if (!I) return;
+    const bat = E.batida, pulso = E.pulso;
+    cf.globalCompositeOperation = 'lighter';
+    const varre = Math.sin(bat * Math.PI / 8), hue = (Math.floor(bat / 16) * 67 + 300) % 360, n = 2 + Math.round(I * 5);
+    for (const [x0, bs, h] of [[0, 1.0 + varre * 0.3, hue], [Wf, Math.PI - 1.0 - varre * 0.3, hue + 150]]) {
+      cf.strokeStyle = `hsl(${h},90%,62%)`;
+      for (let k = 0; k < n; k++) {
+        const th = bs + (k - (n - 1) / 2) * (0.05 + I * 0.05), x2 = x0 + Math.cos(th) * (Wf + Hf), y2 = Math.sin(th) * (Wf + Hf);
+        cf.globalAlpha = (0.12 + pulso * 0.2) * I; cf.lineWidth = 4; cf.beginPath(); cf.moveTo(x0, 0); cf.lineTo(x2, y2); cf.stroke();
+        cf.globalAlpha = (0.4 + pulso * 0.4) * I; cf.lineWidth = 1; cf.beginPath(); cf.moveTo(x0, 0); cf.lineTo(x2, y2); cf.stroke();
+      }
+    }
+    cf.globalAlpha = 1;
+  }
+
+  // ── a PISTA (cena 8): o club da 🎉 do app, em pé ──
+  // Os mesmos desenhos de src/ui/cena.js — canhões de luz na fumaça, leque de
+  // laser, neblina respirando com o grave, a galera em silhueta contra a luz
+  // (boné, cabelo, braços pra cima, gente filmando) e confete — no bombando,
+  // sem o estrobo: no drop, um clarão só, que apaga rápido.
+  const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+  const hsl = (h, s, l, a = 1) => `hsla(${((h % 360) + 360) % 360},${s}%,${l}%,${a})`;
+  let gente = [], confete = [], confeteDe = -1;
+  function montarGente() {
+    gente = [];
+    const JEITOS = ['pula', 'pula', 'balanca', 'cabeca', 'balanca', 'acena'];
+    let k = 0;
+    // em pé a galera precisa de mais corpo: três fileiras, a de trás menor e mais alta
+    for (const fl of [{ esc: 0.62, dy: 0.15, fundo: true }, { esc: 0.85, dy: 0.075, fundo: true }, { esc: 1.2, dy: 0 }]) {
+      const n = Math.max(6, Math.round(W / (44 * u * fl.esc)));
+      for (let i = 0; i < n; i++) {
+        k++;
+        gente.push({ dy: fl.dy, fundo: !!fl.fundo, x: (i + 0.5 + (hash(k) - 0.5) * 0.7) * (W / n),
+          esc: (0.82 + hash(k + 2) * 0.36) * fl.esc, larg: 0.9 + hash(k + 9) * 0.35,
+          jeito: JEITOS[Math.floor(hash(k + 21) * JEITOS.length)], salto: 0.6 + hash(k + 3) * 0.8,
+          atraso: hash(k + 5) * 0.09 + (hash(k + 6) < 0.12 ? 0.5 : 0), braco: hash(k + 8), fase: hash(k + 11) * 6.28,
+          celular: hash(k + 17) < 0.14, bone: hash(k + 19) < 0.22, cabelo: hash(k + 23) < 0.3 });
+      }
+    }
+  }
+  function canhoes(pal) {
+    const n = 6, c = cl;
+    const aberto = Math.min(1, E.energia * 0.6 + E.grave * 0.5 + E.dropV * 0.8);
+    const base = (0.28 + E.pulso * 0.35 + aberto * 0.4);
+    const L = H * 1.2;
+    for (let i = 0; i < n; i++) {
+      const x0 = W * (i + 0.5) / n, lado = i < n / 2 ? 1 : -1;
+      let th = Math.PI / 2 + lado * (0.2 + Math.sin((E.batida * Math.PI) / 8 + i * 0.7) * 0.36);
+      th = th * (1 - E.dropV) + (Math.PI / 2 + (i - (n - 1) / 2) * 0.05) * E.dropV;
+      const meia = 0.04 + aberto * 0.045, cor = pal[i % 2];
+      const gr = c.createLinearGradient(x0, 0, x0 + Math.cos(th) * L, Math.sin(th) * L);
+      gr.addColorStop(0, cor); gr.addColorStop(0.55, cor); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = gr;
+      c.globalAlpha = base * 0.32;
+      c.beginPath(); c.moveTo(x0, -2); c.lineTo(x0 + Math.cos(th - meia) * L, Math.sin(th - meia) * L);
+      c.lineTo(x0 + Math.cos(th + meia) * L, Math.sin(th + meia) * L); c.closePath(); c.fill();
+      c.globalAlpha = base * 0.5;
+      c.beginPath(); c.moveTo(x0, -2); c.lineTo(x0 + Math.cos(th - meia * 0.25) * L, Math.sin(th - meia * 0.25) * L);
+      c.lineTo(x0 + Math.cos(th + meia * 0.25) * L, Math.sin(th + meia * 0.25) * L); c.closePath(); c.fill();
+      c.globalAlpha = Math.min(1, base * 1.4); c.fillStyle = '#fff';
+      c.beginPath(); c.arc(x0, 0, 3 * u, 0, 6.283); c.fill();
+    }
+  }
+  function leque(pal) {
+    const c = cl, n = 14;
+    const giro = Math.sin((E.batida * Math.PI) / 16) * 0.5, abre = 0.9 + E.grave * 0.4;
+    const piscada = (Math.floor(E.batida * 2) % 2 === 0) ? 1 : 0.55;
+    c.strokeStyle = Math.floor(E.batida / 16) % 2 ? '#39ff8a' : pal[1];
+    c.lineWidth = Math.max(1, 1.2 * u);
+    c.globalAlpha = 0.45 * piscada;
+    c.beginPath();
+    for (let k = 0; k < n; k++) {
+      const th = Math.PI / 2 + giro + (k - (n - 1) / 2) * (abre / n);
+      c.moveTo(W / 2, H * 0.1); c.lineTo(W / 2 + Math.cos(th) * (W + H), H * 0.1 + Math.sin(th) * (W + H));
+    }
+    c.stroke();
+  }
+  function neblina(pal) {
+    const c = cl, gr = c.createRadialGradient(W / 2, H * 1.02, 0, W / 2, H * 1.02, W * 0.9);
+    gr.addColorStop(0, pal[0]); gr.addColorStop(0.5, pal[1]); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    c.globalAlpha = 0.18 + E.grave * 0.3 + E.dropV * 0.25;
+    c.fillStyle = gr; c.fillRect(0, H * 0.5, W, H * 0.5);
+  }
+  function galera(pal) {
+    const g = cl;
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const p of gente) {
+      const hr = 26 * u * p.esc;
+      const bt = E.batida - p.atraso, f = ((bt % 1) + 1) % 1;
+      const noUm = (((Math.floor(bt) % 4) + 4) % 4) === 0;
+      const pp = reduzido ? 0 : Math.exp(-f * 5);
+      const forca = (0.45 + E.grave * 0.9) * (noUm ? 1.3 : 1) * (1 + E.dropV * 1.2);
+      let salto = 0, lado = 0, cabeca = 0;
+      if (!reduzido) {
+        if (p.jeito === 'pula') salto = pp * p.salto * hr * 0.9 * forca;
+        else if (p.jeito === 'balanca') { lado = Math.sin(bt * Math.PI / 2 + p.fase) * hr * 0.45; salto = pp * hr * 0.25 * forca; }
+        else if (p.jeito === 'cabeca') { cabeca = pp * hr * 0.5 * forca; salto = pp * hr * 0.12; }
+        else { salto = pp * hr * 0.4 * forca; lado = Math.sin(bt * Math.PI + p.fase) * hr * 0.2; }
+      }
+      const x = p.x + lado, yc = H - hr * 3.1 - salto - p.dy * H, ombro = hr * 1.75 * p.larg;
+      const escuro = p.fundo ? '#120a1e' : '#06030b';
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = escuro; g.strokeStyle = escuro;
+      g.beginPath();
+      g.moveTo(x - ombro, H + 4); g.lineTo(x - ombro, yc + hr * 2.3);
+      g.quadraticCurveTo(x - ombro, yc + hr * 1.35, x - hr * 0.55, yc + hr * 1.25);
+      g.lineTo(x + hr * 0.55, yc + hr * 1.25);
+      g.quadraticCurveTo(x + ombro, yc + hr * 1.35, x + ombro, yc + hr * 2.3);
+      g.lineTo(x + ombro, H + 4); g.closePath(); g.fill();
+      const yh = yc + cabeca;
+      g.beginPath(); g.arc(x, yh, hr, 0, 6.283); g.fill();
+      if (p.bone) { g.beginPath(); g.ellipse(x + hr * 0.5, yh - hr * 0.45, hr * 1.05, hr * 0.35, 0, 0, 6.283); g.fill(); }
+      else if (p.cabelo) { g.beginPath(); g.ellipse(x, yh - hr * 0.2, hr * 1.25, hr * 1.1, 0, 0, 6.283); g.fill(); }
+      const bracos = p.braco < E.energia * 0.75 - 0.15 || p.braco < E.dropV * 0.95 || (p.jeito === 'acena' && p.braco < 0.7);
+      let maoX = null, maoY = null;
+      if (bracos) {
+        const acena = reduzido ? 0 : Math.sin(bt * Math.PI + p.fase) * 0.35;
+        g.lineWidth = hr * 0.62;
+        g.beginPath();
+        g.moveTo(x - ombro * 0.8, yc + hr * 1.7);
+        g.quadraticCurveTo(x - ombro * 1.15, yc - hr * 0.2, x - hr * (1.6 + acena), yc - hr * 2.3);
+        g.moveTo(x + ombro * 0.8, yc + hr * 1.7);
+        maoX = x + hr * (1.6 - acena); maoY = yc - hr * 2.3;
+        g.quadraticCurveTo(x + ombro * 1.15, yc - hr * 0.2, maoX, maoY);
+        g.stroke();
+      }
+      // contraluz: um fio de cor na cabeça e nos ombros
+      g.globalCompositeOperation = 'lighter';
+      g.strokeStyle = pal[p.x > W / 2 ? 1 : 0];
+      g.globalAlpha = (0.35 + E.agudo * 0.35 + E.dropV * 0.3) * (p.fundo ? 0.5 : 0.85);
+      g.lineWidth = Math.max(1, hr * 0.16);
+      g.beginPath(); g.arc(x, yh, hr, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
+      g.beginPath(); g.moveTo(x - ombro, yc + hr * 2.3); g.quadraticCurveTo(x - ombro, yc + hr * 1.35, x - hr * 0.55, yc + hr * 1.25); g.stroke();
+      if (p.celular) {
+        const cx = maoX ?? x + hr * 0.9, cy = maoY ?? yc - hr * 0.6;
+        g.globalAlpha = 0.9; g.fillStyle = '#dfe8ff';
+        g.fillRect(cx - hr * 0.22, cy - hr * 0.4, hr * 0.44, hr * 0.75);
+        g.globalAlpha = 0.12; g.beginPath(); g.arc(cx, cy, hr * 0.8, 0, 6.283); g.fill();
+      }
+    }
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  }
+  const CORES_CONFETE = ['#ff4ecd', '#4cc9f0', '#ffb347', '#2ee6a8', '#c77dff', '#fff2b3'];
+  function clube(t, dt) {
+    const hue = 300 + Math.floor(Math.max(0, E.batida) / 16) * 47;
+    const pal = [hsl(hue, 95, 60), hsl(hue + 100, 95, 60)];
+    cl.setTransform(1, 0, 0, 1, 0, 0);
+    cl.globalCompositeOperation = 'source-over'; cl.clearRect(0, 0, W, H);
+    cl.globalCompositeOperation = 'lighter';
+    neblina(pal); canhoes(pal); leque(pal);
+    cl.globalAlpha = 1;
+    galera(pal);
+    // confete: nasce no drop (e de novo se voltar pra cena)
+    const onda = t >= DROP ? 0 : -1;
+    if (onda !== confeteDe) {
+      confeteDe = onda; confete = [];
+      if (onda === 0 && !reduzido) for (let i = 0; i < 130; i++) confete.push({
+        x: Math.random() * W, y: -Math.random() * H * 0.3, vx: (Math.random() - 0.5) * 50 * u, vy: (70 + Math.random() * 110) * u,
+        r: Math.random() * 6.28, vr: (Math.random() - 0.5) * 10, cor: CORES_CONFETE[i % CORES_CONFETE.length], vida: 3.5 + Math.random() * 2 });
+    }
+    for (let i = confete.length - 1; i >= 0; i--) {
+      const q = confete[i];
+      q.vida -= dt;
+      if (q.vida <= 0 || q.y > H) { confete.splice(i, 1); continue; }
+      q.x += (q.vx + Math.sin(q.r * 2) * 14 * u) * dt; q.y += q.vy * dt; q.r += q.vr * dt;
+      cl.globalAlpha = Math.min(1, q.vida) * 0.95; cl.fillStyle = q.cor;
+      cl.setTransform(Math.cos(q.r), Math.sin(q.r), -Math.sin(q.r), Math.cos(q.r), q.x, q.y);
+      const hh = 11 * u * Math.abs(Math.cos(q.r * 1.7)) + 0.5;
+      cl.fillRect(-3.5 * u, -hh / 2, 7 * u, hh);
+    }
+    cl.setTransform(1, 0, 0, 1, 0, 0); cl.globalAlpha = 1;
+  }
+
+  // ── a VIAGEM: o hiperespaço do app (shader) e as aparições em luz ──
+  // No Reels (8 s): começa no crisântemo abrindo e na metade funde pro túnel;
+  // o ser de luz de muitos braços e depois os elfos máquina. No story (2 s):
+  // só o crisântemo e o ser de luz. Tempo contado do começo da cena.
+  if (hiper) {
+    // já deixa o crisântemo pronto (a fusão de 2 s acontece aqui, fora da vista)
+    hiper.trocar(0); hiper.desenhar(E, 1, 3); hiper.desenhar(E, 1, 3);
+  }
+  function viagem(rel, dur, dt, tm) {
+    const longa = dur > 4.5;
+    if (hiper) {
+      const quer = longa && rel >= dur / 2 ? 1 : 0;
+      if (hiper.cena !== quer) hiper.trocar(quer);
+      hiper.desenhar(E, dt, 3);
+    }
+    cl.setTransform(1, 0, 0, 1, 0, 0);
+    cl.globalCompositeOperation = 'source-over'; cl.clearRect(0, 0, W, H);
+    const aps = longa ? [{ tipo: 'entidade', de: 0.25, ate: dur / 2 }, { tipo: 'elfos', de: dur / 2 + 0.2, ate: dur }]
+                      : [{ tipo: 'entidade', de: 0, ate: dur }];
+    for (const a of aps) {
+      if (rel < a.de || rel >= a.ate) continue;
+      const alfa = clamp((rel - a.de) / (longa ? 1.0 : 0.35), 0, 1) * clamp((a.ate - rel) / (longa ? 0.5 : 0.25), 0, 1);
+      cl.globalCompositeOperation = 'lighter'; cl.globalAlpha = alfa * 0.95;
+      desenharAparicao(cl, a.tipo, W / 2, H * 0.4, Math.min(W, H) * 0.34, E, 190 + tm * 6, 7);
+    }
+    cl.globalAlpha = 1; cl.globalCompositeOperation = 'source-over';
+  }
+
+  // ── o que cada cena faz além de entrar no tempo ──
+  let contAntes = -1, modoAntes = -2, tecAntes = -1, padAntes = '', killAntes = '', xfAntes = '', cargaAntes = -1;
+  const pads = [...($('pads')?.querySelectorAll('.pad') || [])];
+  const modos = [...($('modos')?.children || [])];
+  const tecs = [...($('tecs')?.children || [])];
+  const trocar = (el, cls, on) => { if (el.classList.contains(cls) !== on) el.classList.toggle(cls, on); };
+  // cada efeito recebe o tempo da MÚSICA (t, régua do Reels), os tempos desde
+  // o começo da cena (b), o passo (dt) e a própria cena (C)
+  const EFEITOS = {
+    garimpo(t, b) {
+      const n = Math.round(39287 * (1 - Math.pow(1 - clamp((b - 0.2) / 3, 0, 1), 3)));
+      if (n !== contAntes) { contAntes = n; $('contador').textContent = n.toLocaleString('pt-BR'); }
+    },
+    'dois-jeitos'(t, b) {
+      const i = b < 1 ? -1 : b < 4.5 ? 0 : 1;
+      if (i !== modoAntes) { modoAntes = i; modos.forEach((m, k) => trocar(m, 'aceso', k === i)); }
+    },
+    dj(t, b, dt, C) {
+      // o crossfader anda de A pra B na cena; na metade, a troca de graves
+      // (no Reels, 8 tempos: a troca cai no 1 do compasso seguinte)
+      const tempos = (C.fim - C.ini) / T;
+      const x = (liso(b / (tempos - 0.5)) * 100).toFixed(1);
+      if (x !== xfAntes) { xfAntes = x; $('tampa').style.transform = `translateX(calc(${x / 100} * (19cqw - 3.2cqw - 5.4cqw)))`; }
+      const troca = b >= tempos / 2;
+      const k = troca ? 'B' : 'A';
+      if (k !== killAntes) {
+        killAntes = k;
+        trocar($('kA'), 'cortado', troca); trocar($('kB'), 'cortado', !troca);
+        trocar($('deckA'), 'no-ar', !troca); trocar($('deckB'), 'no-ar', troca);
+      }
+      const i = tecs.length ? Math.floor(b) % tecs.length : -1;
+      if (i !== tecAntes) { tecAntes = i; tecs.forEach((x, n) => trocar(x, 'aceso', n === i)); }
+    },
+    professor(t, b) {
+      const estado = b < 2 ? '' : b < 4 ? 'sua-vez' : b < 5.5 ? 'feito' : 'feito+dj';
+      if (estado !== killAntes) {
+        const antes = killAntes; killAntes = estado;
+        trocar($('killA'), 'sua-vez', estado === 'sua-vez');
+        trocar($('killA'), 'feito', estado.startsWith('feito'));
+        trocar($('killB'), 'dj-mexeu', estado === 'feito+dj');
+        if (estado === 'feito' && antes === 'sua-vez') {
+          const r = $('killA').getBoundingClientRect(), p = $('dedo').parentElement.getBoundingClientRect();
+          $('dedo').style.left = (r.left + r.width / 2 - p.left) + 'px'; $('dedo').style.top = (r.top + r.height / 2 - p.top) + 'px';
+          trocar($('dedo'), 'on', true);
+          masc['m-prof'].comemora(1400);
+        }
+        if (estado === '') trocar($('dedo'), 'on', false);
+        if (estado === 'sua-vez') masc['m-prof'].fala(1600);
+      }
+      if (b < 0.2) masc['m-prof'].fala(1800);
+    },
+    sons(t, b) {
+      // um pad por tempo; na subida o 🌪 fica apertado; nos cortes do fim, os pads piscam no som
+      let aceso = b < 8 ? String(Math.floor(b)) : '';
+      const segura = t >= SUBIDA[0] + 0.5 && t < SUBIDA[1];
+      if (t >= SUBIDA[1] && t < RESPIRO) {
+        const i = Math.floor(t / (T / 4));
+        aceso = lv(MAPA.m, i) > 0.5 || lv(MAPA.a, i) > 0.35 ? String((i * 5) % 8) : '';
+      }
+      const chave = aceso + (segura ? 's' : '');
+      if (chave !== padAntes) {
+        padAntes = chave;
+        pads.forEach((p, k) => { trocar(p, 'bate', String(k) === aceso); trocar(p, 'segura', segura && k === 4); });
+      }
+      const carga = segura ? liso((t - SUBIDA[0] - 0.5) / (SUBIDA[1] - SUBIDA[0] - 0.5)) : 0;
+      const c = Math.round(carga * 50) / 50;
+      if (c !== cargaAntes) {
+        cargaAntes = c;
+        const el = $('carga');
+        el.style.opacity = String(c ? 0.35 + c * 0.6 : 0);
+        el.style.transform = `scale(${1 + c * 2})`;
+      }
+    },
+    pista(t, b, dt) { clube(t, dt); trocar($('drop'), 'on', t >= DROP && t < DROP + 1.8); },
+    viagem(t, b, dt, C) { viagem(b * T, C.fim - C.ini, dt, t); },
+    celular(t, b) { trocar($('fonePe'), 'gira', b >= 2); trocar($('foneDeitado'), 'on', b >= 2.5); },
+    convite(t, b) {
+      // o dedo toca no Garimpeiro: ele acende o palheiro e põe a Juliet
+      trocar($('dedo2'), 'on', b >= 1.5 && b < 3);
+      trocar(gpFim, 'fumando', b >= 1.8);
+    },
   };
 
-  // ── lasers no fundo do story ──
-  const cv = $('lasers'), c = cv.getContext('2d');
-  const ajustar = () => { const r = story.getBoundingClientRect(); cv.width = Math.round(r.width / 2); cv.height = Math.round(r.height / 2); };
-  addEventListener('resize', ajustar); ajustar();
-  let t0 = performance.now();
-  const INTENS = [0.35, 0.45, 0.4, 0.5, 0.5, 1, 0.45, 0.7];
-  function quadro(agora) {
+  // ── o quadro: a música diz o tempo; o tempo diz tudo o resto ──
+  let atual = -1, tAntes = -1;
+  const camadas = { fundo: cvF, hiper: cvH, luz: cvL };
+  let camadaAntes = '';
+  function mostrarCamadas(nome) {
+    const quer = nome === 'pista' ? 'luz' : nome === 'viagem' ? (hiper ? 'hiper luz' : 'luz') : 'fundo';
+    if (quer === camadaAntes) return;
+    camadaAntes = quer;
+    for (const [k, el] of Object.entries(camadas)) el.style.opacity = quer.split(' ').includes(k) ? '1' : '0';
+  }
+  function entrarCena(i) {
+    const antes = atual;
+    if (antes >= 0) for (const e of [...CENAS[antes].entram, ...CENAS[antes].saem]) { e.on = false; e.x.classList.remove('on', 'fora'); }
+    atual = i;
+    const secas = CENAS[i].efeito === 'pista' ? [CENAS[i].el, CENAS[antes]?.el].filter(Boolean) : [];
+    secas.forEach((el) => el.classList.add('corta'));
+    CENAS.forEach((c, k) => c.el.classList.toggle('ativa', k === i));
+    if (secas.length) {
+      // o navegador precisa CALCULAR o estilo com a troca seca antes de o
+      // .corta sair — senão ele só vê o fim e faz a fusão mesmo assim
+      // (aconteceu gravando: dois quadros do relógio falso sem pintar no meio)
+      secas.forEach((el) => void getComputedStyle(el).opacity);
+      requestAnimationFrame(() => secas.forEach((el) => el.classList.remove('corta')));
+    }
+    barras.forEach((b, k) => { if (k !== i) b.style.transform = `scaleX(${k < i ? 1 : 0})`; });
+    killAntes = ''; padAntes = ''; modoAntes = -2; tecAntes = -1; xfAntes = ''; cargaAntes = -1; contAntes = -1;
+    mostrarCamadas(CENAS[i].efeito);
+  }
+  let barraAntes = -1;
+  function quadro() {
     requestAnimationFrame(quadro);
-    const bat = ctx ? nBatida - (proxBatida - ctx.currentTime) / TEMPO : (agora - t0) / 1000 / TEMPO;
-    const pulso = reduzido ? 0 : Math.exp(-(((bat % 1) + 1) % 1) * 5);
-    story.style.setProperty('--b', pulso.toFixed(3));
-    const W = cv.width, H = cv.height, I = INTENS[Math.max(0, atual)] ?? 0.4;
-    c.clearRect(0, 0, W, H);
-    c.globalCompositeOperation = 'lighter';
-    const varre = Math.sin(bat * Math.PI / 8), hue = (Math.floor(bat / 16) * 67) % 360, n = 2 + Math.round(I * 5);
-    for (const [x0, base, h] of [[0, 1.0 + varre * 0.3, hue], [W, Math.PI - 1.0 - varre * 0.3, hue + 150]]) {
-      c.strokeStyle = `hsl(${h},90%,62%)`;
-      for (let k = 0; k < n; k++) {
-        const th = base + (k - (n - 1) / 2) * (0.05 + I * 0.05), x2 = x0 + Math.cos(th) * (W + H), y2 = Math.sin(th) * (W + H);
-        c.globalAlpha = (0.12 + pulso * 0.2) * I; c.lineWidth = 4; c.beginPath(); c.moveTo(x0, 0); c.lineTo(x2, y2); c.stroke();
-        c.globalAlpha = (0.4 + pulso * 0.4) * I; c.lineWidth = 1; c.beginPath(); c.moveTo(x0, 0); c.lineTo(x2, y2); c.stroke();
-      }
+    if (modo === 'parado') return;
+    const t = relogio();
+    if (t === tAntes) return;                  // pausado, esperando o som ou no fim: nada mudou
+    const dt = clamp(t - tAntes, 0, 0.1);
+    const pulou = Math.abs(t - tAntes) > 0.25;
+    tAntes = t;
+    const tm = t + DESLOC;                     // o mesmo instante na régua da música
+    sentir(tm, pulou ? 1 : dt);
+    const i = cenaEm(t);
+    if (i !== atual) entrarCena(i);
+    const C = CENAS[i], b = (t - C.ini) / T;
+    for (const e of C.entram) { const on = b >= e.b; if (on !== e.on) { e.on = on; e.x.classList.toggle('on', on); } }
+    for (const e of C.saem) { const on = b >= e.b; if (on !== e.on) { e.on = on; e.x.classList.toggle('fora', on); } }
+    EFEITOS[C.efeito]?.(tm, b, pulou ? 0 : dt, C);
+    if (camadaAntes === 'fundo') fundo(C.efeito, tm);
+    // o respiro (um tempo de silêncio) apaga tudo; o drop acende de uma vez
+    const ap = tm >= RESPIRO - 0.06 && tm < DROP ? clamp((tm - RESPIRO + 0.06) / 0.08, 0, 1) : 0;
+    const cla = !reduzido && tm >= DROP && tm < DROP + 0.4 ? 0.85 * (1 - (tm - DROP) / 0.4) : 0;
+    opac('apagao', ap); opac('clarao', cla);
+    const k = Math.round(clamp((t - C.ini) / (C.fim - C.ini), 0, 1) * 200) / 200;
+    if (k !== barraAntes) { barraAntes = k; barras[i].style.transform = `scaleX(${k})`; }
+    if (t >= FIM && !acabou) acabar();
+  }
+  const opacAntes = {};
+  function opac(id, v) { v = Math.round(v * 50) / 50; if (opacAntes[id] !== v) { opacAntes[id] = v; $(id).style.opacity = String(v); } }
+
+  function acabar() {
+    acabou = true;
+    if (modo === 'audio') {
+      // desce o volume em meio segundo (onde o navegador deixa) e para
+      const v0 = audio.volume; let n = 0;
+      const desce = setInterval(() => { n++; try { audio.volume = Math.max(0, v0 * (1 - n / 10)); } catch {}
+        if (n >= 10) { clearInterval(desce); audio.pause(); try { audio.volume = v0; } catch {} } }, 50);
     }
-    // barrinha da cena atual enchendo
-    if (atual >= 0 && !pausado) {
-      const ms = Number(cenas[atual].dataset.ms);
-      const k = ms ? Math.min(1, (agora - inicio) / ms) : 1;
-      barras[atual].style.width = (k * 100) + '%';
-      if (ms && k >= 1) ir(atual + 1);
-    }
+    if (modo === 'sintese') ctx?.suspend();
   }
 
   // ── navegação: toque, segurar, teclado ──
-  let atual = -1, inicio = 0, pausado = false, pausouEm = 0;
   function ir(i) {
-    if (i < 0) i = 0;
-    if (i >= cenas.length) return;
-    atual = i; inicio = performance.now();
-    cenas.forEach((s, k) => s.classList.toggle('ativa', k === i));
-    barras.forEach((b, k) => { b.style.width = k < i ? '100%' : '0%'; });
-    if (i === 1) contar();
-    if (i === 6) digitar();
+    if (modo === 'parado') return;
+    i = clamp(i, 0, CENAS.length - 1);
+    irPara(CENAS[i].ini + 0.001);
+    if (pausado) pausar(false);
   }
   function pausar(on) {
-    if (on === pausado || atual < 0) return;
+    if (on === pausado || modo === 'parado') return;
     pausado = on;
     story.classList.toggle('pausado', on);
-    if (on) { pausouEm = performance.now(); ctx?.suspend(); }
-    else { inicio += performance.now() - pausouEm; ctx?.resume(); }
+    if (modo === 'audio') { if (on) audio.pause(); else if (!acabou) audio.play().catch(() => {}); }
+    else if (modo === 'sintese') { if (on) { parouEm = ctx.currentTime; ctx.suspend(); } else { base += ctx.currentTime - parouEm; parouEm = null; ctx.resume(); } }
+    else if (modo === 'mudo') { if (on) parouEm = performance.now(); else { base += performance.now() - parouEm; parouEm = null; } }
   }
-  // segurar pausa; toque curto navega
   let apertou = 0, segurando = null;
   for (const [el, passo] of [[$('t-esq'), -1], [$('t-dir'), 1]]) {
     el.addEventListener('pointerdown', () => { apertou = performance.now(); segurando = setTimeout(() => pausar(true), 220); });
     el.addEventListener('pointerup', () => {
       clearTimeout(segurando);
-      if (pausado) { pausar(false); return; }
-      if (performance.now() - apertou < 220) ir(atual + passo);
+      if (pausado && performance.now() - apertou >= 220) { pausar(false); return; }
+      if (performance.now() - apertou < 220) ir(cenaEm(relogio()) + passo);
     });
-    el.addEventListener('pointerleave', () => { clearTimeout(segurando); if (pausado) pausar(false); });
+    el.addEventListener('pointerleave', () => { clearTimeout(segurando); if (pausado && performance.now() - apertou >= 220) pausar(false); });
   }
   addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowRight') ir(atual + 1);
-    if (e.key === 'ArrowLeft') ir(atual - 1);
+    if (e.key === 'ArrowRight') ir(cenaEm(relogio()) + 1);
+    if (e.key === 'ArrowLeft') ir(cenaEm(relogio()) - 1);
     if (e.key === ' ') { e.preventDefault(); pausar(!pausado); }
     if (e.key === 'Escape') location.href = './';
   });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && !VIDEO) pausar(true); });
   $('b-fechar').onclick = (e) => { e.stopPropagation(); location.href = './'; };
-  $('b-rever').onclick = () => ir(0);
+  if ($('b-rever')) $('b-rever').onclick = () => { ir(0); if (modo === 'sintese') ctx?.resume(); };
+  $('b-som').onclick = (e) => {
+    e.stopPropagation();
+    if (modo === 'audio') { audio.muted = !audio.muted; $('b-som').textContent = audio.muted ? '🔇' : '🔊'; return; }
+    if (modo === 'sintese') { const m = mestre.gain.value > 0; mestre.gain.value = m ? 0 : 0.45; $('b-som').textContent = m ? '🔇' : '🔊'; return; }
+    if (modo === 'mudo') {                       // viu sem som e pediu som: entra a música no ponto em que está
+      const t = relogio();
+      if (streamPronto) { modo = 'audio'; audio.currentTime = INICIO_F + t; if (!pausado) audio.play().catch(() => {}); }
+      else { modo = 'sintese'; ligarSintese(t); }
+      $('b-som').textContent = '🔊';
+    }
+  };
 
+  // ── começar: o toque libera o som (navegador não deixa começar sozinho) ──
+  // Com a trilha do Audius a porta fica até a música TOCAR de verdade: o
+  // trecho pode levar uns segundos pra chegar (medido: ~5 s com conexão fria),
+  // e story parado esperando som parece travado. Passou de 6 s, vai a batida
+  // sintetizada.
+  function iniciar(novo, t0 = 0) {
+    $('comeco')?.remove();
+    modo = novo;
+    if (modo === 'mudo') { base = performance.now() - t0 * 1000; $('b-som').textContent = '🔇'; }
+    if (modo === 'sintese') ligarSintese(t0);
+    E.tocando = true;
+  }
   function comecar(comSom) {
-    $('comeco').remove();
-    t0 = performance.now();
-    if (comSom) ligarSom(); else { mudo = true; $('b-som').textContent = '🔇'; }
-    ir(0);
-    requestAnimationFrame(quadro);
+    if (!comSom) return iniciar('mudo');
+    if (!resolvendo) return iniciar('sintese');
+    const bt = $('b-comecar');
+    bt.textContent = '♫ carregando o som…'; bt.disabled = true; $('b-sem-som').hidden = true;
+    let foi = false;
+    const vai = (m) => { if (foi) return; foi = true; clearTimeout(desiste); iniciar(m); };
+    const desiste = setTimeout(() => { audio.pause(); vai('sintese'); }, 8000);
+    // "playing" chega antes de o salto pro trecho terminar (medido: o tempo
+    // ainda fica 3 s parado depois dele) — espera o áudio ANDAR de verdade
+    const espera = () => {
+      if (foi) return;
+      if (!audio.paused && !audio.seeking && audio.currentTime > INICIO_F + 0.01) vai('audio');
+      else requestAnimationFrame(espera);
+    };
+    const tocar = () => {
+      if (foi) return;
+      audio.addEventListener('error', () => {
+        if (!foi) return vai('sintese');
+        if (modo === 'audio') { const t = relogio(); modo = 'sintese'; ligarSintese(t); }   // caiu no meio: segue na batida
+      }, { once: true });
+      audio.currentTime = INICIO_F;
+      audio.play().catch(() => vai('sintese'));
+      requestAnimationFrame(espera);
+    };
+    if (streamPronto) tocar();
+    else {
+      audio.src = SILENCIO; audio.play().catch(() => {});
+      resolvendo.then(tocar, () => vai('sintese'));
+    }
   }
   $('b-comecar').onclick = () => comecar(true);
   $('b-sem-som').onclick = () => comecar(false);
+  addEventListener('resize', ajustar);
+  ajustar();
+  requestAnimationFrame(quadro);
+
+  // quem grava chama __comecarVideo() e lê __duracaoVideo e __cenas (pra cortar um por story)
   if (VIDEO) {
-    window.__duracaoVideo = cenas.reduce((s, c) => s + Number(c.dataset.ms), 0);
+    window.__duracaoVideo = Math.round(FIM * 1000);
+    window.__cenas = CENAS.map((c) => ({ nome: c.nome, ini: c.ini, fim: c.fim }));
+    window.__trilha = { faixa: FAIXA, inicio: INICIO_F, fim: INICIO_F + FIM, formato: FORMATO };
     window.__comecarVideo = () => comecar(false);
   }
 </script>

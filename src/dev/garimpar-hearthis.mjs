@@ -43,11 +43,13 @@ const RETOMAR = process.argv.includes('--retomar');
 /** --so-gravar: não varre nada, só transforma o checkpoint na semente. */
 const SO_GRAVAR = process.argv.includes('--so-gravar');
 const FASES = new Set(arg('fases', 'crates,categorias,termos,artistas').split(','));
-const MAX_ARTISTAS = Number(arg('artistas', 800));
+const MAX_ARTISTAS = Number(arg('artistas', 400));
 const PAUSA = 400;             // ms entre páginas
 const MAX_PAGINAS = 40;        // categorias param por volta da 11ª de 50
-const MAX_PAGINAS_TERMO = 15;  // a busca devolve 20 por página, e o fundo rende pouco
-const MAX_PAGINAS_ARTISTA = 2;
+// a busca devolve 20 por página, por relevância: o fundo rende pouco e é onde
+// a API deles demora e dá 504. Com 15 páginas a varredura levaria ~9 h
+const MAX_PAGINAS_TERMO = 5;
+const MAX_PAGINAS_ARTISTA = 1; // 50 faixas: a maioria dos artistas tem menos
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 const t0 = Date.now();
@@ -94,7 +96,10 @@ async function pagina(caminho, params) {
         console.log(`  [${relogio()}] ${caminho} p${params.page}: ${e.message.replace(/^.*: /, '')} de novo — funda demais, sigo`);
         return null;
       }
-      const espera = /HTTP 429/.test(e.message) ? 60000 : 10000 * (i + 1);
+      // corpo vazio volta logo (medido: a mesma página responde certo em
+      // seguida); 5xx e 429 recuam de verdade
+      const espera = /HTTP 429/.test(e.message) ? 60000
+        : /HTTP 5/.test(e.message) ? 10000 * (i + 1) : 3000 * (i + 1);
       console.log(`  [${relogio()}] ${caminho} p${params.page}: ${e.message.replace(/^hearthis indisponível em [^:]*: /, '')} — espero ${espera / 1000}s`);
       await dormir(espera);
     }

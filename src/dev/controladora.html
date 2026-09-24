@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DDJ-FLX4 virtual</title>
+<!--
+  Uma DDJ-FLX4 de mentira, pra testar a controladora sem ter uma.
+
+  Abra o Garimpo numa aba e esta página em outra (mesmo endereço). Ela se
+  apresenta por um BroadcastChannel como "DDJ-FLX4 (virtual)", manda os MESMOS
+  bytes da lista oficial da Pioneer (DDJ-FLX4 MIDI Message List) e acende com os
+  LEDs que o Garimpo devolve. Pro Garimpo ela é uma FLX4 como outra qualquer: o
+  mapeamento do Mixxx é baixado e roda igual.
+
+  Quando o Garimpo manda o SysEx de "estou vivo", ela responde como a de
+  verdade: despeja a posição de todos os faders e knobs. É assim que dá pra ver
+  o soft takeover: os faders daqui começam onde você deixou, não onde o som está.
+-->
+<style>
+  :root { --fundo:#0a0713; --sup:#171226; --linha:#332750; --fg:#f2eefc; --mut:#9a8fb8;
+          --a:#4cc9f0; --b:#ffb347; --ok:#2ee6a8; --cue:#ffb347; --bad:#ff5d8f; }
+  body { margin:0; background:var(--fundo); color:var(--fg); font:13px system-ui, sans-serif; padding:14px; }
+  h1 { font-size:15px; margin:0 0 4px; } .sub { color:var(--mut); font-size:12px; margin-bottom:12px; }
+  #estado { font:11px ui-monospace, monospace; color:var(--mut); }
+  #estado.ok { color:var(--ok); }
+  .corpo { display:grid; grid-template-columns:1fr 250px 1fr; gap:12px; }
+  .deck, .mixer { background:var(--sup); border:1px solid var(--linha); border-radius:12px; padding:10px; }
+  .deck h2 { margin:0 0 6px; font-size:12px; letter-spacing:.1em; }
+  .deck[data-d="1"] h2 { color:var(--a); } .deck[data-d="2"] h2 { color:var(--b); }
+  .jog { width:170px; height:170px; border-radius:50%; margin:6px auto; position:relative; touch-action:none;
+         background:radial-gradient(circle, #2a2140 0 55%, #1b1430 56% 100%); border:2px solid var(--linha); cursor:grab; }
+  .jog::after { content:''; position:absolute; left:50%; top:6px; width:3px; height:18px; background:var(--mut);
+                transform-origin:50% 79px; transform:translateX(-50%) rotate(var(--ang, 0deg)); }
+  .jog.tocando { border-color:var(--ok); }
+  .linha { display:flex; flex-wrap:wrap; gap:5px; margin:6px 0; align-items:center; }
+  button { background:#231a3a; color:var(--fg); border:1px solid var(--linha); border-radius:7px; padding:7px 9px;
+           font:600 11px system-ui; cursor:pointer; touch-action:none; }
+  button.aceso { background:var(--ok); color:#06040d; border-color:var(--ok); box-shadow:0 0 10px var(--ok); }
+  button.cue.aceso { background:var(--cue); border-color:var(--cue); box-shadow:0 0 10px var(--cue); }
+  .pads { display:grid; grid-template-columns:repeat(4, 1fr); gap:5px; }
+  .pads button { height:34px; }
+  .modos button.sel { outline:2px solid var(--a); }
+  label { display:flex; align-items:center; gap:6px; font:10px ui-monospace, monospace; color:var(--mut); }
+  label span { width:52px; } input[type=range] { flex:1; }
+  .vu { height:6px; background:#06040d; border-radius:3px; overflow:hidden; margin:4px 0 8px; }
+  .vu i { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--ok), var(--cue), var(--bad)); }
+  .browse { display:flex; gap:5px; justify-content:center; margin:8px 0; }
+  #log { font:10px ui-monospace, monospace; color:var(--mut); margin-top:10px; height:60px; overflow:auto; }
+  @media (max-width: 760px) { .corpo { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>DDJ-FLX4 virtual</h1>
+<div class="sub">Abra o Garimpo em outra aba deste mesmo endereço. <span id="estado">procurando o Garimpo…</span></div>
+
+<div class="corpo">
+  <div class="deck" data-d="1"></div>
+  <div class="mixer">
+    <div class="linha" style="justify-content:space-between"><b style="font-size:11px">MIXER</b>
+      <button id="dump" title="mandar a posição de tudo, como a FLX4 faz ao conectar">↻ posições</button></div>
+    <div id="canais"></div>
+    <label><span>CROSSFADER</span><input type="range" id="xf" min="0" max="16383" value="8192"></label>
+    <div class="browse">
+      <button data-browse="-1">▲</button><button data-note="96:41">BROWSE</button><button data-browse="1">▼</button>
+    </div>
+    <div class="linha" style="justify-content:center"><button data-note="96:46">LOAD 1</button><button data-note="96:47">LOAD 2</button></div>
+    <div class="linha" style="justify-content:center">
+      <button data-note="94:10">FX CH1</button><button data-note="95:11">FX CH2</button><button data-note="94:47" id="fx">BEAT FX</button>
+    </div>
+    <label><span>FX LEVEL</span><input type="range" id="fxnivel" min="0" max="127" value="64"></label>
+    <div id="log"></div>
+  </div>
+  <div class="deck" data-d="2"></div>
+</div>
+
+<script type="module">
+const bc = new BroadcastChannel('garimpo-controladora-virtual');
+const ID = Math.random().toString(36).slice(2, 8);
+const NOME = 'DDJ-FLX4 (virtual)';
+const $ = (s, r = document) => r.querySelector(s);
+const log = (s) => { const l = $('#log'); l.textContent = s + '\n' + l.textContent.slice(0, 1500); };
+const mandar = (...bytes) => bc.postMessage({ t: 'midi', id: ID, bytes });
+
+// ── os decks: os mesmos bytes nos dois, no canal MIDI de cada um (90/B0 e 91/B1) ──
+const PADS = { hot: 0x00, loop: 0x60, jump: 0x20, sampler: 0x30 };
+const MODOS = [['hot', 'HOT CUE', 0x1b], ['loop', 'BEAT LOOP', 0x6d], ['jump', 'BEAT JUMP', 0x20], ['sampler', 'SAMPLER', 0x22]];
+for (const el of document.querySelectorAll('.deck')) {
+  const d = Number(el.dataset.d), n = d - 1;
+  el.innerHTML = `<h2>DECK ${d}</h2>
+    <div class="jog" data-d="${d}"></div>
+    <div class="linha"><button data-note="${(0x90 + n).toString(16)}:3f">SHIFT</button>
+      <button data-note="${(0x90 + n).toString(16)}:58">SYNC</button>
+      <button data-note="${(0x90 + n).toString(16)}:10">IN</button><button data-note="${(0x90 + n).toString(16)}:11">OUT</button>
+      <button data-note="${(0x90 + n).toString(16)}:4d">RELOOP</button></div>
+    <div class="linha modos">${MODOS.map(([m, r, nota]) => `<button data-modo="${m}" data-note="${(0x90 + n).toString(16)}:${nota.toString(16)}">${r}</button>`).join('')}</div>
+    <div class="pads">${[0, 1, 2, 3, 4, 5, 6, 7].map((i) => `<button data-pad="${i}">${i + 1}</button>`).join('')}</div>
+    <label style="margin-top:8px"><span>TEMPO</span><input type="range" data-cc="${(0xb0 + n).toString(16)}:00:20" min="0" max="16383" value="8192"></label>
+    <div class="linha"><button class="cue" data-note="${(0x90 + n).toString(16)}:0c">CUE</button>
+      <button data-note="${(0x90 + n).toString(16)}:0b">PLAY ▶︎‖</button></div>`;
+  el.dataset.modo = 'hot';
+  el.querySelector('[data-modo="hot"]').classList.add('sel');
+}
+// o mixer de cada canal: EQ, trim, fader e o CUE do fone
+$('#canais').innerHTML = [1, 2].map((d) => {
+  const s = (0xb0 + d - 1).toString(16), fil = (0x16 + d).toString(16), filL = (0x36 + d).toString(16);
+  return `<b style="font-size:11px;color:var(--${d === 1 ? 'a' : 'b'})">CANAL ${d}</b>
+    <label><span>TRIM</span><input type="range" data-cc="${s}:04:24" min="0" max="16383" value="8192"></label>
+    <label><span>HI</span><input type="range" data-cc="${s}:07:27" min="0" max="16383" value="8192"></label>
+    <label><span>MID</span><input type="range" data-cc="${s}:0b:2b" min="0" max="16383" value="8192"></label>
+    <label><span>LOW</span><input type="range" data-cc="${s}:0f:2f" min="0" max="16383" value="8192"></label>
+    <label><span>FILTER</span><input type="range" data-cc="b6:${fil}:${filL}" min="0" max="16383" value="8192"></label>
+    <label><span>FADER</span><input type="range" data-cc="${s}:13:33" min="0" max="16383" value="0"></label>
+    <div class="vu"><i id="vu${d}"></i></div>
+    <div class="linha"><button data-note="${(0x90 + d - 1).toString(16)}:54">CUE 🎧</button></div>`;
+}).join('');
+$('#xf').dataset.cc = 'b6:1f:3f';
+
+// ── botões: note on 7F ao apertar, note on 00 ao soltar (como a Pioneer faz) ──
+function tecla(b, apertou) {
+  let [s, n] = (b.dataset.note || '').split(':').map((x) => parseInt(x, 16));
+  if (b.dataset.pad != null) {
+    const deck = b.closest('.deck'), d = Number(deck.dataset.d);
+    s = 0x97 + (d - 1) * 2; n = PADS[deck.dataset.modo] + Number(b.dataset.pad);
+  }
+  if (Number.isNaN(s)) return;
+  mandar(s, n, apertou ? 0x7f : 0x00);
+  if (b.dataset.modo && apertou) {
+    const deck = b.closest('.deck');
+    deck.dataset.modo = b.dataset.modo;
+    deck.querySelectorAll('[data-modo]').forEach((x) => x.classList.toggle('sel', x === b));
+    pintarPads(deck);
+  }
+}
+document.addEventListener('pointerdown', (e) => {
+  const b = e.target.closest('button[data-note], button[data-pad]');
+  if (!b) return;
+  try { b.setPointerCapture(e.pointerId); } catch {}
+  tecla(b, true);
+  const soltar = () => { tecla(b, false); b.removeEventListener('pointerup', soltar); b.removeEventListener('pointercancel', soltar); };
+  b.addEventListener('pointerup', soltar); b.addEventListener('pointercancel', soltar);
+});
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-browse]');
+  if (b) mandar(0xb6, 0x40, Number(b.dataset.browse) > 0 ? 0x01 : 0x7f);
+});
+
+// ── faders e knobs: 14 bits, MSB e depois LSB ──
+function mandarCc(el) {
+  const [s, msb, lsb] = el.dataset.cc.split(':').map((x) => parseInt(x, 16));
+  const v = Number(el.value);
+  mandar(s, msb, v >> 7);
+  mandar(s, lsb, v & 0x7f);
+}
+for (const el of document.querySelectorAll('input[data-cc], #xf')) el.addEventListener('input', () => mandarCc(el));
+$('#fxnivel').addEventListener('input', (e) => mandar(0xb4, 0x02, Number(e.target.value)));
+function despejar() { for (const el of document.querySelectorAll('input[data-cc], #xf')) mandarCc(el); log('posições despejadas'); }
+$('#dump').onclick = despejar;
+
+// ── jog: 720 passos por volta; o centro é o prato (toque + CC 22), a borda é a lateral (CC 21) ──
+for (const jog of document.querySelectorAll('.jog')) {
+  const n = Number(jog.dataset.d) - 1, st = 0x90 + n, cc = 0xb0 + n;
+  let ang = null, total = 0, modo = 'prato', resto = 0;
+  const angulo = (e) => { const r = jog.getBoundingClientRect(); return Math.atan2(e.clientY - r.top - r.height / 2, e.clientX - r.left - r.width / 2); };
+  jog.addEventListener('pointerdown', (e) => {
+    const r = jog.getBoundingClientRect();
+    const dist = Math.hypot(e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2) / (r.width / 2);
+    modo = dist > 0.62 ? 'borda' : 'prato';
+    jog.setPointerCapture(e.pointerId);
+    ang = angulo(e);
+    if (modo === 'prato') { mandar(st, 0x36, 0x7f); jog.classList.add('tocando'); }
+  });
+  jog.addEventListener('pointermove', (e) => {
+    if (ang == null) return;
+    const a = angulo(e);
+    let d = a - ang; if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI;
+    ang = a;
+    resto += (d / (2 * Math.PI)) * 720;
+    let ticks = Math.trunc(resto); resto -= ticks;
+    total += d; jog.style.setProperty('--ang', (total * 180 / Math.PI).toFixed(1) + 'deg');
+    while (ticks) {
+      const p = Math.max(-63, Math.min(63, ticks));
+      mandar(cc, modo === 'prato' ? 0x22 : 0x21, 64 + p);
+      ticks -= p;
+    }
+  });
+  const soltar = () => { if (ang == null) return; ang = null; if (modo === 'prato') { mandar(st, 0x36, 0x00); jog.classList.remove('tocando'); } };
+  jog.addEventListener('pointerup', soltar); jog.addEventListener('pointercancel', soltar);
+}
+
+// ── LEDs que o Garimpo devolve ──
+const acesos = new Map();       // "s:n" -> valor
+function pintarPads(deck) {
+  const d = Number(deck.dataset.d), s = 0x97 + (d - 1) * 2;
+  deck.querySelectorAll('[data-pad]').forEach((b) => {
+    const n = PADS[deck.dataset.modo] + Number(b.dataset.pad);
+    b.classList.toggle('aceso', (acesos.get(s + ':' + n) || 0) > 0);
+  });
+}
+let primeiroSysex = true, nLeds = 0;
+bc.onmessage = (ev) => {
+  const m = ev.data || {};
+  if (m.t === 'quem') bc.postMessage({ t: 'ola', id: ID, nome: NOME });
+  if (m.t === 'conectou' && m.id === ID) { $('#estado').textContent = 'ligada no Garimpo ✓'; $('#estado').className = 'ok'; primeiroSysex = true; }
+  if (m.t !== 'led' || m.id !== ID) return;
+  const [s, n, v] = m.bytes;
+  if (s === 0xf0) {
+    // o "estou vivo" da FLX4: na primeira vez, responde com a posição de tudo
+    if (primeiroSysex) { primeiroSysex = false; setTimeout(despejar, 30); }
+    return;
+  }
+  nLeds++;
+  if ((s === 0xb0 || s === 0xb1) && n === 0x02) { $('#vu' + (s - 0xaf)).style.width = (v / 127 * 100).toFixed(0) + '%'; return; }
+  acesos.set(s + ':' + n, v);
+  for (const b of document.querySelectorAll(`button[data-note="${s.toString(16)}:${n.toString(16).padStart(2, '0')}"]`)) b.classList.toggle('aceso', v > 0);
+  if (s >= 0x97 && s <= 0x9a) for (const deck of document.querySelectorAll('.deck')) pintarPads(deck);
+  if (s === 0x94 && n === 0x47) $('#fx').classList.toggle('aceso', v > 0);
+  if (nLeds % 25 === 1) log(`LED ${s.toString(16)} ${n.toString(16)} ${v.toString(16)} (${nLeds} recebidos)`);
+};
+bc.postMessage({ t: 'ola', id: ID, nome: NOME });
+addEventListener('pagehide', () => bc.postMessage({ t: 'tchau', id: ID }));
+// pra testes automatizados: mandar bytes crus e ler os LEDs sem clicar
+globalThis.__virtual = { mandar, despejar, acesos };
+</script>
+</body>
+</html>

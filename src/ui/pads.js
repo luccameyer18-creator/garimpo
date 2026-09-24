@@ -330,5 +330,7 @@ export function montarPads({ el, ctx, destino, bpm, antes = async () => {} }) {
   lerTodos().then((todos) => { for (const [k, v] of Object.entries(todos)) if (v?.blob) meus[k] = v; rotular(); }).catch(() => {});
   /** O DJ dispara pelo NOME do som padrão (é a vaga dele — se você trocou, toca o seu). */
   const dispararNome = (nome) => { const i = PADRAO.findIndex((p) => p.id === nome); if (i >= 0) disparar(i); };
-  return { disparar, dispararNome, rotular };
+  /** O pad está soando (o som seu tocando, ou a batida acesa do som padrão): é o LED do pad na controladora. */
+  const ativo = (i) => !!tocando[i] || !!botoes[i]?.classList.contains('bate');
+  return { disparar, dispararNome, rotular, ativo };
 }
