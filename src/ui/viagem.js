@@ -28,6 +28,7 @@
 import { estadoPista as E } from './pista.js';
 import { qualidade as Q, aoMudarQualidade } from './qualidade.js';
 import { montarHiperespaco } from './hiperespaco.js';
+import { desenharAparicao, sortearTipo } from './aparicoes.js';
 
 // o MilkDrop desenha 1/3 da tela (menos, se o medidor baixar a resolução);
 // quantas formas voam depende do modo escolhido (leve, médio, bombando)
@@ -58,6 +59,46 @@ export function montarViagem({ audio }) {
   const hiper = montarHiperespaco(hiperCv);
   let modo = hiper ? 'hiper' : 'milk';
   const pintarModo = () => document.body.classList.toggle('viagem-milk', modo === 'milk');
+
+  /**
+   * AS APARIÇÕES (aparicoes.js): os seres e as figuras que os relatos de DMT
+   * descrevem, surgindo por cima do hiperespaço — uma por vez. Nascem numa
+   * virada de frase (16 tempos), com mais chance quanto mais forte o ✨; no
+   * drop vem sempre um SER (de luz, elfos máquina, louva-a-deus) ou o olho.
+   * Surgem em 4 tempos, vivem ~24, se dissolvem em 6. Relógio próprio em
+   * tempos, pra continuar vivo mesmo sem música.
+   */
+  let apar = null, relogioAp = 0, fraseAp = -1, dropAp = 0, tipoAntes = null;
+  const VIDA = 24;
+  function nascer(tipo) {
+    tipoAntes = tipo;
+    apar = { tipo, nasce: relogioAp, semente: Math.random() * 1000, hue: Math.random() * 360 };
+  }
+  function aparicoes(dt) {
+    relogioAp += dt * ((E.tocando && E.bpm ? E.bpm : 100) / 60);
+    if (apar && relogioAp - apar.nasce > VIDA + 6) apar = null;
+    if (!apar && !E.reduzido) {
+      const f16 = Math.floor(Math.max(0, E.batida) / 16);
+      if (E.dropReal && E.drop !== dropAp && E.dropV > 0.9) {
+        dropAp = E.drop;
+        nascer(['entidade', 'mantis', 'elfos', 'olho'][Math.floor(Math.random() * 4)]);
+      } else if (E.tocando && f16 !== fraseAp) {
+        fraseAp = f16;
+        if (Math.random() < [0, 0.35, 0.6, 0.9][Q.nivel || 2]) nascer(sortearTipo(tipoAntes));
+      } else if (!E.tocando && Math.random() < dt * 0.05) nascer(sortearTipo(tipoAntes));
+    }
+    if (!apar) return;
+    const idade = relogioAp - apar.nasce;
+    const alfa = Math.min(1, idade / 4) * Math.min(1, Math.max(0, (VIDA + 6 - idade) / 6));
+    const m = Math.min(W, H);
+    c.globalCompositeOperation = 'lighter';
+    c.globalAlpha = alfa * 0.95;
+    c.shadowBlur = 0;
+    desenharAparicao(c, apar.tipo, W / 2, H * 0.52, m * (apar.tipo === 'serpente' ? 0.28 : 0.33), E,
+                     apar.hue + relogioAp * 2, apar.semente);
+    c.globalAlpha = 1;
+    c.globalCompositeOperation = 'source-over';
+  }
 
   let ligada = false, milk = null, estado = 'nada', presets = null, nomes = [], atual = -1, frase = -1;
   let W = 0, H = 0, FW = 0, FH = 0, tAntes = 0, batidaVoo = -1;
@@ -162,6 +203,7 @@ export function montarViagem({ audio }) {
       hiper.desenhar(E, dt, Q.nivel || 2);
       c.setTransform(1, 0, 0, 1, 0, 0);
       c.clearRect(0, 0, W, H);
+      aparicoes(dt);
       return;
     }
 
