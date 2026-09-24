@@ -20,7 +20,8 @@
  *              tudo certo
  *   GARIMPA    cava com a picareta quando o garimpo está buscando faixas;
  *              no resto do tempo segura a bateia com as pepitas
- *   PITA       clica nele e ele acende o palheiro; clica de novo, apaga
+ *   PITA       clica nele e ele acende o palheiro e põe a Juliet (óculos
+ *              escuro espelhado); clica de novo, apaga e tira
  *
  * A cara é de garimpeiro de verdade: chapéu de palha com a lanterna presa na
  * fita, bigodão, barba por fazer, lenço vermelho, camisa xadrez, suspensório,
@@ -54,6 +55,13 @@ const SVG = `
     <radialGradient id="gp-ouro" cx="35%" cy="30%" r="70%">
       <stop offset="0" stop-color="#fff3b0"/><stop offset=".5" stop-color="#ffc629"/><stop offset="1" stop-color="#b87a08"/>
     </radialGradient>
+    <linearGradient id="gp-lente" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b2a6b"/><stop offset=".45" stop-color="#6a2bb0"/>
+      <stop offset=".75" stop-color="#e04ab0"/><stop offset="1" stop-color="#ffb13d"/>
+    </linearGradient>
+    <linearGradient id="gp-metal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e9edf5"/><stop offset=".5" stop-color="#8a93a6"/><stop offset="1" stop-color="#4b5263"/>
+    </linearGradient>
     <radialGradient id="gp-brasa" cx="50%" cy="50%" r="50%">
       <stop offset="0" stop-color="#fff2a8"/><stop offset=".45" stop-color="#ff8a1f"/><stop offset="1" stop-color="#ff3d00" stop-opacity="0"/>
     </radialGradient>
@@ -135,6 +143,18 @@ const SVG = `
         <path d="M30.8 36 Q34 32.4 37.2 36" stroke="#3b2210" stroke-width="1.6" fill="none" stroke-linecap="round"/>
         <path d="M42.8 36 Q46 32.4 49.2 36" stroke="#3b2210" stroke-width="1.6" fill="none" stroke-linecap="round"/>
       </g>
+      <!-- palheiro aceso = óculos escuro: a Juliet (armação de metal em X,
+           lente envolvente espelhada) -->
+      <g class="gp-oculos">
+        <path d="M28.4 31.4 Q34 30 39 31.8 Q39.6 36.6 36.4 38.4 Q31.6 39.4 29.4 36.6 Q27.8 34.2 28.4 31.4 Z"
+              fill="url(#gp-lente)" stroke="url(#gp-metal)" stroke-width="1.1"/>
+        <path d="M51.6 31.4 Q46 30 41 31.8 Q40.4 36.6 43.6 38.4 Q48.4 39.4 50.6 36.6 Q52.2 34.2 51.6 31.4 Z"
+              fill="url(#gp-lente)" stroke="url(#gp-metal)" stroke-width="1.1"/>
+        <path d="M38.8 32.2 Q40 31.2 41.2 32.2" stroke="url(#gp-metal)" stroke-width="1.3" fill="none"/>
+        <path d="M28.4 31.6 L25.6 33 M51.6 31.6 L54.4 33" stroke="url(#gp-metal)" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M30.2 32.6 Q33 31.8 35.6 32.8" stroke="#fff" stroke-width=".7" fill="none" opacity=".75"/>
+        <path d="M44.4 32.8 Q47 31.8 49.8 32.6" stroke="#fff" stroke-width=".7" fill="none" opacity=".75"/>
+      </g>
       <!-- bochechas, nariz -->
       <ellipse cx="29.5" cy="40.5" rx="2.6" ry="1.6" fill="#ff7a6a" opacity=".35"/>
       <ellipse cx="50.5" cy="40.5" rx="2.6" ry="1.6" fill="#ff7a6a" opacity=".35"/>
@@ -194,8 +214,10 @@ const CSS = `
 .gp .gp-brilho { transform-origin: 12.8px 65.5px; animation: gp-brilho 2.6s ease-in-out infinite; }
 @keyframes gp-brilho { 0%, 70%, 100% { opacity:0; transform:scale(.4); } 82% { opacity:1; transform:scale(1.2); } }
 /* o palheiro: apagado some; aceso, a brasa respira e a fumaça sobe */
-.gp .gp-palheiro { display:none; }
-.gp.fumando .gp-palheiro { display:inline; }
+.gp .gp-palheiro, .gp .gp-oculos { display:none; }
+.gp.fumando .gp-palheiro, .gp.fumando .gp-oculos { display:inline; }
+/* de óculos, os olhos (e o piscar) ficam atrás da lente */
+.gp.fumando .gp-olhos, .gp.fumando .gp-fechados, .gp.fumando .gp-felizes { visibility:hidden; }
 .gp .gp-brasa-luz { transform-origin: 53px 48.8px; animation: gp-brasa 2.2s ease-in-out infinite; }
 @keyframes gp-brasa { 0%, 100% { opacity:.55; transform:scale(.8); } 45% { opacity:1; transform:scale(1.25); } }
 .gp .gp-fumaca circle { transform-origin: 54px 45.5px; opacity:0; animation: gp-fumaca 3.3s linear infinite; }
