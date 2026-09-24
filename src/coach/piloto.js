@@ -60,7 +60,16 @@ export class Piloto extends EventTarget {
    */
   substituirProximas(novas) {
     if (!this.ativo || !this.fila || !novas?.length) return false;
+    // já MISTURANDO: a próxima está entrando — o gênero novo vem depois dela
+    if (this.misturando) { this.fila.splice(this.indice + 2, Infinity, ...novas); return true; }
+    /**
+     * Ainda ESPERANDO a hora da troca: a próxima já estava carregada no
+     * outro deck, mas é do gênero velho. Antes ela tocava mesmo assim (e a
+     * primeira do gênero novo era pulada, porque a fila andava por índice).
+     * Agora ela sai: a transição é refeita com a primeira do gênero novo.
+     */
     this.fila.splice(this.indice + 1, Infinity, ...novas);
+    this.refazer = true;
     return true;
   }
 
@@ -212,6 +221,7 @@ export class Piloto extends EventTarget {
     while (!this.parar) {
       const falta = (ateT - D.displayPosition) / (D.nominalRate || 1) - antes;
       if (falta <= 0.05) return 'chegou';
+      if (this.refazer) return 'refazer';               // a fila mudou: replaneja com a nova
       if (pulavel && this.pularAgora) return 'pulou';
       this.#diz('esperando', { deck: id, tipo, seg: Math.round(falta) });
       if (!await this.#viver(id, ateT)) return 'parou';
@@ -384,16 +394,19 @@ export class Piloto extends EventTarget {
       const lead = () => Math.min(2.5, pe.inicioE / (E.nominalRate || 1));
       let r = await this.#esperarAte(sai, plano.inicioT, { tipo: plano.tipo, antes: lead() });
       if (r === 'parou') return false;
+      if (r === 'refazer') return 'refazer';
       if (r === 'pulou') {
         this.pularAgora = false;
         plano = this.#planoSaida(S, { tempos, impacto, cedo: true }) || plano;
         r = await this.#esperarAte(sai, plano.inicioT, { tipo: plano.tipo, antes: lead(), pulavel: false });
         if (r === 'parou') return false;
+        if (r === 'refazer') return 'refazer';
       }
       this.pularAgora = false;
       // começa a próxima de um jeito que ela chegue em inicioE junto com a
       // que sai chegando em inicioT — calado: o crossfader ainda é da outra
       const w = (plano.inicioT - S.displayPosition) / (S.nominalRate || 1);
+      this.misturando = true;
       E.seek(Math.max(0, pe.inicioE - w * (E.nominalRate || 1)));
       E.play();
       this.#diz('entrando', { deck: entra, faixa: E.faixa?.title });
@@ -405,6 +418,7 @@ export class Piloto extends EventTarget {
       relogio = () => (E.displayPosition - pe.inicioE) / per(E);
     } else {
       this.pularAgora = false;
+      this.misturando = true;
       E.seek(this.#entrada(E));
       E.play();
       this.#diz('entrando', { deck: entra, faixa: E.faixa?.title });
@@ -462,6 +476,7 @@ export class Piloto extends EventTarget {
     this.#narra('n.caminha', { porque: 'n.caminha.p', vars: { e: entra }, mostra: [`pitch-${entra}`] });
     const passosBpm = this.estilo === 'hipnotico' ? 64 : 32;   // hipnótico volta mais devagar
     this.caminhando = caminharBpm(d[entra], { dorme: (ms) => this.#dorme(ms), tempos: passosBpm });
+    this.misturando = false;
     return true;
   }
 
@@ -493,7 +508,7 @@ export class Piloto extends EventTarget {
   /** Toca a fila inteira. Volta quando acaba ou quando você assume. */
   async tocar(fila, { segundos = 8 } = {}) {
     if (this.ativo || !fila?.length) return;
-    this.ativo = true; this.parar = false;
+    this.ativo = true; this.parar = false; this.refazer = false; this.misturando = false;
     this.fila = fila; this.indice = 0;
     const d = this.decks;
     try {
@@ -516,7 +531,11 @@ export class Piloto extends EventTarget {
 
         // a espera pela hora certa mora dentro da transição (ver o PLANO lá):
         // ela diz o que está esperando, conta os segundos e vive a faixa
-        if (!await this.transicao(noAr, entra, { faixa: fila[i], anterior: this.ultimaTecnica })) return;
+        const r = await this.transicao(noAr, entra, { faixa: fila[i], anterior: this.ultimaTecnica });
+        // o gênero mudou enquanto ele esperava: recarrega o deck com a nova
+        // fila[i] (a primeira do gênero novo) e planeja de novo
+        if (r === 'refazer') { this.refazer = false; i--; continue; }
+        if (!r) return;
         this.dispatchEvent(new CustomEvent('tocou', { detail: { faixa: fila[i] } }));
         noAr = entra;
         this.#diz('transição pronta', { noAr, resta: fila.length - i - 1 });

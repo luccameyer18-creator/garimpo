@@ -320,7 +320,7 @@ export function favoritasParaSet() {
   return favoritas.filter((f) => f.bpm && f.camelot);
 }
 
-export async function candidatasDoSet() {
+export async function candidatasDoSet({ esperaSinais = 0 } = {}) {
   if (ordem === 'favoritas') return favoritasParaSet();
   // 70–180 BPM: com 100–150, boombap (~90) nunca entrava num set
   let lista = await doAcervo({ bpmMin: 70, bpmMax: 180, porPilha: 900, tudo: 5000 });
@@ -363,7 +363,7 @@ export async function candidatasDoSet() {
   // no máximo 600 (sorteadas, o equilíbrio já foi feito): é o que dá pra
   // perguntar ao Audius quem é bom em ~2 s
   if (lista.length > 600) lista = embaralhar(lista).slice(0, 600);
-  await comSinais(lista);
+  await comSinais(lista, esperaSinais);
   return lista;
 }
 
@@ -374,14 +374,45 @@ export async function candidatasDoSet() {
  * se pergunta na hora, 25 por pedido, 6 pedidos de cada vez, e se lembra
  * durante a sessão. Sem rede: tudo segue, só sem essa nota.
  */
-const sinaisVistos = new Map();
-async function comSinais(lista) {
-  const faltam = lista.filter((t) => t.source !== 'local' && !sinaisVistos.has(t.id) && /^[A-Za-z0-9]{3,16}$/.test(t.id));
-  const lotes = [];
-  for (let i = 0; i < faltam.length; i += 25) lotes.push(faltam.slice(i, i + 25));
-  for (let i = 0; i < lotes.length; i += 6) {
-    const r = await Promise.all(lotes.slice(i, i + 6).map((l) => sinaisAudius(l).catch(() => ({}))));
-    for (const mapa of r) for (const [id, s] of Object.entries(mapa)) sinaisVistos.set(id, s);
+/**
+ * MEDIDO: o Audius leva 1–2 s por lote de 25 faixas, e em paralelo piora
+ * (6 lotes juntos: ~11 s). Com 600 candidatas eram ~64 s esperando antes de
+ * o set montar — trocar de gênero com o DJ tocando "travava" um minuto.
+ *
+ * Agora os sinais NUNCA seguram o set: o que já se sabe vem do cache (que
+ * sobrevive entre sessões, no localStorage), e o que falta é buscado em
+ * SEGUNDO PLANO, um lote por vez, enriquecendo as mesmas faixas quando
+ * chega. `espera` é quanto o chamador topa esperar (o começo de um set espera
+ * ~2 s; a troca de gênero no meio do set, zero).
+ */
+const CHAVE_SINAIS = 'garimpo.sinais';
+const sinaisVistos = new Map(Object.entries((() => { try { return JSON.parse(localStorage.getItem(CHAVE_SINAIS)) || {}; } catch { return {}; } })()));
+let fila_sinais = [], buscandoSinais = null;
+function guardarSinais() {
+  try {
+    const tudo = [...sinaisVistos.entries()].slice(-4000);          // os 4 mil mais recentes
+    localStorage.setItem(CHAVE_SINAIS, JSON.stringify(Object.fromEntries(tudo)));
+  } catch {}
+}
+async function buscarSinaisAosPoucos() {
+  while (fila_sinais.length) {
+    const lote = fila_sinais.splice(0, 40);
+    try {
+      const mapa = await sinaisAudius(lote);
+      for (const [id, s] of Object.entries(mapa)) sinaisVistos.set(id, s);
+      for (const t of lote) if (sinaisVistos.has(t.id)) t.sinais = sinaisVistos.get(t.id);
+    } catch {}
   }
+  guardarSinais();
+  buscandoSinais = null;
+}
+async function comSinais(lista, espera = 0) {
   for (const t of lista) t.sinais = sinaisVistos.get(t.id) || t.sinais || null;
+  const faltam = lista.filter((t) => !t.sinais && t.source !== 'local' && /^[A-Za-z0-9]{3,16}$/.test(t.id));
+  if (faltam.length) {
+    const ja = new Set(fila_sinais.map((t) => t.id));
+    fila_sinais.push(...faltam.filter((t) => !ja.has(t.id)));
+    buscandoSinais ||= buscarSinaisAosPoucos();
+  }
+  if (espera > 0 && buscandoSinais) await Promise.race([buscandoSinais, new Promise((r) => setTimeout(r, espera))]);
 }

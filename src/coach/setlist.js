@@ -111,10 +111,14 @@ const FAMILIAS = [
 /** Famílias de PISTA: com "tudo" marcado, o set só pega destas (rock, jazz e
  *  chill entram quando você marca o gênero de propósito). */
 export const FAMILIAS_PISTA = new Set(['house', 'techno', 'bass', 'eletronico', 'funkbr', 'latino', 'rap', 'brasil', 'pop']);
+const famMemo = new Map();          // "pilha gênero" → família (poucas combinações)
 export function familia(t) {
   const s = `${t?.pilha || ''} ${t?.genre || ''}`.toLowerCase();
-  for (const [f, re] of FAMILIAS) if (re.test(s)) return f;
-  return null;
+  if (famMemo.has(s)) return famMemo.get(s);
+  let fam = null;
+  for (const [f, re] of FAMILIAS) if (re.test(s)) { fam = f; break; }
+  famMemo.set(s, fam);
+  return fam;
 }
 /** Quanto custa passar de uma família pra outra: vizinhas custam pouco. */
 const VIZINHAS = {
@@ -139,9 +143,13 @@ export function custoFamilia(a, b) {
  * summer" se atraem mesmo em gêneros vizinhos; é o que deixa o set alternar
  * sem parecer que mudou de festa.
  */
+const tagsMemo = new WeakMap();      // a mesma faixa é comparada milhares de vezes por set
 function tagsDe(t) {
+  if (t && typeof t === 'object' && tagsMemo.has(t) && t.sinais === tagsMemo.get(t).sinais) return tagsMemo.get(t).tags;
   const cru = t?.tags?.length ? t.tags : String(t?.sinais?.tags || '').split(',');
-  return new Set(cru.map((x) => String(x).trim().toLowerCase().replace(/^#/, '')).filter((x) => x.length > 1));
+  const tags = new Set(cru.map((x) => String(x).trim().toLowerCase().replace(/^#/, '')).filter((x) => x.length > 1));
+  if (t && typeof t === 'object') tagsMemo.set(t, { tags, sinais: t.sinais });
+  return tags;
 }
 export function afinidade(a, b) {
   const ta = tagsDe(a), tb = tagsDe(b);
@@ -352,8 +360,10 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
         }
         return c;
       };
-      cands.sort((a, b) => custo(a) - custo(b));
-      esc = cands[0];
+      // a melhor numa passada só: ordenar chamava custo() ~2·n·log n vezes
+      // (e com a sorte dentro, um comparador instável) — medido 4,3 s por set
+      let melhor = Infinity;
+      for (const t of cands) { const v = custo(t); if (v < melhor) { melhor = v; esc = t; } }
     }
 
     const harm = keyCompatible({ camelot: atual.camelot }, { camelot: esc.camelot });

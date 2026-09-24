@@ -1654,16 +1654,23 @@ function refazerProximas() {
         novas = [...novas, ...resto].slice(0, 10);
       }
       if (novas.length < 1) { avisarTroca('n.trocouNada'); return; }
-      const decisao = await decidirSet([noAr, ...novas], piloto.estilo).catch(() => null);
-      if (decisao) novas = aplicarDecisoes([noAr, ...novas], decisao).slice(1);
+      // TROCA JÁ; o Jev decide as técnicas depois, em segundo plano. Esperar
+      // por ele segurava a troca vários segundos (medido: ~17 s do clique até
+      // o deck mudar); a técnica que chegar tarde vale pras passagens que
+      // ainda não começaram
       if (!piloto?.ativo || !piloto.substituirProximas(novas)) return;
+      decidirSet([noAr, ...novas], piloto.estilo).then((decisao) => {
+        if (!decisao) return;
+        const com = aplicarDecisoes([noAr, ...novas], decisao).slice(1);
+        for (const d of com) { const f = piloto.fila?.find((x) => x.id === d.id); if (f) Object.assign(f, { tecnica: d.tecnica, tempos: d.tempos, porqueIA: d.porqueIA, probsIA: d.probsIA }); }
+      }).catch(() => {});
       if (!soFav) registrarSugeridas(novas);
       fila = piloto.fila.slice(piloto.indice);
       desenharFila();
       narracao = { diz: 'n.trocou', porque: 'n.trocou.p', vars: { n: novas.length, g: $('gen-resumo').textContent }, k: ++nNarracao };
       ultimoProf = 0;
     } catch {}
-  }, 1500);
+  }, 700);            // espera a pessoa terminar de marcar os chips, não mais
 }
 // roda do mouse rola a fileira pro lado
 $('dj-generos').addEventListener('wheel', (e) => {
