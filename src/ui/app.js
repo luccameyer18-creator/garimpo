@@ -190,6 +190,37 @@ const tentarLigar = () => {
 };
 for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) addEventListener(ev, tentarLigar);
 
+/**
+ * Celular: a cabine é DEITADA. No primeiro toque (é o que o navegador exige),
+ * tela cheia e trava deitado — no Android funciona; no iPhone o Safari não
+ * deixa travar, e aí fica o aviso "vira o celular" (#girar, só CSS). Uma vez
+ * só: se a pessoa sair da tela cheia, é escolha dela.
+ */
+const celular = matchMedia('(pointer:coarse) and (max-width:1040px), (pointer:coarse) and (max-height:540px)');
+function deitar() {
+  const el = document.documentElement;
+  if (!celular.matches || document.fullscreenElement || !el.requestFullscreen) return Promise.resolve(false);
+  return el.requestFullscreen({ navigationUI: 'hide' })
+    .then(() => screen.orientation?.lock?.('landscape'))
+    .then(() => true, () => false);
+}
+let jaDeitou = false;
+for (const ev of ['touchend', 'click']) {
+  addEventListener(ev, () => { if (!jaDeitou) { jaDeitou = true; deitar(); } }, { capture: true });
+}
+if (document.documentElement.requestFullscreen && screen.orientation?.lock) {
+  $('b-girar').hidden = false;
+  $('b-girar').onclick = () => deitar();
+}
+// deitado não existe painel preso do lado: a gaveta sempre flutua
+const deitado = matchMedia('(orientation:landscape) and (max-width:1040px)');
+const acertarGaveta = () => {
+  let fixa = false;
+  try { fixa = localStorage.getItem('garimpo.bib.fixa') === '1'; } catch {}
+  document.body.classList.toggle('bib-fixa', fixa && !deitado.matches);
+};
+deitado.addEventListener('change', acertarGaveta);
+
 // ─────────────────────────── um deck ───────────────────────────
 
 function montarVista(id) {
@@ -2442,8 +2473,8 @@ function abrirBibPara(id) {
   if (!gaveta()) $('col-lib').scrollIntoView({ behavior: 'smooth', block: 'start' });
   else if (matchMedia('(pointer:fine)').matches) $('busca').focus({ preventScroll: true });
 }
-/** Tela larga = painel de músicas vira gaveta (mesmo corte do CSS). */
-const gaveta = () => matchMedia('(min-width:1041px)').matches;
+/** Tela larga ou deitada = painel de músicas vira gaveta (mesmo corte do CSS). */
+const gaveta = () => matchMedia('(min-width:1041px), (orientation:landscape) and (max-width:1040px)').matches;
 /** Carregou pelo BROWSE: com a gaveta flutuando ela fecha; presa, só desmira. */
 function fecharBrowse(id = null) {
   if (document.body.classList.contains('bib-fixa') || !gaveta()) mirar(null);
@@ -2474,6 +2505,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') abrirBib(f
 addEventListener('resize', medirTopoBib);
 medirTopoBib();
 try { fixarBib(localStorage.getItem('garimpo.bib.fixa') === '1'); } catch { fixarBib(false); }
+acertarGaveta();
 
 /**
  * Dois temas: COLORIDO (neon, o padrão) e ALL BLACK (preto de verdade, cores

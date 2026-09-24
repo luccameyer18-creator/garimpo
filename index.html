@@ -775,7 +775,7 @@
      lista, a busca e os gêneros são os mesmos, só muda pra qual deck vai.
      Fechadas, a CDJ ocupa a tela toda. O 📌 prende o painel como coluna. */
   .aba-bib, .bib-barra { display:none; }
-  @media (min-width:1041px) {
+  @media (min-width:1041px), (orientation:landscape) and (max-width:1040px) {
     .bib-barra { display:flex; justify-content:flex-end; gap:5px; margin:-2px 0 -4px; flex:none; }
     .bib-barra .mini { padding:4px 8px; font-size:11px; border-radius:7px; }
     body.bib-fixa #b-bib-fechar { display:none; }
@@ -1024,7 +1024,7 @@
   /* Abaixo disto a tela deixa de caber em uma pagina so, e a pagina passa a
      rolar de proposito. Quando a linha do grid solta a altura, cada bloco
      precisa dizer a sua — senao colapsa. */
-  @media (max-width:1040px) {
+  @media (max-width:1040px) and (orientation:portrait) {
     body { overflow:auto; }
     .palco { grid-template-columns:1fr 1fr; height:auto; grid-template-rows:none; }
     .col { min-height:auto; }
@@ -1046,7 +1046,7 @@
        flexionar e passa a ter altura propria. */
     .lista { min-height:220px; flex:0 0 auto; }
   }
-  @media (max-width:700px) {
+  @media (max-width:700px) and (orientation:portrait) {
     .palco { grid-template-columns:1fr; }
     .deck { min-height:330px; }
     .prof { padding:8px 12px; height:86px; }
@@ -1071,6 +1071,159 @@
     .topo .ic { min-height:32px; padding:5px; }
     .porta-cx p { font-size:13px; }
   }
+
+  /* ───────── celular deitado: a CDJ de bolso ───────── */
+  /* Deitado e estreito (celular, tablet pequeno, janela estreita): a mesma
+     cabine numa tela só, sem rolar. Em cima, numa linha: marca e botões + o
+     professor. No meio: deck A · mixer · deck B. Embaixo: o DJ numa fileira.
+     As músicas viram gaveta, como no computador (o BROWSE ♫ de cada deck).
+     Some o que é de quem já sabe (loops, ajuste fino, eco, fone): o celular
+     é pra tocar e aprender, a cabine completa está no computador. */
+  @media (orientation:landscape) and (max-width:1040px) {
+    body { display:grid; grid-template-columns:auto minmax(0,1fr); grid-template-rows:auto minmax(0,1fr);
+           height:100dvh; }
+    .topo { grid-column:1; grid-row:1; gap:3px; padding:2px 4px 2px 10px; }
+    .topo .marca { font-size:11px; margin-right:3px; }
+    #dica, #idioma, .medidor-topo > span, .barra-n { display:none; }
+    .medidor-topo { gap:2px; }
+    #master { width:50px !important; }
+    .topo .ic { padding:4px 5px; font-size:12px; }
+    .prof { grid-column:2; grid-row:1; height:36px; padding:2px 10px; gap:8px; }
+    .prof .gp { width:30px; height:30px; }
+    .prof .plano, .prof .plano:has(.item:nth-child(2)) { grid-template-columns:minmax(0,1fr); }
+    .prof .item:nth-child(n+2) { display:none; }
+    .prof .item:first-child { grid-row:auto; }
+    .prof .item:first-child .txt { -webkit-line-clamp:2; font-size:11px; line-height:1.3; }
+    .prof .item:first-child .txt small { display:inline; margin-left:6px; font-size:10px; white-space:normal; }
+    .prof .item i { width:14px; height:14px; font-size:9px; }
+
+    .palco, body:not(.bib-fixa) .palco { grid-column:1 / -1; grid-row:2; gap:5px; padding:4px 5px 5px; height:auto;
+      grid-template-columns:minmax(0,1fr) clamp(150px, 22vw, 240px) minmax(0,1fr);
+      grid-template-rows:minmax(0,1fr) auto; }
+    .col.cabine { grid-column:1 / -1; grid-row:2; }
+
+    /* deck */
+    .faixa { gap:5px; padding:4px 6px 3px; }
+    .letra { font-size:12px; }
+    .capa { width:24px; height:24px; border-radius:4px; }
+    .titulo { font-size:11px; } .artista { font-size:9.5px; }
+    .selo { gap:3px; }
+    .selo .tom, .selo .mini-b, .faixa .lixo { display:none; }
+    .selo .bpm { padding:1px 2px; } .selo .bpm b { min-width:30px; }
+    .faixa .fav { width:26px; height:24px; font-size:13px; }
+    .faixa .browse { padding:4px 8px; font-size:0; }
+    .faixa .browse::before { content:"♫"; font-size:13px; }
+    .onda-cx { min-height:22px; }
+    canvas.mini { height:10px; }
+    .ctrl { padding:4px 6px; gap:6px; }
+    .jog { width:58px; height:58px; }
+    .jog .marca-jog { transform-origin:50% 23px; }
+    .jog .visor .bpm { font-size:10px; }
+    .jog .visor .un, .jog .nome-jog { display:none; }
+    .finos, .loops, .efeito { display:none; }
+    .transp { gap:3px; }
+    .botoes { gap:4px; }
+    .botoes button { padding:6px 3px; font-size:10px; }
+    .tempo { font-size:9px; gap:6px; }
+    .pitch { padding:0 6px 4px; gap:5px; }
+    .pitch label { display:none; }
+    .pitch .val { min-width:40px; font-size:9.5px; }
+    .faixa-sel button { padding:2px 4px; font-size:8.5px; }
+
+    /* mixer */
+    .col.mix .mixer { flex:1 1 auto; padding:5px; gap:6px; justify-content:flex-start; }
+    .col.mix .mixer > div:first-child { flex:1 1 auto; display:flex; flex-direction:column; min-height:0; }
+    .col.mix .mixer .fase { flex:1 1 auto; height:auto; min-height:22px; max-height:120px; border-radius:6px; }
+    .linha-fase { margin-top:3px; }
+    #rot-fase, .mixer .rot, .linha-fone, .tira h3, .fone, .knob:has([data-eco]) { display:none; }
+    #b-encaixar { flex:1; padding:4px; font-size:9.5px; }
+    .tiras { gap:5px; } .tira { gap:3px; }
+    .knob { gap:3px; }
+    .knob label { font-size:7.5px; width:22px; overflow:hidden; }
+    .knob input[type=range] { height:16px; }
+    .knob .kill { padding:2px 5px; font-size:9px; }
+    input.xf { height:24px; }
+
+    /* o DJ numa fileira: modos · botão grande · gêneros; efeitos à direita */
+    .janela-pista { margin-top:0; min-height:0; flex:none; flex-direction:row; align-items:center;
+                    padding:4px 226px 4px 6px; }
+    .cena-rot, .janela-pista > .fila-cx, .piloto-op, #prefs, #piloto-nota, #piloto-tecnica,
+    #b-dj-min, #b-prefs, .cena-troca, .cena-so { display:none !important; }
+    .janela-pista > .dj-painel, .janela-pista > .dj-painel.min { display:flex; flex-direction:row; align-items:center; gap:6px;
+      width:100%; padding:0; border:none; background:transparent; box-shadow:none; }
+    .janela-pista > .dj-painel.min > .dj-modos { display:grid !important; }
+    .janela-pista > .dj-painel.min > .dj-generos { display:flex !important; }
+    .dj-modos { flex:none; grid-template-columns:repeat(3, auto); gap:3px; }
+    .dj-modos button { padding:6px 7px; font-size:10px; }
+    .dj-linha { flex:none; gap:4px; }
+    .dj-linha #b-piloto { padding:7px 10px; font-size:11px; white-space:nowrap; }
+    .dj-linha .mini { padding:0 8px; }
+    .dj-generos { flex:1 1 auto; min-width:0; }
+    .dj-generos button { padding:5px 9px; font-size:10px; }
+    .janela-pista .cena-modo, .janela-pista .cena-viagem, .janela-pista .cena-pista {
+      top:50%; transform:translateY(-50%); font-size:10px; padding:6px 8px; white-space:nowrap; }
+    .janela-pista .cena-modo { right:5px; width:74px; font-size:8.5px; }
+    .janela-pista .cena-pista { right:84px; width:62px; }
+    .janela-pista .cena-viagem { right:150px; width:70px; }
+    /* o globo pendurado no topo caía em cima da fala do professor */
+    #luzes .globo { display:none !important; }
+
+    /* a gaveta de músicas ocupa a altura toda */
+    body:not(.bib-fixa) .col.lib { top:4px; bottom:4px; width:min(440px, 66vw); }
+    body:not(.bib-fixa) .aba-bib, #b-bib-fixar { display:none; }
+    .lateral { padding:7px; gap:6px; }
+    .bib-cx { gap:6px; }
+    #bib-resumo, .creditos, .acoes-lista { display:none; }
+    .bib-cx #busca { padding-top:6px; padding-bottom:6px; }
+    .generos-topo { padding-top:6px !important; padding-bottom:6px !important; }
+    .ordem button { padding-top:6px; padding-bottom:6px; }
+    .acoes-lista button { padding:6px 8px; }
+    .rodape-bib #b-arquivo { padding:6px 8px; }
+  }
+
+  @media (orientation:landscape) and (max-width:1040px) and (min-height:560px) {
+    .prof { height:52px; }
+    .prof .item:first-child .txt { font-size:12.5px; }
+    .jog { width:92px; height:92px; } .jog .marca-jog { transform-origin:50% 40px; }
+    .jog .visor .bpm { font-size:13px; }
+    .jog .visor .un, .jog .nome-jog { display:block; }
+    .finos { display:flex; } .loops { display:flex; } .efeito { display:block; }
+    .botoes button { padding:11px 6px; font-size:11.5px; }
+    .ctrl { padding:8px 10px; gap:10px; }
+    .transp { gap:6px; }
+    .pitch label { display:block; }
+    .tira h3, .fone, .mixer .rot { display:block; }
+    .knob:has([data-eco]) { display:flex; }
+    .tiras { gap:8px; } .tira { gap:6px; }
+    .knob label { font-size:8.5px; width:26px; }
+    .knob input[type=range] { height:18px; }
+    .col.mix .mixer { padding:8px; gap:10px; }
+    .col.mix .mixer .fase { max-height:none; }
+    .janela-pista { padding-top:6px; padding-bottom:6px; }
+    .dj-modos button, .dj-generos button { padding:8px 11px; font-size:11px; }
+    .dj-linha #b-piloto { padding:10px 14px; font-size:12px; }
+  }
+
+  /* ───────── celular em pé: vira ───────── */
+  /* A CDJ é deitada. Em pé, depois da porta, um aviso pede pra girar — no
+     Android o primeiro toque já põe em tela cheia e trava deitado. "Só a
+     viagem" funciona em pé: é só olhar. */
+  #girar { display:none; position:fixed; inset:0; z-index:70; place-items:center; padding:28px; text-align:center;
+           background:radial-gradient(70% 50% at 50% 40%, #241240, #07040f); color:var(--fg); }
+  @media (orientation:portrait) and (max-width:1040px) and (pointer:coarse) {
+    body:has(#porta.saiu):not(.so-viagem) #girar { display:grid; }
+    body:has(#porta.saiu):not(.so-viagem) { overflow:hidden; }
+  }
+  #girar .cel { width:52px; height:90px; margin:0 auto 22px; border:3px solid var(--acc); border-radius:12px;
+                box-shadow:0 0 24px rgba(76,201,240,.5), inset 0 0 12px rgba(76,201,240,.25);
+                animation:girar-cel 2.6s cubic-bezier(.6,0,.3,1) infinite; }
+  @keyframes girar-cel { 0%, 20% { transform:rotate(0); } 50%, 85% { transform:rotate(-90deg); } 100% { transform:rotate(0); } }
+  #girar h2 { margin:0 0 8px; font:900 24px/1.1 ui-sans-serif,system-ui,sans-serif; }
+  #girar p { margin:0 auto 18px; max-width:300px; color:var(--mut); font-size:14px; line-height:1.45; }
+  #girar button { padding:12px 22px; border-radius:24px; font-size:14px; color:#2b0420; border:none;
+                  background:linear-gradient(90deg,#ff7ad9,var(--neon)); box-shadow:0 0 18px rgba(255,78,205,.5); }
+  #girar small { display:block; margin-top:16px; color:var(--fraco); font-size:12px; max-width:280px; margin-inline:auto; }
+  @media (prefers-reduced-motion: reduce) { #girar .cel { animation:none; transform:rotate(-90deg); } }
 </style>
 </head>
 <body>
@@ -1256,6 +1409,16 @@
   <button id="b-so-pular" data-i18n-attr="title:piloto.pular.dica" title="pular pra próxima">⏭</button>
 </div>
 
+<div id="girar" aria-live="polite">
+  <div>
+    <div class="cel" aria-hidden="true"></div>
+    <h2 data-i18n="girar.tit">Vira o celular</h2>
+    <p data-i18n="girar.sub">A cabine é deitada, igual uma CDJ de verdade: os dois decks e o mixer lado a lado.</p>
+    <button id="b-girar" data-i18n="girar.bt" hidden>girar a tela</button>
+    <small data-i18n="girar.nota">Não girou? Tira o bloqueio de rotação do celular.</small>
+  </div>
+</div>
+
 <div id="porta">
   <div class="porta-cx">
     <div class="porta-masc" id="porta-masc"></div>
@@ -1383,6 +1546,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260923t"></script>
+<script type="module" src="./src/ui/app.js?v=20260923u"></script>
 </body>
 </html>
