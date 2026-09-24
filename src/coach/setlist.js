@@ -232,7 +232,8 @@ export async function juntarCandidatas({ pilhas = null, bpmMin = 100, bpmMax = 1
  * que enfiá-la no meio e estragar o set em silêncio.
  */
 function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
-                                        recentes = null, sorte = 0, variedade = 'equilibrado', evitar = null }) {
+                                        recentes = null, sorte = 0, variedade = 'equilibrado', evitar = null,
+                                        bpmIni = null, bpmFim = null }) {
   const V = VARIEDADES[variedade] || VARIEDADES.equilibrado;
   const usadas = new Set([semente.id]);
   const raizes = new Set([raiz(semente)]);
@@ -243,6 +244,14 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
 
   const pendentes = obrigatorias.filter((t) => t && t.id !== semente.id);
   const passo = energia === 'subir' ? 1.012 : energia === 'descer' ? 0.988 : 1;
+  /**
+   * A RAMPA DE BPM que você pediu: começa em `bpmIni`, termina em `bpmFim`, e
+   * cada faixa mira o BPM da rampa NO MINUTO em que ela entra — não o da
+   * anterior vezes um passo. Assim um set de 30 min de 122 → 130 chega em 130
+   * no fim, em vez de subir 1% por faixa e parar onde der.
+   */
+  const rampa = bpmFim ? { de: bpmIni || semente.bpm, ate: bpmFim } : null;
+  const naRampa = (seg) => rampa.de + (rampa.ate - rampa.de) * Math.min(1, Math.max(0, seg / (minutos * 60)));
 
   /**
    * ENCAIXE POR NÍVEIS, e é isto que impede o set de morrer no quarto passo.
@@ -313,14 +322,19 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
         if (cands.length) break;
       }
       if (!cands.length) break;   // acabou mesmo: nem afrouxando tem candidata
+      // a próxima entra perto de `dur` e toca uns 2 min: mira a rampa aí
       const alvo = pendentes.length
         ? (atual.bpm + pendentes[0].bpm) / 2     // caminha na direção dela
+        : rampa ? naRampa(dur + 120)
         : atual.bpm * passo;
+      // com rampa o BPM pesa bem mais: 1% fora dela custa 2,5 pontos (sem
+      // rampa, 0,6) — senão a família e a qualidade puxavam o set pro lado
+      const pesoBpm = rampa ? 250 : 60;
       const anterior = fila[fila.length - 2];
       const custo = (t) => {
         const h = keyCompatible({ camelot: atual.camelot }, { camelot: t.camelot });
         let c = (h.distance ?? 0) * 3
-              + Math.abs(t.bpm - alvo) / atual.bpm * 60
+              + Math.abs(t.bpm - alvo) / atual.bpm * pesoBpm
               // COERÊNCIA: ficar na família de som é o normal; vizinha custa
               // pouco, família distante custa caro. Dentro da família, trocar
               // de gênero é leve — e 4+ do mesmo gênero em fila pede variar
@@ -383,7 +397,15 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
     ...t,
     porque: `${t.bpm} BPM ${t.camelot} não encaixou em nenhum ponto do set`,
   }));
-  return { fila, minutos: dur / 60, naoCoube };
+  // quanto o set fugiu da rampa, em BPM, na média e no fim
+  let foraRampa = 0, fimFora = 0;
+  if (rampa) {
+    let seg = 0;
+    for (const t of fila) { foraRampa += Math.abs(t.bpm - naRampa(seg + 60)); seg += t.duration * 0.8; }
+    foraRampa /= fila.length;
+    fimFora = Math.abs(fila[fila.length - 1].bpm - rampa.ate);
+  }
+  return { fila, minutos: dur / 60, naoCoube, foraRampa, fimFora };
 }
 
 /**
@@ -397,7 +419,8 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
  */
 export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente = null,
                                         obrigatorias = [], recentes = [], sorte = 3.5,
-                                        variar = true, variedade = 'equilibrado', evitar = null } = {}) {
+                                        variar = true, variedade = 'equilibrado', evitar = null,
+                                        bpmIni = null, bpmFim = null } = {}) {
   const jaOuvidas = new Set(recentes || []);
   if (!candidatas?.length) return { fila: [], minutos: 0, generos: 0, naoCoube: obrigatorias };
 
@@ -426,6 +449,18 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
    * `variar: false` é pro set de favoritas, onde o pote é pequeno de propósito.
    */
   let pote = [...candidatas];
+  /**
+   * BPM do set escolhido (início e fim): só entra no pote o que cabe na faixa
+   * de andamento, com 4% de folga — o pitch estica isso sem sofrer. Se o
+   * filtro deixar quase nada (gênero que mora em outro BPM), usa o pote todo
+   * e a rampa só orienta a escolha.
+   */
+  if (bpmIni || bpmFim) {
+    const lo = Math.min(bpmIni || bpmFim, bpmFim || bpmIni) * 0.96;
+    const hi = Math.max(bpmIni || bpmFim, bpmFim || bpmIni) * 1.04;
+    const dentro = pote.filter((t) => t.bpm >= lo && t.bpm <= hi);
+    if (dentro.length >= 8) pote = dentro;
+  }
   if (variar && pote.length > 120) {
     pote = baralhar(pote).slice(0, Math.max(120, Math.round(pote.length * 0.6)));
   }
@@ -448,9 +483,15 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
    * Pegar `.slice(0, 40)` de uma lista sempre na mesma ordem é o que fazia todo
    * set começar igual. Embaralhar antes de cortar é a correção de uma linha.
    */
+  // com BPM de início, o set abre perto dele (±3%, ou as 40 mais perto)
+  const perto = bpmIni ? (() => {
+    const j = pote.filter((t) => Math.abs(t.bpm / bpmIni - 1) <= 0.03);
+    return j.length >= 5 ? j
+      : [...pote].sort((a, b) => Math.abs(a.bpm - bpmIni) - Math.abs(b.bpm - bpmIni)).slice(0, 40);
+  })() : null;
   const sementes = semente ? [comPilha(semente)]
     : obrigatorias.length ? [comPilha(obrigatorias[0])]
-    : baralhar(pote.filter((t) => t.bpm <= (energia === 'descer' ? 134 : 125)))
+    : baralhar(perto || pote.filter((t) => t.bpm <= (energia === 'descer' ? 134 : 125)))
         // já ouvidas pro fim; entre as outras, as melhores primeiro (com
         // folga de sorteio, senão todo set abriria com o mesmo hit)
         .map((t) => ({ t, k: (jaOuvidas.has(t.id) ? 10 : 0) - qualidade(t) * 2 + Math.random() }))
@@ -460,7 +501,7 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
 
   const resultados = [];
   for (const s of sementes) {
-    const r = corrente(s, pote, { minutos, energia, obrigatorias, recentes: jaOuvidas, sorte, variedade, evitar });
+    const r = corrente(s, pote, { minutos, energia, obrigatorias, recentes: jaOuvidas, sorte, variedade, evitar, bpmIni, bpmFim });
     const generos = new Set(r.fila.map((x) => x.pilha)).size;
     // quantas faixas, quantos gêneros, quantas escolhidas entraram, e quão
     // perto da duração pedida. As suas escolhas pesam mais que tudo.
@@ -473,13 +514,16 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
                  - saltos * 0.8 * V.familia + novas * 2 + q * 12
                  + (obrigatorias.length - r.naoCoube.length) * 20
                  + (Math.abs(r.minutos - minutos) < 6 ? 8 : 0)
-                 - Math.abs(r.minutos - minutos) / 3;
+                 - Math.abs(r.minutos - minutos) / 3
+                 // com rampa pedida: seguir a rampa e CHEGAR no BPM do fim
+                 - r.foraRampa * 1.5 - r.fimFora * 1.2
+                 - (bpmIni ? Math.abs(r.fila[0].bpm - bpmIni) * 1.2 : 0);
     resultados.push({ ...r, pontos, generos });
   }
   resultados.sort((a, b) => b.pontos - a.pontos);
   const melhor = resultados[Math.floor(Math.random() * Math.min(variar ? 4 : 2, resultados.length))];
   return { fila: melhor.fila, minutos: +melhor.minutos.toFixed(1),
-           generos: melhor.generos, naoCoube: melhor.naoCoube };
+           generos: melhor.generos, naoCoube: melhor.naoCoube, fimFora: melhor.fimFora || 0 };
 }
 
 /** Resumo em uma linha. */

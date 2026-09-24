@@ -1669,11 +1669,16 @@ function refazerProximas() {
        * mais PERTO da atual — a virada fica a menor possível — e segue
        * encadeado dali.
        */
-      const bpmAgora = noAr.bpm || 120;
+      // com BPM do set, a troca continua a RAMPA de onde ela está agora: a
+      // ponte é a do gênero novo mais perto do BPM que a rampa pede neste
+      // minuto, e o resto do set vai dali até o BPM do fim
+      const rampa = rampaAgora();
+      const bpmAgora = rampa?.bpmIni || noAr.bpm || 120;
       const ponte = pote.reduce((m, f) => (Math.abs(f.bpm - bpmAgora) < Math.abs(m.bpm - bpmAgora) ? f : m));
       const s = montarSet(pote, {
         minutos: Number($('pref-min').value), energia: $('pref-energia').value, variedade: $('pref-variedade').value,
         semente: ponte, recentes: soFav ? jaTocadas : [...jaTocadas, ...jaSugeridas], variar: !soFav,
+        ...(rampa || {}),
       });
       let novas = s.fila.filter((f) => f.id !== noAr.id);
       // pouca corrente (o gênero novo mora longe no BPM, psy a 140): completa
@@ -2148,6 +2153,7 @@ $('b-piloto').onclick = async () => {
       minutos: Number($('pref-min').value),
       energia: $('pref-energia').value,
       variedade: $('pref-variedade').value, evitar,
+      ...bpmDoSet(),
       obrigatorias: [],
       // evita o que TOCOU e o que já foi SUGERIDO: pedir outro set traz outras
       // músicas. No set de favoritas não — ali repetir é o ponto.
@@ -2223,7 +2229,10 @@ $('b-piloto').onclick = async () => {
     fila = s.fila;
     desenharFila();
     const resumo = resumoSet(s) + (s.naoCoube?.length
-      ? ' · ' + t('pref.naoCoube', { n: s.naoCoube.length }) : '');
+      ? ' · ' + t('pref.naoCoube', { n: s.naoCoube.length }) : '')
+      // pediu fechar num BPM e não deu (pouco tempo pra tanta subida, ou o
+      // gênero não tem faixa lá): diz, em vez de fingir que chegou
+      + (bpmDoSet().bpmFim && s.fimFora > 3 ? ' · ' + t('bpm.longe', { fim: bpmDoSet().bpmFim }) : '');
     $('fila-resumo').textContent = resumo;
     $('piloto-nota').textContent = resumo;
     if (s.naoCoube?.length) {
@@ -2640,6 +2649,50 @@ $('pref-estilo').innerHTML = Object.entries(ESTILOS).map(([id, e]) =>
   `<option value="${id}" title="${e.escola} — ${e.como}">${e.nome}</option>`).join('');
 try { $('pref-estilo').value = localStorage.getItem('garimpo.estilo') || 'pista'; } catch {}
 try { $('pref-variedade').value = localStorage.getItem('garimpo.variedade') || 'equilibrado'; } catch {}
+
+/**
+ * BPM DO SET: onde ele começa e onde termina. O montador (setlist.js) faz a
+ * rampa entre os dois ao longo da duração escolhida, e só pega faixa que cabe
+ * nessa faixa de andamento. Vazio = automático (aí vale a energia). Com o fim
+ * definido a energia não manda mais — o select apaga pra deixar isso claro.
+ */
+const lerBpm = (id) => { const v = Math.round(Number($(id).value)); return v >= 60 && v <= 200 ? v : null; };
+function bpmDoSet() { return { bpmIni: lerBpm('pref-bpm-ini'), bpmFim: lerBpm('pref-bpm-fim') }; }
+/** A rampa no minuto em que o set está: pra troca de gênero continuar dali. */
+function rampaAgora() {
+  const { bpmIni, bpmFim } = bpmDoSet();
+  if (!bpmFim || !piloto?.fila?.length) return bpmIni ? { bpmIni } : null;
+  const min = Number($('pref-min').value);
+  const tocado = piloto.fila.slice(0, piloto.indice).reduce((s, f) => s + (f.duration || 240) * 0.8, 0);
+  const de = bpmIni || piloto.fila[0].bpm || bpmFim;
+  const agora = de + (bpmFim - de) * Math.min(1, tocado / (min * 60));
+  return { bpmIni: Math.round(agora), bpmFim, minutos: Math.max(10, Math.round(min - tocado / 60)) };
+}
+function mostrarBpmSet() {
+  const { bpmIni, bpmFim } = bpmDoSet();
+  $('pref-energia').disabled = !!bpmFim;
+  $('pref-energia').title = bpmFim ? t('bpm.manda') : 'curva de energia';
+  $('b-prefs').classList.toggle('lig', !!(bpmIni || bpmFim));
+  $('b-prefs').title = bpmIni || bpmFim ? `BPM ${bpmIni ?? 'auto'} → ${bpmFim ?? 'auto'}` : t('pref.abrir');
+}
+try {
+  const b = JSON.parse(localStorage.getItem('garimpo.bpmSet') || '{}');
+  if (b.ini) $('pref-bpm-ini').value = b.ini;
+  if (b.fim) $('pref-bpm-fim').value = b.fim;
+} catch {}
+for (const id of ['pref-bpm-ini', 'pref-bpm-fim']) {
+  $(id).addEventListener('input', () => {
+    const { bpmIni, bpmFim } = bpmDoSet();
+    try { localStorage.setItem('garimpo.bpmSet', JSON.stringify({ ini: bpmIni, fim: bpmFim })); } catch {}
+    mostrarBpmSet();
+  });
+}
+$('b-bpm-auto').onclick = () => {
+  $('pref-bpm-ini').value = ''; $('pref-bpm-fim').value = '';
+  try { localStorage.removeItem('garimpo.bpmSet'); } catch {}
+  mostrarBpmSet();
+};
+mostrarBpmSet();
 $('pref-variedade').onchange = () => { try { localStorage.setItem('garimpo.variedade', $('pref-variedade').value); } catch {} };
 $('pref-estilo').onchange = () => {
   try { localStorage.setItem('garimpo.estilo', $('pref-estilo').value); } catch {}

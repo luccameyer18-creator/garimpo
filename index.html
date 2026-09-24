@@ -294,6 +294,21 @@
                    opacity:.42; }
   .pilhas button.lig { opacity:1; border-color:var(--ok); color:var(--ok);
                        box-shadow:0 0 9px rgba(46,230,168,.3); }
+  /* BPM do set: começa → termina */
+  /* uma linha só, junto do "esquecer": o ⚙ aberto já espreme a cabine */
+  #prefs:has(.bpm-set) { flex-direction:row; flex-wrap:wrap; align-items:center; gap:6px 12px; }
+  #prefs #b-esquecer { flex:1 1 160px; padding:7px 10px; font-size:11px; }
+  .bpm-set { display:flex; align-items:center; gap:6px; flex:1 1 auto; }
+  .bpm-set > b { font:800 10px ui-monospace,monospace; letter-spacing:.08em; color:var(--neon);
+                 text-transform:uppercase; white-space:nowrap; margin-right:auto; }
+  .bpm-set label { display:flex; align-items:center; gap:5px; }
+  .bpm-set small { font:700 8.5px ui-monospace,monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--fraco); }
+  .bpm-set input { width:62px; padding:5px 6px; border-radius:8px; border:1px solid var(--linha); background:var(--fundo-tela);
+                   color:var(--fg); font:800 14px ui-monospace,monospace; text-align:center; }
+  .bpm-set input:focus { outline:none; border-color:var(--neon); }
+  .bpm-set > i { font-style:normal; color:var(--mut); }
+  .bpm-set .mini { padding:6px 8px; }
+  #pref-energia:disabled { opacity:.45; }
   .prefs-linha { display:flex; gap:4px; }
   .prefs-linha button { flex:1; padding:3px 6px; font:700 9px ui-monospace,monospace; }
   .fixas { display:flex; flex-direction:column; gap:3px; max-height:110px; overflow-y:auto; }
@@ -922,6 +937,59 @@
     body.bib-aberta[data-lado="A"] #aba-A, body.bib-aberta[data-lado="B"] #aba-B { opacity:0; pointer-events:none; }
   }
 
+  /* ───────── a GAVETA LARGA ───────── */
+  /* A gaveta era uma tira de 330–440 px com a tela sobrando do lado: o bloco
+     de gêneros e a lista brigavam pela mesma coluna e cabiam 5 músicas.
+     Agora ela abre por cima de quase tudo, em DUAS colunas — à esquerda a
+     busca e os gêneros (sempre abertos, é ali que se garimpa), à direita a
+     lista, que é a coisa grande. Com espaço a lista vira duas colunas de
+     músicas. Fixa (📌) continua a coluna estreita de antes. */
+  @media (min-width:1041px), (orientation:landscape) and (min-width:640px) and (max-width:1040px) {
+    html body:not(.bib-fixa) .col.lib { width:clamp(600px, 74vw, 1320px); }
+    html body:not(.bib-fixa) .col.lib .lateral { --vidro-a:#1c1532; --vidro-b:#110c1e; }  /* opaca: por cima dos decks, o vidro virava bagunça */
+    html body:not(.bib-fixa) .col.lib .bib-cx {
+      display:grid; grid-template-columns:clamp(250px, 32%, 380px) minmax(0,1fr);
+      grid-template-rows:auto auto auto auto minmax(0,1fr); gap:8px 14px; }
+    body:not(.bib-fixa) .col.lib .bib-cx > * { min-width:0; }
+    body:not(.bib-fixa) .col.lib .bib-cx > .cartao-topo  { grid-area:1 / 1; }
+    body:not(.bib-fixa) .col.lib .bib-cx > .alvo-bib     { grid-area:2 / 1; align-self:start; }
+    body:not(.bib-fixa) .col.lib .bib-cx > #busca        { grid-area:3 / 1; }
+    body:not(.bib-fixa) .col.lib .bib-cx > .generos-topo { display:none; }  /* sem abrir/fechar: sempre à vista */
+    body:not(.bib-fixa) .col.lib .bib-cx > .crates       { grid-area:4 / 1 / 6 / 2; display:flex; min-height:0; }
+    body:not(.bib-fixa) .col.lib .bib-cx > .ordem        { grid-area:1 / 2; display:grid; align-self:center; }
+    body:not(.bib-fixa) .col.lib .bib-cx > #bib-resumo   { grid-area:2 / 2; align-self:center; }
+    body:not(.bib-fixa) .col.lib .bib-cx > .acoes-lista  { grid-area:3 / 2; align-self:center; }
+    body:not(.bib-fixa) .col.lib .bib-cx > .lista        { grid-area:4 / 2 / 6 / 3; min-height:0; }
+    /* os chips ganham a altura da coluna inteira, em vez de 132 px */
+    body:not(.bib-fixa) .col.lib .crates .gen-chips { max-height:none; flex:1 1 auto; min-height:0; }
+    /* a lista: uma coluna de músicas por ~340 px de largura */
+    body:not(.bib-fixa) .col.lib .lista { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));
+                                          align-content:start; gap:4px 10px; padding-right:2px; }
+    body:not(.bib-fixa) .col.lib .lista > :not(.item) { grid-column:1 / -1; }
+    body:not(.bib-fixa) .col.lib .lista .item { border-color:rgba(255,255,255,.05); background:rgba(255,255,255,.018); }
+    /* botões mais justos: numa coluna de 300 px o nome da música é o que importa */
+    body:not(.bib-fixa) .col.lib .lista .item { gap:5px; }
+    body:not(.bib-fixa) .col.lib .lista .item :is(.fixar, .pasta-b) { width:24px; height:26px; padding:0; font-size:11px; }
+    body:not(.bib-fixa) .col.lib .lista .item .carregar button { width:29px; height:29px; }
+  }
+  /* computador: tudo que a gaveta estreita escondia em tela baixa volta */
+  @media (min-width:1041px) {
+    html body:not(.bib-fixa) .col.lib .bib-cx > .acoes-lista { display:grid; }
+    html body:not(.bib-fixa) .col.lib .bib-cx > .alvo-bib:not([hidden]) { display:block; }
+    html body:not(.bib-fixa) .col.lib .bib-cx > #bib-resumo { display:block; }
+    html body:not(.bib-fixa) .col.lib .lateral > .rodape-bib { display:flex; flex-direction:row; align-items:center; gap:12px; }
+    body:not(.bib-fixa) .col.lib .rodape-bib #b-arquivo { flex:none; width:auto; padding:7px 14px; }
+    body:not(.bib-fixa) .col.lib .rodape-bib .creditos { flex:1; min-width:0; }
+  }
+  /* celular deitado: a gaveta vai de ponta a ponta, menos a aba do outro deck */
+  @media (orientation:landscape) and (min-width:640px) and (max-width:1040px) {
+    html body:not(.bib-fixa) .col.lib { width:calc(100vw - 58px); }
+    html body:not(.bib-fixa) .col.lib .bib-cx { grid-template-columns:clamp(230px, 36%, 320px) minmax(0,1fr); gap:6px 10px; }
+    html body:not(.bib-fixa) .col.lib .bib-cx > .ordem { display:grid; }
+    body:not(.bib-fixa) .col.lib .lista { grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); }
+    body:not(.bib-fixa) .col.lib .bib-cx > .lista { grid-area:2 / 2 / 6 / 3; }   /* sem o resumo e as ações, a lista sobe */
+  }
+
   /* BROWSE: abre a gaveta mirando ESTE deck. Os botões dele acendem na lista e
      tocar numa faixa carrega direto nele — escolher a próxima com a atual
      tocando, que é o gesto mais repetido de uma noite na cabine */
@@ -1502,6 +1570,16 @@
             </select>
           </div>
           <div class="prefs" id="prefs" hidden>
+            <!-- o BPM do set: onde começa e onde termina; vazio = ele escolhe -->
+            <div class="bpm-set" data-i18n-attr="title:bpm.dica" title="vazio = ele escolhe. Com os dois, ele sobe ou desce aos poucos e fecha o set no BPM do fim.">
+              <b data-i18n="bpm.tit">BPM do set</b>
+              <label><small data-i18n="bpm.ini">começa</small>
+                <input type="number" id="pref-bpm-ini" min="60" max="200" step="1" placeholder="auto" inputmode="numeric"></label>
+              <i aria-hidden="true">→</i>
+              <label><small data-i18n="bpm.fim">termina</small>
+                <input type="number" id="pref-bpm-fim" min="60" max="200" step="1" placeholder="auto" inputmode="numeric"></label>
+              <button id="b-bpm-auto" class="mini" data-i18n-attr="title:bpm.auto" title="automático">✕</button>
+            </div>
             <button id="b-esquecer" data-i18n="pref.esquecer">esquecer o que já tocou</button>
           </div>
           <div class="rot" id="piloto-nota" style="margin:0"></div>
