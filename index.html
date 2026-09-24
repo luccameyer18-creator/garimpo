@@ -376,6 +376,36 @@
   .menu-pasta button { text-align:left; padding:6px 9px; font:700 11px ui-sans-serif,system-ui,sans-serif; border-radius:7px; }
   .menu-pasta button.lig { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 45%, var(--linha)); }
 
+  /* A LISTA NUNCA SOME: com o bloco de gêneros aberto, em tela baixa (notebook
+     de 600 px, celular deitado) a lista ficava com altura ZERO — medido. O
+     bloco é quem cede: a área dos chips encolhe e rola por dentro, e a lista
+     tem um mínimo garantido. Em tela baixa as abas viram só o ícone (o nome
+     fica no title) e cabem numa fileira. */
+  .bib-cx > .crates { flex:0 1 auto; min-height:0; }
+  .crates .gen-chips { flex:1 1 auto; min-height:34px; }
+  .bib-cx > .lista { min-height:120px; }
+  @media (max-height:760px), (orientation:landscape) and (max-width:1040px) {
+    .crates .gen-aba > span, .gen-desc, #bib-resumo { display:none; }
+    .crates .gen-aba { padding:4px 7px; }
+    .crates .gen-aba i { font-size:14px; }
+    .gen-abas { gap:3px; padding-bottom:5px; }            /* quebra de linha: todas à vista */
+    .gen-marcados { padding:5px 7px 4px; }
+    .gen-chips { padding:5px 7px; }
+  }
+  /* tela baixa com os gêneros ABERTOS: não cabe tudo, então sai o que não se
+     usa enquanto se escolhe gênero (o aviso do deck, a ordem, o arquivo), e
+     os dois que importam têm mínimo — o bloco mostra as abas e uma fileira de
+     chips; a lista, algumas músicas */
+  @media (max-height:760px), (orientation:landscape) and (max-width:1040px) {
+    .bib-cx:has(> .crates:not([hidden])) > :is(.alvo-bib, .ordem, .acoes-lista) { display:none; }
+    .col.lib .lateral:has(.crates:not([hidden])) > .rodape-bib { display:none; }
+    .bib-cx > .crates { min-height:118px; }
+  }
+  @media (orientation:landscape) and (max-width:1040px) {
+    .bib-cx > .lista { min-height:84px; }
+    .bib-cx > .crates { min-height:104px; }
+  }
+
   /* a aba na fileira do DJ: ◂ nome ▸ */
   .dj-generos .dj-aba { color:var(--acc); border-color:color-mix(in srgb, var(--acc) 45%, var(--linha)); }
   .dj-generos .dj-aba.nome { font-weight:800; }
@@ -867,6 +897,11 @@
     body:not(.bib-fixa).bib-aberta .col.lib { transform:none; }
     body:not(.bib-fixa).bib-aberta .col.lib .lateral { box-shadow:0 0 44px rgba(0,0,0,.6); }
     body:not(.bib-fixa) .col.lib .lateral { height:100%; }
+    /* na GAVETA quem rola é a LISTA, não a gaveta inteira: o cartão cabe na
+       altura dela (a regra geral deixava ele crescer até o tamanho de todas
+       as músicas — 6 mil px medidos — e a lista ia parar fora da vista) */
+    .col.lib .lateral { overflow:hidden; }
+    .col.lib .bib-cx { flex:1 1 auto; min-height:0; overflow:hidden; }
     body:not(.bib-fixa) .aba-bib {
       display:flex; flex-direction:column; align-items:center; gap:6px; position:fixed; top:50%; z-index:44;
       transform:translateY(-50%); width:34px; padding:12px 0; color:var(--fg);
