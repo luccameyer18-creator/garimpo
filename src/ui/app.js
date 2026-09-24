@@ -1551,7 +1551,8 @@ async function aprenderLocal(id, localId) {
  * os chips da aba. A fileira do DJ mostra a MESMA aba (◂ ▸ troca) — marcar
  * lá marca aqui, é uma seleção só.
  */
-let abaGen = (() => { try { return Number(localStorage.getItem('garimpo.bib.aba')) || 0; } catch { return 0; } })();
+// quem chega pela primeira vez abre na ⚡ (os gêneros), não na 📁 pastas — vazia pra quem nunca criou uma
+let abaGen = (() => { try { const v = localStorage.getItem('garimpo.bib.aba'); return v == null ? 1 : Number(v) || 0; } catch { return 1; } })();
 function desenharChips() {
   if (abaGen >= bib.GRUPOS.length) abaGen = 0;
   const g = bib.GRUPOS[abaGen];
@@ -1639,6 +1640,24 @@ function abrirGeneros(aberto) {
 }
 $('b-generos').onclick = () => abrirGeneros($('crates').hidden);
 try { abrirGeneros(localStorage.getItem('garimpo.bib.generosAbertos') === '1'); } catch { abrirGeneros(false); }
+/**
+ * Na GAVETA LARGA (mesmo corte do CSS) os gêneros ficam SEMPRE abertos, na
+ * coluna da esquerda, e o botão de abrir/fechar some. Tem que ser pelo
+ * `hidden`, não por CSS: a regra global `[hidden] { display:none !important }`
+ * ganhava, e a coluna ficava vazia sem botão pra abrir — no celular deitado
+ * e no computador. Fora dela (📌 fixa, celular pequeno) volta o que a pessoa
+ * tinha escolhido.
+ */
+const gavetaLarga = matchMedia('(min-width:1041px), (orientation:landscape) and (min-width:640px) and (max-width:1040px)');
+function generosDaGaveta() {
+  if (gavetaLarga.matches && !document.body.classList.contains('bib-fixa')) { $('crates').hidden = false; return; }
+  let pref = false;
+  try { pref = localStorage.getItem('garimpo.bib.generosAbertos') === '1'; } catch {}
+  $('crates').hidden = !pref;
+  $('b-generos').setAttribute('aria-expanded', String(pref));
+}
+gavetaLarga.addEventListener('change', generosDaGaveta);
+generosDaGaveta();
 
 /**
  * A fileira de gêneros do DJ: os MESMOS chips da lista (marcar aqui marca lá),
@@ -2883,6 +2902,7 @@ function fecharBrowse(id = null) {
 }
 function fixarBib(fixa) {
   document.body.classList.toggle('bib-fixa', fixa);
+  generosDaGaveta();
   $('b-bib-fixar').title = t(fixa ? 'bib.soltar' : 'bib.fixar');
   try { localStorage.setItem('garimpo.bib.fixa', fixa ? '1' : '0'); } catch {}
 }
