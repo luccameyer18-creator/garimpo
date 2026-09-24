@@ -64,7 +64,9 @@ let fila = [];   // sequencia sugerida do set
 let modoDj = 'juntos', fonteDj = 'generos';
 try {
   modoDj = localStorage.getItem('garimpo.dj.modo') || 'juntos';
-  fonteDj = localStorage.getItem('garimpo.dj.fonte') || 'generos';
+  // a fileira de gêneros do DJ saiu (os gêneros moram no bloco com abas da
+  // lista): o ♥ dela virou a ★ da lista, então a fonte começa sempre nos gêneros
+  fonteDj = 'generos';
 } catch {}
 
 // ─────────────────────────── ligar o áudio ───────────────────────────
@@ -1501,7 +1503,7 @@ function refazerProximas() {
   clearTimeout(tRefazer);
   tRefazer = setTimeout(async () => {
     try {
-      const soFav = fonteDj === 'favoritas';
+      const soFav = fonteDj === 'favoritas' || bib.estado.ordem === 'favoritas';
       const cands = soFav ? bib.favoritasParaSet() : await bib.candidatasDoSet();
       const noAr = piloto.fila?.[piloto.indice];
       if (!noAr) return;
@@ -1954,7 +1956,8 @@ $('b-piloto').onclick = async () => {
   $('piloto-nota').textContent = 'garimpando faixas…';
   try {
     // o DJ toca do MESMO lugar que a lista mostra: gêneros marcados, ou favoritas
-    const soFavoritas = fonteDj === 'favoritas';
+    // ★ na lista = o DJ toca as favoritas (era o ♥ da fileira que saiu)
+    const soFavoritas = fonteDj === 'favoritas' || bib.estado.ordem === 'favoritas';
     const cands = soFavoritas ? bib.favoritasParaSet() : await bib.candidatasDoSet();
     if (cands.length < 2) throw new Error(t(soFavoritas ? 'dj.poucasFav' : 'pref.semFaixas'));
     const montar = (pote) => montarSet(pote, {

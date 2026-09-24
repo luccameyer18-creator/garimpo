@@ -331,6 +331,10 @@
   .crates button.lig { background:linear-gradient(180deg,#ffa2e6,var(--neon)); border-color:var(--neon);
                        color:#2b0420; box-shadow:0 0 12px rgba(255,78,205,.45); }
 
+  /* a fileira de gêneros do DJ, embaixo, repetia o bloco com abas da lista e
+     só tomava espaço: saiu. Gêneros se escolhem num lugar só. */
+  #dj-generos { display:none !important; }
+
   /* o BLOCO de gêneros: marcados · abas · chips da aba (ver desenharChips) */
   .crates { gap:0; border:1px solid color-mix(in srgb, var(--neon) 30%, var(--linha)); border-radius:12px;
             background:linear-gradient(180deg, rgba(40,14,48,.55), rgba(12,8,24,.75)); overflow:hidden; }
@@ -338,18 +342,20 @@
   .gen-marcados .marcado { background:linear-gradient(180deg,#ffa2e6,var(--neon)); border-color:var(--neon); color:#2b0420; }
   .gen-marcados .marcado b { font-size:9px; opacity:.7; margin-left:2px; }
   .gen-nada { font:9.5px ui-monospace,monospace; color:var(--fraco); }
-  .gen-abas { display:flex; gap:2px; overflow-x:auto; scrollbar-width:none; padding:0 6px;
+  /* as abas QUEBRAM em linhas: numa fileira que rolava pro lado (com a
+     barra escondida) só cabiam 4 das 9, e as outras sumiam sem sinal */
+  .gen-abas { display:flex; flex-wrap:wrap; gap:4px; padding:2px 7px 7px;
               border-bottom:1px solid var(--linha); }
-  .gen-abas::-webkit-scrollbar { display:none; }
-  .crates .gen-aba { flex:none; display:flex; align-items:center; gap:4px; padding:6px 8px 7px; border:none;
-                     border-radius:9px 9px 0 0; background:none; box-shadow:none; color:var(--mut);
+  .crates .gen-aba { flex:none; display:flex; align-items:center; gap:4px; padding:5px 9px; border-radius:9px;
+                     border:1px solid color-mix(in srgb, var(--neon) 18%, var(--linha));
+                     background:rgba(12,8,24,.5); box-shadow:none; color:var(--mut);
                      font:700 10px ui-sans-serif,system-ui,sans-serif; position:relative; }
   .crates .gen-aba i { font-style:normal; font-size:12px; }
   .crates .gen-aba b { min-width:15px; height:15px; border-radius:8px; background:var(--neon); color:#2b0420;
                        font:800 9px/15px ui-monospace,monospace; text-align:center; padding:0 3px; }
-  .crates .gen-aba.lig { color:#fff; background:color-mix(in srgb, var(--neon) 16%, transparent); }
-  .crates .gen-aba.lig::after { content:""; position:absolute; left:8px; right:8px; bottom:-1px; height:2px;
-                                border-radius:2px; background:var(--neon); box-shadow:0 0 8px var(--neon); }
+  .crates .gen-aba.lig { color:#fff; border-color:var(--neon);
+                         background:color-mix(in srgb, var(--neon) 22%, rgba(12,8,24,.6));
+                         box-shadow:0 0 10px color-mix(in srgb, var(--neon) 40%, transparent); }
   .gen-chips { display:flex; flex-wrap:wrap; gap:4px; align-content:flex-start; padding:7px;
                max-height:132px; overflow-y:auto; }
   .gen-desc { width:100%; font:800 8px ui-monospace,monospace; letter-spacing:.12em; color:var(--fraco);
@@ -986,7 +992,7 @@
        antes a lista esticava a cabine e cortava o PITCH dos decks */
     .janela-pista > .dj-painel { width:min(900px, 64%); display:grid; align-content:end; gap:6px 10px;
       grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,1fr);
-      grid-template-areas:"modos linha op" "generos generos nota" "prefs prefs tecnica"; }
+      grid-template-areas:"modos linha op" "nota nota tecnica" "prefs prefs prefs"; }
     .dj-painel .dj-modos { grid-area:modos; }
     .dj-painel .dj-linha { grid-area:linha; }
     .dj-painel .dj-generos { grid-area:generos; }
@@ -1614,6 +1620,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260924f"></script>
+<script type="module" src="./src/ui/app.js?v=20260924h"></script>
 </body>
 </html>
