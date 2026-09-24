@@ -58,13 +58,15 @@ let fila = [];   // sequencia sugerida do set
 /**
  * Como o DJ toca e de onde. Declarados aqui em cima porque a pintura da
  * biblioteca (que roda cedo) já lê a fonte.
- *   modoDj   'juntos' (padrão: ele conduz e te passa a vez) | 'sozinho' (só o
- *            DJ) | 'solo' (você toca; ele monta o set e só sinaliza)
+ *   modoDj   'juntos' (padrão: ele conduz e te passa a vez — e se você não
+ *            mexer, ele toca o set inteiro sozinho) | 'solo' (você toca; ele
+ *            monta o set e só sinaliza). O "só DJ" saiu: o junto já é ele.
  *   fonteDj  'generos' (os marcados) | 'favoritas' (o que tem ♥)
  */
 let modoDj = 'juntos', fonteDj = 'generos';
 try {
   modoDj = localStorage.getItem('garimpo.dj.modo') || 'juntos';
+  if (modoDj !== 'solo') modoDj = 'juntos';      // quem tinha "só DJ" guardado cai no junto
   // a fileira de gêneros do DJ saiu (os gêneros moram no bloco com abas da
   // lista): o ♥ dela virou a ★ da lista, então a fonte começa sempre nos gêneros
   fonteDj = 'generos';

@@ -922,7 +922,7 @@
   @media (max-width:700px) { .faixa .lixo { display:none; } }
 
   /* ───────── DJ: modos e gêneros à vista ───────── */
-  .dj-modos { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:4px; }
+  .dj-modos { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:4px; }
   .dj-modos button { padding:8px 4px; font:800 10.5px/1.1 ui-sans-serif,system-ui,sans-serif; border-radius:9px;
                      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--mut); }
   .dj-modos button.lig { color:#fff; border-color:var(--neon);
@@ -1230,7 +1230,7 @@
       width:100%; padding:0; border:none; background:transparent; box-shadow:none; }
     .janela-pista > .dj-painel.min > .dj-modos { display:grid !important; }
     .janela-pista > .dj-painel.min > .dj-generos { display:flex !important; }
-    .dj-modos { flex:none; grid-template-columns:repeat(3, auto); gap:3px; }
+    .dj-modos { flex:none; grid-template-columns:repeat(2, auto); gap:3px; }
     .dj-modos button { padding:6px 7px; font-size:10px; }
     .dj-linha { flex:none; gap:4px; }
     .dj-linha #b-piloto { padding:7px 10px; font-size:11px; white-space:nowrap; }
@@ -1432,7 +1432,6 @@
           <!-- os três jeitos de tocar, sempre à vista (sem menu) -->
           <div class="dj-modos" id="dj-modos">
             <button data-modo="juntos" data-i18n="dj.m.juntos">🎧 junto</button>
-            <button data-modo="sozinho" data-i18n="dj.m.sozinho">▶ só DJ</button>
             <button data-modo="solo" data-i18n="dj.m.solo">🎛 eu toco</button>
           </div>
           <!-- o que o DJ vai tocar: os mesmos gêneros da lista, numa fileira -->
@@ -1674,6 +1673,6 @@
   </div>
 </template>
 
-<script type="module" src="./src/ui/app.js?v=20260924n"></script>
+<script type="module" src="./src/ui/app.js?v=20260924o"></script>
 </body>
 </html>
