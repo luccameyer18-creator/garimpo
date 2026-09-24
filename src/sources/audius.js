@@ -625,6 +625,20 @@ export const DJS = [
 ];
 
 /**
+ * APOSTAS: nomes que estão subindo e que o Audius TEM (medido, 3 páginas de
+ * "<nome>" e "<nome> remix", nome + gênero de pista): Aurelios 30, Sammy
+ * Virji 15, Maddix 11, Chapeleiro 9, Shapeless 9, Prospa 8, Interplanetary
+ * Criminal 8, Cat Dealers 8, Dubdogz 7. Muita aposta forte simplesmente não
+ * está lá — Chris Stussy, Luke Dean, Indira Paganotto, I Hate Models: zero.
+ * As apostas que o Audius tem DE SOBRA são as dele mesmo: apostasDaSemana().
+ */
+export const APOSTAS = [
+  dj('Aurelios', '\\baurelios\\b'), dj('Sammy Virji', 'sammy virji'), dj('Maddix', '\\bmaddix\\b'),
+  dj('Chapeleiro', 'chapeleiro'), dj('Shapeless', 'shapeless'), dj('Prospa', '\\bprospa\\b'),
+  dj('Interplanetary Criminal', 'interplanetary criminal'), dj('Cat Dealers', 'cat dealers'), dj('Dubdogz', 'dubdogz'),
+];
+
+/**
  * REVELAÇÕES: quem está pegando tração sem ainda ser grande.
  *
  * O Audius já tem o "trending underground" (artistas com poucos seguidores),
@@ -635,7 +649,7 @@ export const DJS = [
  * artista, pra ser "quem está chegando", não "a faixa que viralizou".
  */
 const GEN_REVELACAO = ['House', 'Tech House', 'Techno', 'Deep House', 'Progressive House', 'Electronic', 'Disco'];
-export async function revelacoes({ limite = 60, signal } = {}) {
+async function pontuarRevelacoes(signal) {
   const pedidos = [];
   for (const genre of GEN_REVELACAO) {
     pedidos.push(api('/tracks/trending/underground', { genre, limit: '100' }, { signal, tries: 3 }));
@@ -650,9 +664,13 @@ export async function revelacoes({ limite = 60, signal } = {}) {
     if ((t.play_count || 0) < 40 || tracao < 4) continue;
     porId.set(t.id, { t, nota: tracao / Math.log10(seg + 10), artista: t.user?.id });
   }
+  return [...porId.values()].sort((a, b) => b.nota - a.nota);
+}
+export async function revelacoes({ limite = 60, signal } = {}) {
+  const notas = await pontuarRevelacoes(signal);
   const porArtista = {};
   const fora = [];
-  for (const x of [...porId.values()].sort((a, b) => b.nota - a.nota)) {
+  for (const x of notas) {
     if ((porArtista[x.artista] = (porArtista[x.artista] || 0) + 1) > 3) continue;
     fora.push(normalizeTrack(x.t));
     if (fora.length >= limite) break;
@@ -660,12 +678,39 @@ export async function revelacoes({ limite = 60, signal } = {}) {
   return fora;
 }
 
+/**
+ * APOSTAS DA SEMANA: os ARTISTAS por trás das revelações — quem soma mais
+ * tração em mais de uma faixa. Uma faixa só pode ser sorte; duas é alguém
+ * chegando. Nome limpo ("Fulano | DJ & Producer" → "Fulano").
+ */
+export async function apostasDaSemana({ n = 8, signal } = {}) {
+  const notas = await pontuarRevelacoes(signal);
+  const por = new Map();
+  for (const x of notas) {
+    const u = x.t.user; if (!u?.id) continue;
+    const a = por.get(u.id) || { id: u.id, nome: u.name, seguidores: u.follower_count, nota: 0, faixas: 0 };
+    a.nota += x.nota; a.faixas++;
+    por.set(u.id, a);
+  }
+  const limpo = (s) => String(s || '').split(/[|•·]/)[0].replace(/[^\p{L}\p{N} &.'$-]/gu, '').trim().slice(0, 24);
+  return [...por.values()]
+    .filter((a) => a.faixas >= 2 && limpo(a.nome).length >= 2)
+    .sort((a, b) => b.nota - a.nota).slice(0, n)
+    .map((a) => ({ id: a.id, nome: limpo(a.nome), seguidores: a.seguidores }));
+}
+
+/** As faixas de um artista, as mais tocadas primeiro, só as que cabem num deck. */
+export async function faixasDoArtista(id, { limite = 60, signal } = {}) {
+  const data = await api(`/users/${id}/tracks`, { limit: '100', sort: 'plays' }, { signal });
+  return (data || []).filter(isDeckable).slice(0, limite).map(normalizeTrack);
+}
+
 /** Compatibilidade: a primeira versão só tinha crates do Brasil. */
 export const CRATES_BR = CRATES.filter((c) => c.reg === 'BR');
 
 /** Busca uma crate e descarta o homônimo. */
 export async function crateBr(nome, { limite = 40, signal } = {}) {
-  const c = CRATES.find((x) => x.nome === nome) || DJS.find((x) => x.nome === nome);
+  const c = [...CRATES, ...DJS, ...APOSTAS].find((x) => x.nome === nome);
   if (!c) throw new AudiusError(`crate desconhecida: ${nome}`);
   // as duas primeiras buscas da pilha, não só o termo principal: pilha de DJ
   // vive de "<nome> remix", que o termo sozinho não traz

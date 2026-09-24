@@ -17,7 +17,7 @@
  *     e aí o DJ toca só elas
  */
 
-import { GENRES, CRATES, DJS, trending, search, crateBr, revelacoes } from '../sources/audius.js';
+import { GENRES, CRATES, DJS, APOSTAS, trending, search, crateBr, revelacoes, apostasDaSemana, faixasDoArtista } from '../sources/audius.js';
 import * as crate from '../sources/crate.js';
 
 /** Todas as pilhas, cada uma com chave única e rótulo. */
@@ -33,13 +33,46 @@ export const GRUPOS = [
   { grupo: 'app.grupo.estilos',
     itens: CRATES.filter((c) => c.reg === 'EST').map((c) => ({ chave: 'est:' + c.nome, nome: c.nome,
       rede: () => crateBr(c.nome, { limite: 40 }) })) },
-  // Revelações é FRESCA: quem está chegando muda toda semana, então vai à
-  // rede de novo a cada poucas horas mesmo com o acervo cheio dela
-  { grupo: 'app.grupo.djs',
+  // as apostas: o que está estourando. Revelações é FRESCA (quem está
+  // chegando muda toda semana: volta à rede a cada 6 h mesmo com acervo); as
+  // 🚀 da semana entram logo depois dela, ver carregarApostas()
+  { grupo: 'app.grupo.apostas',
     itens: [{ chave: 'dj:Revelações', nome: '🔥 Revelações', fresca: true, rede: () => revelacoes({ limite: 60 }) },
-      ...DJS.map((c) => ({ chave: 'dj:' + c.nome, nome: c.nome, rede: () => crateBr(c.nome, { limite: 60 }) }))] },
+      ...APOSTAS.map((c) => ({ chave: 'dj:' + c.nome, nome: c.nome, rede: () => crateBr(c.nome, { limite: 60 }) }))] },
+  { grupo: 'app.grupo.djs',
+    itens: DJS.map((c) => ({ chave: 'dj:' + c.nome, nome: c.nome, rede: () => crateBr(c.nome, { limite: 60 }) })) },
 ];
-const TODAS = GRUPOS.flatMap((g) => g.itens);
+let TODAS = GRUPOS.flatMap((g) => g.itens);
+
+/**
+ * 🚀 APOSTAS DA SEMANA: os artistas do Audius que mais pegaram tração, com
+ * NOME, um chip cada. Guardadas por 12 h (a conta pede 14 chamadas); ao
+ * trocar, as que saíram deixam de estar marcadas. Devolve true se mudou.
+ */
+const GRUPO_APOSTAS = GRUPOS.find((g) => g.grupo === 'app.grupo.apostas');
+function porApostas(lista) {
+  GRUPO_APOSTAS.itens = GRUPO_APOSTAS.itens.filter((i) => !i.chave.startsWith('ap:'));
+  // quem já tem chip com nome (Aurelios é aposta fixa E sai na da semana) não repete
+  const ja = new Set(TODAS.filter((i) => i.chave.startsWith('dj:')).map((i) => i.nome.toLowerCase()));
+  lista = lista.filter((a) => !ja.has(a.nome.toLowerCase()));
+  GRUPO_APOSTAS.itens.splice(1, 0, ...lista.map((a) => ({
+    chave: 'ap:' + a.id, nome: '🚀 ' + a.nome, fresca: true, rede: () => faixasDoArtista(a.id, { limite: 60 }),
+  })));
+  TODAS = GRUPOS.flatMap((g) => g.itens);
+}
+export async function carregarApostas() {
+  const salvo = ler('garimpo.apostas', null);
+  if (salvo?.lista?.length && Date.now() - salvo.quando < 12 * 3600e3) return false;
+  let lista;
+  try { lista = await apostasDaSemana({ n: 8 }); } catch { return false; }
+  if (!lista.length) return false;
+  gravar('garimpo.apostas', { quando: Date.now(), lista });
+  porApostas(lista);
+  const vivas = new Set(TODAS.map((i) => i.chave));
+  for (const s of [...selecionadas]) if (s.startsWith('ap:') && !vivas.has(s)) selecionadas.delete(s);
+  gravar('garimpo.bib.generos', [...selecionadas]);
+  return true;
+}
 
 export const ORDENS = ['embaralhar', 'favoritas', 'bpm', 'tom', 'nome', 'combina'];
 
@@ -53,6 +86,8 @@ let selecionadas = new Set(ler('garimpo.bib.generos', []));
 let ordem = ler('garimpo.bib.ordem', 'embaralhar');
 let decrescente = ler('garimpo.bib.desc', false);
 let favoritas = ler('garimpo.favoritas', []);   // objetos completos: tocam sem rede
+// as 🚀 apostas guardadas aparecem já no primeiro quadro (ler/gravar existem daqui pra baixo)
+porApostas(ler('garimpo.apostas', { lista: [] }).lista || []);
 /**
  * TRASH: o que não é música (piada, teste, grito, ruído). `lixo` é o que VOCÊ
  * tirou (👎) ou o Jev reprovou neste aparelho; `lixoGalera` é o que a galera

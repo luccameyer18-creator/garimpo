@@ -215,7 +215,8 @@ const PT = {
   'app.grupo.brasil': 'brasil',
   'app.grupo.latino': 'latino',
   'app.grupo.estilos': 'mais estilos',
-  'app.grupo.djs': 'DJs, remixes e revelações',
+  'app.grupo.djs': 'DJs e remixes',
+  'app.grupo.apostas': 'apostas: tão estourando',
 
   'mix.encaixar': 'ENCAIXAR',
   'mix.encaixar.dica': 'desliza o deck B até a batida cair em cima do A',
@@ -508,7 +509,8 @@ const EN = {
   'app.grupo.brasil': 'brazil',
   'app.grupo.latino': 'latin',
   'app.grupo.estilos': 'more styles',
-  'app.grupo.djs': 'DJs, remixes & rising',
+  'app.grupo.djs': 'DJs & remixes',
+  'app.grupo.apostas': 'rising: blowing up now',
 
   'mix.encaixar': 'LINE UP',
   'mix.encaixar.dica': 'slides deck B until its beat lands on top of A',
@@ -800,7 +802,8 @@ const ES = {
   'app.grupo.brasil': 'brasil',
   'app.grupo.latino': 'latino',
   'app.grupo.estilos': 'más estilos',
-  'app.grupo.djs': 'DJs, remixes y revelaciones',
+  'app.grupo.djs': 'DJs y remixes',
+  'app.grupo.apostas': 'apuestas: están explotando',
 
   'mix.encaixar': 'CUADRAR',
   'mix.encaixar.dica': 'desliza el deck B hasta que su golpe caiga sobre el de A',

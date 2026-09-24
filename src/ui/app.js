@@ -1401,12 +1401,22 @@ function pintarBiblioteca() {
     : n ? t('bib.generos', { n }) : t('bib.tudo');
 }
 
-$('crates').innerHTML =
-  `<div class="grupo-chips"><button data-pilha="*" class="chip-tudo">${t('bib.tudoChip')}</button></div>` +
-  bib.GRUPOS.map((g) =>
-    `<div class="grupo-chips"><span class="rot-chips" data-i18n="${g.grupo}">${t(g.grupo)}</span>` +
-    g.itens.map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('') +
-    '</div>').join('');
+/** Os chips de gênero, nos dois lugares: a lista e a fileira do DJ. */
+function desenharChips() {
+  $('crates').innerHTML =
+    `<div class="grupo-chips"><button data-pilha="*" class="chip-tudo">${t('bib.tudoChip')}</button></div>` +
+    bib.GRUPOS.map((g) =>
+      `<div class="grupo-chips"><span class="rot-chips" data-i18n="${g.grupo}">${t(g.grupo)}</span>` +
+      g.itens.map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('') +
+      '</div>').join('');
+  $('dj-generos').innerHTML =
+    `<button class="fav" data-fonte="favoritas">♥ ${t('dj.fav')}</button>` +
+    `<button data-pilha="*" class="chip-tudo">${t('bib.tudoChip')}</button>` +
+    bib.GRUPOS.flatMap((g) => g.itens).map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('');
+}
+desenharChips();
+// as 🚀 apostas da semana chegam depois (rede): redesenha os chips quando vierem
+bib.carregarApostas().then((mudou) => { if (mudou) { desenharChips(); pintarBiblioteca(); } });
 /**
  * Os gêneros ficam num menu que abre e fecha. Abertos o tempo todo eram ~40
  * chips empurrando a lista pra baixo; fechados, o botão mostra o que está
@@ -1424,10 +1434,6 @@ try { abrirGeneros(localStorage.getItem('garimpo.bib.generosAbertos') === '1'); 
  * A fileira de gêneros do DJ: os MESMOS chips da lista (marcar aqui marca lá),
  * mais o ♥ que troca a fonte pra favoritas. Tudo à vista, sem menu.
  */
-$('dj-generos').innerHTML =
-  `<button class="fav" data-fonte="favoritas">♥ ${t('dj.fav')}</button>` +
-  `<button data-pilha="*" class="chip-tudo">${t('bib.tudoChip')}</button>` +
-  bib.GRUPOS.flatMap((g) => g.itens).map((i) => `<button data-pilha="${i.chave}">${i.nome}</button>`).join('');
 $('dj-generos').addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (!b) return;
