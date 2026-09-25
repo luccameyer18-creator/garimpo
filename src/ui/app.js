@@ -13,7 +13,7 @@ import { montarFila, resumo as resumoFila } from '../coach/fila.js';
 import { momentos, proximoMomento, faltaPara } from '../coach/momentos.js';
 import { montarSet, resumoSet } from '../coach/setlist.js';
 import * as crate from '../sources/crate.js';
-import { garimpar } from '../sources/garimpar.js';
+import { garimparLote, LOTE_GENEROS } from '../sources/garimpar.js';
 import { carregarSemente, SEMENTES } from '../sources/semente.js';
 import { puxar as puxarGalera, votarLixo, puxarLixo, enviarFeedback } from '../sources/galera.js';
 import { Piloto } from '../coach/piloto.js';
@@ -2620,17 +2620,40 @@ async function mostrarAcervo() {
   }
 }
 
-$('b-garimpar').onclick = async () => {
-  if (cavando) { cavando.abort(); return; }
+/**
+ * O LOTE DO DIA (ideia do Lucca). O "garimpar mais" era um garimpo sem fim
+ * que a pessoa fazia uma vez e esquecia; agora é UM lote por dia de até 1.000
+ * músicas novas do gênero que ela escolhe — ela volta amanhã pra mais, e cada
+ * lote vai pro acervo de todo mundo (garimparLote em sources/garimpar.js).
+ * Parou no meio? Continua no mesmo dia, do mesmo gênero, até fechar os 1.000.
+ */
+const LOTE_MAX = 1000;
+const hojeStr = () => new Date().toLocaleDateString('sv');
+const loteDeHoje = () => { const l = bib.ultimoLote(); return l?.dia === hojeStr() ? l : null; };
+const nomeGenero = (g) => (g === 'Tudo' ? t('lote.tudo') : g);
+function botaoLote() {
+  const b = $('b-garimpar'), l = loteDeHoje();
+  b.classList.toggle('feito', !!l?.completo);
+  b.textContent = cavando ? t('acervo.parar') : !l ? t('lote.bt') : l.completo ? t('lote.feito') : t('lote.continuar');
+}
+function mostrarLote() {
+  bib.porPastas();
+  irAba(0);
+  bib.marcarGenero('lote:ultimo');
+  desenharChips(); recarregar();
+}
+async function cavarLote(genero) {
+  const antes = loteDeHoje();
+  const ids0 = antes?.genero === genero ? antes.ids : [];
   cavando = new AbortController();
   const b = $('b-garimpar');
-  b.classList.add('lig'); b.textContent = t('acervo.parar');
+  b.classList.add('lig'); botaoLote();
+  let r = null;
   try {
-    await garimpar({
-      alvo: 12000, signal: cavando.signal,
-      aoAndar: ({ total, frente, feito, de }) => {
-        $('acervo-n').textContent = t('acervo.cavando',
-          { n: total.toLocaleString('pt-BR'), f: frente, i: feito, de });
+    r = await garimparLote({
+      genero, alvo: LOTE_MAX - ids0.length, signal: cavando.signal,
+      aoAndar: ({ n, frente }) => {
+        $('acervo-n').textContent = t('lote.cavando', { n: (ids0.length + n).toLocaleString('pt-BR'), max: LOTE_MAX.toLocaleString('pt-BR'), g: nomeGenero(genero), f: frente });
         $('acervo-n').style.color = 'var(--neon)';
       },
     });
@@ -2638,11 +2661,42 @@ $('b-garimpar').onclick = async () => {
     $('acervo-n').textContent = t('acervo.erro', { m: e.message });
   }
   cavando = null;
-  b.classList.remove('lig'); b.textContent = t('acervo.garimpar');
-  await mostrarAcervo();
-  // com acervo novo, recarrega a pilha em que a pessoa está
-  recarregar();
+  b.classList.remove('lig');
+  if (r) {
+    const ids = [...ids0, ...r.ids];
+    // completo: chegou nos 1.000 OU as fontes acabaram (não adianta voltar hoje)
+    const completo = ids.length >= LOTE_MAX || !r.parou;
+    try { localStorage.setItem('garimpo.lote', JSON.stringify({ dia: hojeStr(), genero, ids, completo })); } catch {}
+    window.garimpoEvento?.('lote', { genero, faixa: ids.length >= 900 ? '900+' : ids.length >= 300 ? '300-899' : '<300' });
+    await mostrarAcervo();
+    $('acervo-n').textContent = t(ids.length ? 'lote.pronto' : 'lote.nada', { n: ids.length.toLocaleString('pt-BR'), g: nomeGenero(genero) });
+    $('acervo-n').style.color = 'var(--ok)';
+    if (ids.length) mostrarLote();
+  }
+  botaoLote();
+}
+$('b-garimpar').onclick = () => {
+  if (cavando) { cavando.abort(); return; }
+  const l = loteDeHoje();
+  if (l && !l.completo) { cavarLote(l.genero); return; }       // continua o de hoje
+  if (l) {
+    mostrarLote();
+    $('acervo-n').textContent = t('lote.amanha', { n: l.ids.length.toLocaleString('pt-BR'), g: nomeGenero(l.genero) });
+    $('acervo-n').style.color = 'var(--ok)';
+    return;
+  }
+  $('lote-generos').innerHTML = LOTE_GENEROS.map((g) =>
+    `<button data-g="${g.id}">${g.tudo ? t('lote.tudo') : g.id}</button>`).join('');
+  $('lote').showModal();
 };
+$('lote-generos').onclick = (e) => {
+  const g = e.target.closest('[data-g]')?.dataset.g;
+  if (!g) return;
+  $('lote').close();
+  cavarLote(g);
+};
+$('fechar-lote').onclick = () => $('lote').close();
+botaoLote();
 
 /**
  * Na primeira visita, carrega o acervo que vem junto com o app.

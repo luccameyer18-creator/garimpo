@@ -24,7 +24,7 @@
 
 import { APP_NAME, GENRES, CRATES, DJS, APOSTAS, ARTISTAS, isDeckable, normalizeTrack } from './audius.js';
 import * as hearthis from './hearthis.js';
-import { guardar as guardarLocal, contar, artistas, artistasVarridos, marcarVarrido,
+import { guardar as guardarLocal, contar, artistas, artistasVarridos, marcarVarrido, ausentes,
          frentesEsgotadas, marcarEsgotada } from './crate.js';
 import { compartilhar } from './galera.js';
 
@@ -398,4 +398,140 @@ export async function garimpar({ alvo = 10000, signal, aoAndar = () => {} } = {}
   if (!signal?.aborted && total < alvo) await varrerArtistas();
 
   return { total, frentes: feito, de: aFazer.length, parou: !!signal?.aborted };
+}
+
+
+// ─────────────────────────── o LOTE DO DIA ───────────────────────────
+
+/**
+ * O LOTE DO DIA (ideia do Lucca): em vez de um garimpo sem fim na primeira
+ * visita, cada pessoa garimpa UM lote por dia — até 1.000 músicas NOVAS do
+ * gênero que escolher. "Novas" = que o acervo ainda não tem; e como tudo que
+ * alguém garimpa vai pro acervo de todo mundo (galera.js), o lote de cada um
+ * empurra o acervo de todos pra frente: quanto mais gente garimpa, mais música
+ * nova chega pra todo mundo, e o próximo a garimpar House cava mais fundo.
+ *
+ * As frentes, da mais certeira pra mais funda:
+ *   1. trending do gênero (3 janelas x 3 páginas)
+ *   2. busca por texto do gênero e das variações dele, até 1.200 de fundo
+ *   3. categoria do hearthis que casa com o gênero
+ */
+export const LOTE_GENEROS = [
+  // 🌎 DE TUDO: um pouco de cada gênero (o garimpo pelo garimpo — o que é
+  // ruim a galera tira com 👎)
+  { id: 'Tudo', audius: null, tudo: true, termos: [] },
+  { id: 'House', audius: 'House', termos: ['house', 'deep house', 'afro house', 'melodic house', 'jackin house', 'funky house', 'bass house', 'organic house', 'soulful house'] },
+  { id: 'Techno', audius: 'Techno', termos: ['techno', 'melodic techno', 'minimal techno', 'hard techno', 'peak time techno', 'hypnotic techno', 'acid techno', 'dub techno'] },
+  { id: 'Tech House', audius: 'Tech House', termos: ['tech house', 'minimal tech house', 'jackin tech house'] },
+  { id: 'Deep House', audius: 'Deep House', termos: ['deep house', 'organic house', 'lounge house'] },
+  { id: 'Disco', audius: 'Disco', termos: ['disco', 'nu disco', 'italo disco', 'disco edit', 'boogie', 'indie dance', 'disco house'] },
+  { id: 'Afro House', audius: null, termos: ['afro house', 'afro tech', 'amapiano', 'afrobeats remix'] },
+  { id: 'Funk BR', audius: 'Funk', termos: ['funk carioca', 'baile funk', 'funk mandelao', 'brega funk', 'funk bh', 'funk paulista', 'funk remix'] },
+  { id: 'Hip-Hop/Rap', audius: 'Hip-Hop/Rap', termos: ['hip hop', 'boom bap', 'rap', 'trap', 'drill', 'phonk', 'lo-fi hip hop'] },
+  { id: 'Drum & Bass', audius: 'Drum & Bass', termos: ['drum and bass', 'dnb', 'jungle', 'liquid dnb', 'neurofunk'] },
+  { id: 'Trance', audius: 'Trance', termos: ['trance', 'psytrance', 'progressive trance', 'uplifting trance'] },
+  { id: 'Dubstep', audius: 'Dubstep', termos: ['dubstep', 'riddim', 'bass music', 'future bass'] },
+  { id: 'Latin', audius: 'Latin', termos: ['reggaeton', 'latin house', 'cumbia', 'dembow', 'moombahton'] },
+  { id: 'Electronic', audius: 'Electronic', termos: ['electronic', 'electro', 'breakbeat', 'edit', 'bootleg', 'club mix'] },
+  { id: 'Ambient', audius: 'Ambient', termos: ['ambient', 'downtempo', 'chillout', 'lo-fi'] },
+];
+
+export async function garimparLote({ genero, alvo = 1000, signal, aoAndar = () => {} } = {}) {
+  const G = LOTE_GENEROS.find((g) => g.id === genero) || LOTE_GENEROS[0];
+  const pilha = G.audius ? 'gen:' + G.audius : null;
+  const series = [];
+  if (G.tudo) {
+    // de tudo: a semana em alta de cada gênero e a busca rasa de cada termo
+    // principal, embaralhados — e depois os artistas, como nos outros
+    for (const g of LOTE_GENEROS.filter((x) => !x.tudo)) {
+      if (g.audius) series.push({ nome: `${g.id} · em alta`, urls: PAGINAS.map((o) =>
+        `${H}/tracks/trending?genre=${encodeURIComponent(g.audius)}&limit=${LIMITE}&offset=${o}&time=week&app_name=${APP_NAME}`) });
+      series.push({ nome: `busca “${g.termos[0]}”`, urls: [0, 100, 200, 300].map((o) =>
+        `${H}/tracks/search?query=${encodeURIComponent(g.termos[0])}&limit=${LIMITE}&offset=${o}&app_name=${APP_NAME}`) });
+    }
+    series.push({ nome: 'underground', urls: PAGINAS.map((o) =>
+      `${H}/tracks/trending/underground?limit=${LIMITE}&offset=${o}&app_name=${APP_NAME}`) });
+    series.sort(() => Math.random() - 0.5);
+  }
+  if (G.audius) {
+    for (const time of JANELAS) {
+      series.push({ nome: `${G.id} · em alta (${time})`, urls: PAGINAS.map((o) =>
+        `${H}/tracks/trending?genre=${encodeURIComponent(G.audius)}&limit=${LIMITE}&offset=${o}&time=${time}&app_name=${APP_NAME}`) });
+    }
+  }
+  const FUNDO = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100];
+  for (const q of G.termos) {
+    series.push({ nome: `busca “${q}”`, urls: FUNDO.map((o) =>
+      `${H}/tracks/search?query=${encodeURIComponent(q)}&limit=${LIMITE}&offset=${o}&app_name=${APP_NAME}`) });
+  }
+  for (const c of hearthis.CATEGORIAS.filter((c) => c.genero === G.audius || c.genero === G.id)) {
+    series.push({ nome: `hearthis · ${c.nome}`, hearthis: c.slug, urls: Array.from({ length: 20 }, (_, i) =>
+      `${hearthis.API}/categories/${c.slug}/?page=${i + 1}&count=${hearthis.POR_PAGINA}&duration=10`) });
+  }
+
+  const ids = [];
+  let feito = 0;
+  for (const s of series) {
+    if (signal?.aborted || ids.length >= alvo) break;
+    feito++;
+    for (const url of s.urls) {
+      if (signal?.aborted || ids.length >= alvo) break;
+      try {
+        const cru = s.hearthis ? await pegarHearthis(url, signal) : await pegar(url, signal);
+        if (!cru.length) break;                       // a fonte acabou este termo
+        const prontas = s.hearthis ? hearthis.preparar(cru, { slugOrigem: s.hearthis }) : preparar(cru);
+        const novas = (await ausentes(prontas)).filter((f) => !ids.includes(f.id)).slice(0, alvo - ids.length);
+        if (novas.length) {
+          // o rótulo do gênero só em quem é do gênero (a busca por texto pega vizinho)
+          const doGenero = novas.filter((f) => !G.audius || f.genre === G.audius || s.hearthis);
+          const outras = novas.filter((f) => !doGenero.includes(f));
+          await guardar(doGenero, pilha);
+          await guardar(outras, null);
+          ids.push(...novas.map((f) => f.id));
+        }
+        aoAndar({ n: ids.length, alvo, frente: s.nome, feito, de: series.length });
+      } catch (e) {
+        if (signal?.aborted) break;
+        break;                                        // página com erro: próxima frente
+      }
+      await dormir(PAUSA);
+    }
+  }
+  /**
+   * 4. O CATÁLOGO DOS ARTISTAS do próprio lote — o reservatório mais fundo.
+   * As buscas batem no que o acervo já tem (a semente trouxe 63 mil); o artista
+   * que apareceu no lote costuma ter dezenas de faixas que ninguém garimpou, e
+   * do mesmo som. Medido: House parava em 511 sem esta frente.
+   */
+  if (ids.length < alvo && !signal?.aborted) {
+    const jaVarridos = artistasVarridos();
+    const doLote = await Promise.resolve().then(async () => {
+      const { pegarIds } = await import('./crate.js');
+      return pegarIds(ids.slice(0, 400));
+    }).catch(() => []);
+    const handles = [...new Set(doLote.map((f) => f.handle).filter(Boolean))].filter((h) => !jaVarridos.has(h));
+    let k = 0;
+    for (const h of handles) {
+      if (signal?.aborted || ids.length >= alvo) break;
+      k++;
+      try {
+        let prontas;
+        if (h.startsWith(hearthis.PREFIXO)) prontas = await hearthis.faixasDoArtista(h, { signal });
+        else {
+          const u = await pegar(`${H}/users/handle/${encodeURIComponent(h)}?app_name=${APP_NAME}`, signal);
+          const uid = Array.isArray(u) ? u[0]?.id : u?.id;
+          prontas = uid ? preparar(await pegar(`${H}/users/${uid}/tracks?limit=100&app_name=${APP_NAME}`, signal)) : [];
+        }
+        const novas = (await ausentes(prontas || [])).filter((f) => !ids.includes(f.id)).slice(0, alvo - ids.length);
+        if (novas.length) { await guardar(novas, null); ids.push(...novas.map((f) => f.id)); }
+        marcarVarrido(h);
+        aoAndar({ n: ids.length, alvo, frente: `artista ${h.replace(hearthis.PREFIXO, '')}`, feito: series.length + k, de: series.length + handles.length });
+      } catch (e) {
+        if (signal?.aborted) break;
+        marcarVarrido(h);
+      }
+      await dormir(PAUSA);
+    }
+  }
+  return { ids, genero: G.id, parou: !!signal?.aborted };
 }

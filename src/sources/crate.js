@@ -303,6 +303,24 @@ export function marcarVarrido(handle) {
   } catch { /* sem storage, revarre — é lento, não é errado */ }
 }
 
+/** Das faixas dadas, só as que o acervo daqui AINDA NÃO TEM. */
+export async function ausentes(faixas) {
+  if (!faixas?.length) return [];
+  const b = await abrir();
+  const loja = b.transaction(LOJA, 'readonly').objectStore(LOJA);
+  const tem = await Promise.all(faixas.map((f) => pedido(loja.getKey(f.id)).catch(() => undefined)));
+  return faixas.filter((f, i) => tem[i] === undefined);
+}
+
+/** As faixas destes ids, na ordem dada (as que não existem ficam de fora). */
+export async function pegarIds(ids) {
+  if (!ids?.length) return [];
+  const b = await abrir();
+  const loja = b.transaction(LOJA, 'readonly').objectStore(LOJA);
+  const achadas = await Promise.all(ids.map((id) => pedido(loja.get(id)).catch(() => null)));
+  return achadas.filter(Boolean);
+}
+
 export async function limpar() {
   const b = await abrir();
   try { localStorage.removeItem(CHAVE_VARRIDOS); localStorage.removeItem(CHAVE_FRENTES); } catch {}

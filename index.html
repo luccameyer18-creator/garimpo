@@ -823,6 +823,10 @@
   dialog dt { font-weight:700; color:var(--acc); margin-top:13px; font-size:12.5px; }
   dialog dd { margin:3px 0 0; color:var(--mut); font-size:12.5px; }
   dialog .fechar { margin-top:20px; width:100%; padding:12px; font-size:12px; }
+  .lote-generos { display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:6px; margin-top:6px; }
+  .lote-generos button { padding:11px 8px; border-radius:10px; font:800 12px ui-sans-serif,system-ui,sans-serif; }
+  .lote-generos button:hover { border-color:var(--neon); color:var(--neon); }
+  #b-garimpar.feito { border-color:var(--ok); color:var(--ok); }
   #b-rever-guia { margin-top:16px; width:100%; padding:11px; font-size:12px; border-color:var(--neon); color:var(--neon); }
 
   /* ───────── o guia da primeira vez (ver src/ui/tour.js) ───────── */
@@ -1658,7 +1662,7 @@
         <div class="cartao-topo">
           <h2 data-i18n="app.musicas">músicas</h2>
           <span id="acervo-n" class="rot" style="margin:0">—</span>
-          <button id="b-garimpar" class="mini" data-i18n="acervo.garimpar">garimpar mais</button>
+          <button id="b-garimpar" class="mini" data-i18n="lote.bt">⛏ lote do dia</button>
         </div>
         <div class="alvo-bib" id="alvo-bib" hidden></div>
         <input type="text" id="busca" placeholder="buscar por nome…" data-i18n-attr="placeholder:app.buscar">
@@ -1742,6 +1746,14 @@
   <div class="rot-chips" style="margin-top:12px" data-i18n="sug.guardadas">suas sugestões guardadas neste aparelho</div>
   <div class="sug-lista" id="sug-lista"></div>
   <button class="fechar" id="fechar-sugestoes" data-i18n="app.fechar">fechar</button>
+</dialog>
+
+<!-- o LOTE DO DIA: 1 por dia, até 1.000 músicas novas do gênero escolhido -->
+<dialog id="lote">
+  <h3 data-i18n="lote.tit">⛏ Lote do dia</h3>
+  <div class="sub" data-i18n="lote.sub">Uma vez por dia: até 1.000 músicas novas do gênero que você escolher. Tudo que você garimpa entra no acervo de todo mundo — quanto mais gente garimpa, mais música nova chega pra todos.</div>
+  <div class="lote-generos" id="lote-generos"></div>
+  <button class="fechar" id="fechar-lote" data-i18n="lote.fechar">agora não</button>
 </dialog>
 
 <dialog id="ajuda">

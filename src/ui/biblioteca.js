@@ -96,6 +96,15 @@ export function porPastas() {
   GRUPO_PASTAS.itens = pastas.listar().map((p) => ({
     chave: 'pasta:' + p.id, nome: p.nome, n: p.n, pasta: true, rede: async () => pastas.faixasDe(p.id),
   }));
+  // o ÚLTIMO LOTE garimpado (ver garimparLote): um chip na frente das pastas
+  const lote = ultimoLote();
+  if (lote?.ids?.length) {
+    const deHoje = lote.dia === new Date().toLocaleDateString('sv');
+    GRUPO_PASTAS.itens.unshift({
+      chave: 'lote:ultimo', nome: (deHoje ? '🆕 ' : '⛏ ') + (lote.genero === 'Tudo' ? '🌎' : lote.genero), n: lote.ids.length,
+      rede: async () => crate.pegarIds(lote.ids),
+    });
+  }
   TODAS = GRUPOS.flatMap((g) => g.itens);
   // pasta apagada deixa de estar marcada
   let mudou = false;
@@ -194,6 +203,17 @@ export const estado = {
   get decrescente() { return decrescente; },
   get favoritas() { return favoritas; },
 };
+
+/** O lote que a pessoa garimpou por último: { dia, genero, ids, completo }. */
+export function ultimoLote() {
+  try { return JSON.parse(localStorage.getItem('garimpo.lote') || 'null'); } catch { return null; }
+}
+/** Deixa o chip marcado (sem alternar). */
+export function marcarGenero(chave) {
+  if (selecionadas.has(chave)) return;
+  selecionadas.add(chave);
+  gravar('garimpo.bib.generos', [...selecionadas]);
+}
 
 export function alternarGenero(chave) {
   if (chave === '*') selecionadas.clear();
