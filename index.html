@@ -823,6 +823,28 @@
   dialog dt { font-weight:700; color:var(--acc); margin-top:13px; font-size:12.5px; }
   dialog dd { margin:3px 0 0; color:var(--mut); font-size:12.5px; }
   dialog .fechar { margin-top:20px; width:100%; padding:12px; font-size:12px; }
+  /* ⛏ GARIMPANDO: pepitas de ouro caindo atrás da lista, brilhos e um veio
+     dourado respirando embaixo — só enquanto o lote cava (body.cavando).
+     Só transform e opacity, e parado (display:none) fora do garimpo. */
+  .col.lib .lateral { position:relative; }
+  .col.lib .lateral > :not(#garimpo-fx) { position:relative; z-index:1; }
+  #garimpo-fx { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; border-radius:inherit; display:none; }
+  body.cavando #garimpo-fx { display:block; animation:fx-entra .8s ease-out both; }
+  @keyframes fx-entra { from { opacity:0; } to { opacity:1; } }
+  #garimpo-fx::after { content:''; position:absolute; left:0; right:0; bottom:0; height:38%;
+    background:linear-gradient(0deg, rgba(255,186,40,.22), rgba(255,186,40,.06) 55%, transparent);
+    animation:fx-veio 2.2s ease-in-out infinite alternate; }
+  @keyframes fx-veio { from { opacity:.45; } to { opacity:1; } }
+  #garimpo-fx i { position:absolute; top:-40px; left:var(--x); width:var(--s); height:var(--s);
+    border-radius:42% 58% 46% 62%; background:radial-gradient(circle at 34% 30%, #fff7cf, #ffd34d 34%, #c48a12 72%, #7a5208);
+    box-shadow:0 0 10px rgba(255,196,60,.55); animation:fx-pepita var(--d) linear var(--a) infinite; }
+  #garimpo-fx i.terra { background:#6b4526; box-shadow:none; border-radius:50%; opacity:.55; }
+  @keyframes fx-pepita { from { transform:translateY(0) rotate(0deg); } to { transform:translateY(1200px) rotate(540deg); } }
+  #garimpo-fx b { position:absolute; left:var(--x); top:var(--y); width:14px; height:14px;
+    background:#fff3b0; clip-path:polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+    opacity:0; animation:fx-brilho 1.8s ease-in-out var(--a) infinite; }
+  @keyframes fx-brilho { 0%, 100% { opacity:0; transform:scale(.2) rotate(0deg); } 50% { opacity:1; transform:scale(1) rotate(45deg); } }
+  @media (prefers-reduced-motion: reduce) { #garimpo-fx { display:none !important; } }
   .lote-generos { display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:6px; margin-top:6px; }
   .lote-generos button { padding:11px 8px; border-radius:10px; font:800 12px ui-sans-serif,system-ui,sans-serif; }
   .lote-generos button:hover { border-color:var(--neon); color:var(--neon); }
@@ -1662,7 +1684,7 @@
         <div class="cartao-topo">
           <h2 data-i18n="app.musicas">músicas</h2>
           <span id="acervo-n" class="rot" style="margin:0">—</span>
-          <button id="b-garimpar" class="mini" data-i18n="lote.bt">⛏ lote do dia</button>
+          <button id="b-garimpar" class="mini" data-i18n="lote.bt">⛏ garimpar lote</button>
         </div>
         <div class="alvo-bib" id="alvo-bib" hidden></div>
         <input type="text" id="busca" placeholder="buscar por nome…" data-i18n-attr="placeholder:app.buscar">

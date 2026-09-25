@@ -2671,12 +2671,17 @@ async function mostrarAcervo() {
  */
 const LOTE_MAX = 1000;
 const hojeStr = () => new Date().toLocaleDateString('sv');
-const loteDeHoje = () => { const l = bib.ultimoLote(); return l?.dia === hojeStr() ? l : null; };
+// UM LOTE POR HORA (era por dia; o Lucca pediu hora em 2026-09-25). A cota do
+// Jamendo fica protegida pelo teto diário do Worker. Registro antigo, sem
+// `quando`, conta como vencido.
+const LOTE_INTERVALO = 60 * 60 * 1000;
+const loteDeHoje = () => { const l = bib.ultimoLote(); return l && Date.now() - (l.quando || 0) < LOTE_INTERVALO ? l : null; };
+const minutosPraProximo = (l) => Math.max(1, Math.ceil((LOTE_INTERVALO - (Date.now() - (l?.quando || 0))) / 60000));
 const nomeGenero = (g) => (g === 'Tudo' ? t('lote.tudo') : g);
 function botaoLote() {
   const b = $('b-garimpar'), l = loteDeHoje();
   b.classList.toggle('feito', !!l?.completo);
-  b.textContent = cavando ? t('acervo.parar') : !l ? t('lote.bt') : l.completo ? t('lote.feito') : t('lote.continuar');
+  b.textContent = cavando ? t('acervo.parar') : !l ? t('lote.bt') : l.completo ? t('lote.feito', { m: minutosPraProximo(l) }) : t('lote.continuar');
 }
 function mostrarLote() {
   bib.porPastas();
@@ -2684,7 +2689,22 @@ function mostrarLote() {
   bib.marcarGenero('lote:ultimo');
   desenharChips(); recarregar();
 }
+/** As pepitas do fundo (CSS em #garimpo-fx): montadas uma vez, cada uma com seu ritmo. */
+function montarFxGarimpo() {
+  const lateral = document.querySelector('.col.lib .lateral');
+  if (!lateral || document.getElementById('garimpo-fx')) return;
+  const fx = document.createElement('div');
+  fx.id = 'garimpo-fx';
+  fx.setAttribute('aria-hidden', 'true');
+  const r = (a, b) => (a + Math.random() * (b - a)).toFixed(2);
+  fx.innerHTML =
+    Array.from({ length: 28 }, (_, k) => `<i class="${k % 3 === 0 ? 'terra' : ''}" style="--x:${r(2, 96)}%;--s:${k % 3 === 0 ? r(4, 8) : r(7, 16)}px;--d:${r(3.5, 8)}s;--a:-${r(0, 8)}s"></i>`).join('') +
+    Array.from({ length: 12 }, () => `<b style="--x:${r(4, 92)}%;--y:${r(8, 90)}%;--a:-${r(0, 1.8)}s"></b>`).join('');
+  lateral.prepend(fx);
+}
 async function cavarLote(genero) {
+  montarFxGarimpo();
+  document.body.classList.add('cavando');
   const antes = loteDeHoje();
   const ids0 = antes?.genero === genero ? antes.ids : [];
   cavando = new AbortController();
@@ -2703,12 +2723,14 @@ async function cavarLote(genero) {
     $('acervo-n').textContent = t('acervo.erro', { m: e.message });
   }
   cavando = null;
+  document.body.classList.remove('cavando');
   b.classList.remove('lig');
   if (r) {
     const ids = [...ids0, ...r.ids];
     // completo: chegou nos 1.000 OU as fontes acabaram (não adianta voltar hoje)
     const completo = ids.length >= LOTE_MAX || !r.parou;
-    try { localStorage.setItem('garimpo.lote', JSON.stringify({ dia: hojeStr(), genero, ids, completo })); } catch {}
+    // `quando` = o começo do lote (continuar não reinicia a hora)
+    try { localStorage.setItem('garimpo.lote', JSON.stringify({ dia: hojeStr(), quando: antes?.quando ?? Date.now(), genero, ids, completo })); } catch {}
     window.garimpoEvento?.('lote', { genero, faixa: ids.length >= 900 ? '900+' : ids.length >= 300 ? '300-899' : '<300' });
     await mostrarAcervo();
     $('acervo-n').textContent = t(ids.length ? 'lote.pronto' : 'lote.nada', { n: ids.length.toLocaleString('pt-BR'), g: nomeGenero(genero) });
@@ -2723,7 +2745,7 @@ $('b-garimpar').onclick = () => {
   if (l && !l.completo) { cavarLote(l.genero); return; }       // continua o de hoje
   if (l) {
     mostrarLote();
-    $('acervo-n').textContent = t('lote.amanha', { n: l.ids.length.toLocaleString('pt-BR'), g: nomeGenero(l.genero) });
+    $('acervo-n').textContent = t('lote.amanha', { n: l.ids.length.toLocaleString('pt-BR'), g: nomeGenero(l.genero), m: minutosPraProximo(l) });
     $('acervo-n').style.color = 'var(--ok)';
     return;
   }
@@ -2739,6 +2761,7 @@ $('lote-generos').onclick = (e) => {
 };
 $('fechar-lote').onclick = () => $('lote').close();
 botaoLote();
+setInterval(() => { if (!cavando) botaoLote(); }, 60000);   // a contagem pro próximo lote
 
 /**
  * Na primeira visita, carrega o acervo que vem junto com o app.

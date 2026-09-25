@@ -100,7 +100,7 @@ export function porPastas() {
   // o ÚLTIMO LOTE garimpado (ver garimparLote): um chip na frente das pastas
   const lote = ultimoLote();
   if (lote?.ids?.length) {
-    const deHoje = lote.dia === new Date().toLocaleDateString('sv');
+    const deHoje = Date.now() - (lote.quando || 0) < 60 * 60 * 1000;
     GRUPO_PASTAS.itens.unshift({
       chave: 'lote:ultimo', nome: (deHoje ? '🆕 ' : '⛏ ') + (lote.genero === 'Tudo' ? '🌎' : lote.genero), n: lote.ids.length,
       rede: async () => crate.pegarIds(lote.ids),
