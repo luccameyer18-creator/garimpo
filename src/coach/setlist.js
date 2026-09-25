@@ -232,7 +232,7 @@ export async function juntarCandidatas({ pilhas = null, bpmMin = 100, bpmMax = 1
  * que enfiá-la no meio e estragar o set em silêncio.
  */
 function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
-                                        recentes = null, sorte = 0, variedade = 'equilibrado', evitar = null,
+                                        recentes = null, sorte = 0, variedade = 'equilibrado', evitar = null, preferir = null,
                                         bpmIni = null, bpmFim = null }) {
   const V = VARIEDADES[variedade] || VARIEDADES.equilibrado;
   const usadas = new Set([semente.id]);
@@ -361,6 +361,8 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
                * melhores continuam ganhando.
                */
               + (recentes?.has(t.id) ? 14 : 0)
+              // uma dupla que VOCÊ juntou bem (meuestilo.js): se juntou, combina
+              - (preferir?.has(atual.id + '>' + t.id) ? 5 : 0)
               // música boa ganha: até 8 pontos entre um rascunho e um hit
               + (1 - qualidade(t)) * 8
               + Math.random() * sorte;
@@ -419,7 +421,7 @@ function corrente(semente, candidatas, { minutos, energia, obrigatorias = [],
  */
 export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente = null,
                                         obrigatorias = [], recentes = [], sorte = 3.5,
-                                        variar = true, variedade = 'equilibrado', evitar = null,
+                                        variar = true, variedade = 'equilibrado', evitar = null, preferir = null,
                                         bpmIni = null, bpmFim = null } = {}) {
   const jaOuvidas = new Set(recentes || []);
   if (!candidatas?.length) return { fila: [], minutos: 0, generos: 0, naoCoube: obrigatorias };
@@ -501,7 +503,7 @@ export function montarSet(candidatas, { minutos = 30, energia = 'subir', semente
 
   const resultados = [];
   for (const s of sementes) {
-    const r = corrente(s, pote, { minutos, energia, obrigatorias, recentes: jaOuvidas, sorte, variedade, evitar, bpmIni, bpmFim });
+    const r = corrente(s, pote, { minutos, energia, obrigatorias, recentes: jaOuvidas, sorte, variedade, evitar, bpmIni, bpmFim, preferir });
     const generos = new Set(r.fila.map((x) => x.pilha)).size;
     // quantas faixas, quantos gêneros, quantas escolhidas entraram, e quão
     // perto da duração pedida. As suas escolhas pesam mais que tudo.

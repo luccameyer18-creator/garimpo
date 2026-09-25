@@ -315,6 +315,11 @@
   .bpm-set > i { font-style:normal; color:var(--mut); }
   .bpm-set .mini { padding:6px 8px; }
   #pref-energia:disabled { opacity:.45; }
+  .leitura-linha { display:flex; align-items:center; gap:8px; flex:1 1 100%; min-width:0; }
+  .leitura-linha #b-leitura { flex:none; padding:6px 10px; font-size:11px; }
+  .leitura-linha #b-leitura.lig { border-color:var(--ok); color:var(--ok); }
+  .leitura-linha #meu-estilo { flex:1; min-width:0; margin:0; font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .leitura-linha #b-esquecer-estilo { flex:none; padding:5px 8px; font-size:10px; }
   .prefs-linha { display:flex; gap:4px; }
   .prefs-linha button { flex:1; padding:3px 6px; font:700 9px ui-monospace,monospace; }
   .fixas { display:flex; flex-direction:column; gap:3px; max-height:110px; overflow-y:auto; }
@@ -1619,6 +1624,12 @@
               <label><small data-i18n="bpm.fim">termina</small>
                 <input type="number" id="pref-bpm-fim" min="60" max="200" step="1" placeholder="auto" inputmode="numeric"></label>
               <button id="b-bpm-auto" class="mini" data-i18n-attr="title:bpm.auto" title="automático">✕</button>
+            </div>
+            <!-- a leitura das SUAS transições: só fala se você pedir (coach/leitura.js) -->
+            <div class="leitura-linha">
+              <button id="b-leitura" class="mini" data-i18n-attr="title:leitura.dica" title="quando você mixa, o DJ lê cada transição e dá uma nota">📋 ler minhas transições: não</button>
+              <span id="meu-estilo" class="rot"></span>
+              <button id="b-esquecer-estilo" class="mini" data-i18n="leitura.esquecer" hidden>esquecer</button>
             </div>
             <button id="b-esquecer" data-i18n="pref.esquecer">esquecer o que já tocou</button>
           </div>

@@ -19,6 +19,8 @@ import { puxar as puxarGalera, votarLixo, puxarLixo, enviarFeedback } from '../s
 import { Piloto } from '../coach/piloto.js';
 import { ESTILOS, TECNICAS } from '../coach/tecnicas.js';
 import { decidirSet, aplicarDecisoes, julgarFaixas, julgarPassagens } from '../coach/jev.js';
+import { criarLeitura } from '../coach/leitura.js';
+import { aprender, registrarEstilo, paresBons, quantasBoas, esquecerMeuEstilo } from '../coach/meuestilo.js';
 import { montarMascote } from './mascote.js';
 import { montarPista } from './pista.js';
 import { montarCena } from './cena.js';
@@ -862,6 +864,8 @@ let mascote = null;
 function rodarProfessor() {
   const est = montarEstado();
   rodarAuto(est);
+  // a leitura só vale pra quem TOCA: com o DJ mixando, as transições são dele
+  if (piloto?.ativo) leitura?.zerar(); else leitura?.passo(quadroLeitura(est));
 
   let itens = plano(est);
   // com o DJ automático tocando, a barra vira a NARRAÇÃO dele: o que acabou
@@ -1720,7 +1724,7 @@ function refazerProximas() {
       const s = montarSet(pote, {
         minutos: Number($('pref-min').value), energia: $('pref-energia').value, variedade: $('pref-variedade').value,
         semente: ponte, recentes: soFav ? jaTocadas : [...jaTocadas, ...jaSugeridas], variar: !soFav,
-        ...(rampa || {}),
+        ...(rampa || {}), preferir: paresBons(),
       });
       let novas = s.fila.filter((f) => f.id !== noAr.id);
       // pouca corrente (o gênero novo mora longe no BPM, psy a 140): completa
@@ -2203,7 +2207,7 @@ $('b-piloto').onclick = async () => {
       minutos: Number($('pref-min').value),
       energia: $('pref-energia').value,
       variedade: $('pref-variedade').value, evitar,
-      ...bpmDoSet(),
+      ...bpmDoSet(), preferir: paresBons(),
       obrigatorias: [],
       // evita o que TOCOU e o que já foi SUGERIDO: pedir outro set traz outras
       // músicas. No set de favoritas não — ali repetir é o ponto.
@@ -2696,9 +2700,82 @@ async function buscarCapa(faixa, v) {
  * Fica lembrado entre visitas — quem gosta de techno hipnótico não quer
  * escolher de novo toda vez.
  */
-$('pref-estilo').innerHTML = Object.entries(ESTILOS).map(([id, e]) =>
-  `<option value="${id}" title="${e.escola} — ${e.como}">${e.nome}</option>`).join('');
-try { $('pref-estilo').value = localStorage.getItem('garimpo.estilo') || 'pista'; } catch {}
+registrarEstilo();
+function opcoesDeEstilo() {
+  const antes = $('pref-estilo').value;
+  $('pref-estilo').innerHTML = Object.entries(ESTILOS).map(([id, e]) =>
+    `<option value="${id}" title="${e.escola} — ${e.como}">${id === 'seu' ? '🧠 ' : ''}${e.nome}</option>`).join('');
+  if (antes && ESTILOS[antes]) $('pref-estilo').value = antes;
+}
+opcoesDeEstilo();
+try { $('pref-estilo').value = ESTILOS[localStorage.getItem('garimpo.estilo')] ? localStorage.getItem('garimpo.estilo') : 'pista'; } catch {}
+
+// ─────────────────── a leitura das suas transições ───────────────────
+
+/**
+ * O DJ ASSISTE QUEM TOCA (coach/leitura.js + coach/meuestilo.js). Ele sempre
+ * APRENDE — as suas transições boas viram o estilo "🧠 o seu" e as duplas que
+ * você juntou atraem o montador do set — mas só FALA se você pedir: quem só
+ * quer ouvir música nova e curtir tocando não recebe nota de ninguém. O
+ * interruptor fica no ⚙ do DJ e é lembrado.
+ */
+let leituraLigada = false;
+try { leituraLigada = localStorage.getItem('garimpo.leitura') === '1'; } catch {}
+const sessao = { n: 0, soma: 0 };
+function quadroLeitura(est) {
+  const q = { agora: performance.now() / 1000, crossfader: est.crossfader, fase: est.fase?.emTempos, momentos: momentosDe };
+  for (const id of ['A', 'B']) {
+    const d = decks[id], c = mixer?.canal(id);
+    q[id] = d ? { tocando: d.tocando, faixa: d.faixa, fader: c?.valores.fader, grave: c?.eq.get('grave'),
+                  filtro: c?.filtro?.k, eco: c?.valores.eco, loop: d.loopTempos > 0, pos: d.displayPosition,
+                  bpm: d.bpmEfetivo, grid: d.grid } : null;
+  }
+  return q;
+}
+// `var`: o professor pode rodar antes desta linha; aí ela ainda é undefined
+var leitura = criarLeitura({ aoTerminar: (r) => {
+  sessao.n++; sessao.soma += r.nota;
+  window.garimpoEvento?.('transicao', { tecnica: r.tecnica, faixa: r.nota >= 85 ? '85+' : r.nota >= 70 ? '70-84' : r.nota >= 50 ? '50-69' : '<50' });
+  if (aprender(r)) { if (registrarEstilo()) opcoesDeEstilo(); mostrarMeuEstilo(); }
+  if (!leituraLigada) return;
+  // o Jev dá o parecer da ESCOLHA (as duas músicas combinam?) no MESMO
+  // cartão: espera por ele no máximo 2,5 s — dois avisos seguidos, o segundo
+  // apagava a nota antes de dar pra ler
+  const jev = r.sai && r.entra
+    ? Promise.race([julgarPassagens([r.sai, r.entra]).catch(() => null), new Promise((ok) => setTimeout(ok, 2500, null))])
+    : Promise.resolve(null);
+  jev.then((j) => {
+    if (!leituraLigada) return;
+    const p = j?.notas?.[0];
+    const selo = r.nota >= 85 ? '🔥' : r.nota >= 70 ? '✓' : '👀';
+    avisoControladora({
+      fala: t('leitura.fala', { selo, nota: r.nota, tec: TECNICAS[r.tecnica]?.nome || r.tecnica, tempos: r.tempos }),
+      // o que pede atenção primeiro: a linha é cortada no fim
+      porque: [...r.itens].sort((a, b) => a.ok - b.ok).map((x) => (x.ok ? '✓ ' : '• ') + t('leitura.' + x.k, x.v || {})).join(' · ')
+        + (typeof p === 'number' ? ' · ' + t(p >= 0.5 ? 'leitura.jev.ok' : 'leitura.jev.mal', { p: Math.round(p * 100) }) : '')
+        + ' — ' + t('leitura.sessao', { n: sessao.n, media: Math.round(sessao.soma / sessao.n) }),
+      cor: r.nota >= 70 ? 'depois' : 'agora', ms: 12000,
+    });
+  });
+} });
+function mostrarMeuEstilo() {
+  const n = quantasBoas();
+  $('b-leitura').textContent = t(leituraLigada ? 'leitura.bt.sim' : 'leitura.bt.nao');
+  $('b-leitura').classList.toggle('lig', leituraLigada);
+  $('meu-estilo').textContent = n >= 3 ? t('leitura.aprendeu', { n }) : n ? t('leitura.aprendendo', { n }) : t('leitura.nada');
+  $('b-esquecer-estilo').hidden = !n;
+}
+$('b-leitura').onclick = () => {
+  leituraLigada = !leituraLigada;
+  try { localStorage.setItem('garimpo.leitura', leituraLigada ? '1' : '0'); } catch {}
+  mostrarMeuEstilo();
+};
+$('b-esquecer-estilo').onclick = () => {
+  esquecerMeuEstilo();
+  if ($('pref-estilo').value === 'seu') $('pref-estilo').value = 'pista';
+  opcoesDeEstilo(); mostrarMeuEstilo();
+};
+mostrarMeuEstilo();
 try { $('pref-variedade').value = localStorage.getItem('garimpo.variedade') || 'equilibrado'; } catch {}
 
 /**
