@@ -209,6 +209,10 @@ const REGRAS = [
       if (e.fase && Math.abs(e.fase.emTempos) > TOL_FASE) return null;  // encaixa antes de abrir
       const entra = e.crossfader < 0.5 ? 'B' : 'A';
       if ((e.eq?.[entra]?.grave ?? 0.5) > 0.08) return null;            // grave cortado antes
+      // a que ACABOU de sair (coach/leitura.js sabe) não está entrando: ela
+      // continua tocando com o grave cortado do outro lado, e a regra mandava
+      // trazer o crossfader de VOLTA pra ela (visto testando a leitura)
+      if (e.saiu === entra) return null;
       const noMeio = Math.abs(e.crossfader - 0.5) < 0.12;
       return !noMeio && {
         fala: t('p.crossfader', { lado: t(entra === 'B' ? 'p.crossfader.direita' : 'p.crossfader.esquerda') }),

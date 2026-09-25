@@ -45,6 +45,7 @@ export function criarLeitura({ aoTerminar }) {
   let sozinho = null;       // o deck que estava no ar sozinho antes da transição
   let atual = null;         // a transição em curso
   let soUmDesde = 0;
+  let saida = null;         // a última que SAIU numa transição completa: { deck, faixa }
 
   function comecar(q) {
     const sai = sozinho, entra = sai === 'A' ? 'B' : 'A';
@@ -91,6 +92,7 @@ export function criarLeitura({ aoTerminar }) {
     const a = atual;
     atual = null;
     if (ficou !== a.entra) return;                     // voltou atrás: não foi transição
+    saida = { deck: a.sai, faixa: a.faixaSai };
     const dur = a.fim - a.ini;
     const per = 60 / a.bpm;
     const tempos = Math.round(dur / per);
@@ -152,6 +154,8 @@ export function criarLeitura({ aoTerminar }) {
       }
       if (ficou) sozinho = ficou;
     },
+    /** O deck que acabou de sair, enquanto ele ainda tem a mesma faixa (pro professor). */
+    saiuDe(q) { return saida && q[saida.deck]?.faixa === saida.faixa ? saida.deck : null; },
     /** O piloto assumiu, ou a pessoa trocou de modo: esquece a transição pela metade. */
     zerar() { atual = null; soUmDesde = 0; },
   };

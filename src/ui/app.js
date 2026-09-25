@@ -865,7 +865,8 @@ function rodarProfessor() {
   const est = montarEstado();
   rodarAuto(est);
   // a leitura só vale pra quem TOCA: com o DJ mixando, as transições são dele
-  if (piloto?.ativo) leitura?.zerar(); else leitura?.passo(quadroLeitura(est));
+  if (piloto?.ativo) leitura?.zerar();
+  else { const q = quadroLeitura(est); leitura?.passo(q); est.saiu = leitura?.saiuDe(q); }
 
   let itens = plano(est);
   // com o DJ automático tocando, a barra vira a NARRAÇÃO dele: o que acabou
