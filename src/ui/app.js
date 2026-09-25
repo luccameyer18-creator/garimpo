@@ -2128,12 +2128,15 @@ function garantirPiloto() {
     sincronizar: (id) => sincronizar(id),
     carregar: async (id, faixa, { rapido = false } = {}) => {
       await carregarFaixa(id, faixa);
+      // 150 s: numa rede lenta uma faixa de 8 MB leva isso; desistir antes
+      // fazia o DJ pular música atrás de música enquanto a pista ficava muda
       const t0 = performance.now();
-      while (performance.now() - t0 < 70000) {
+      while (performance.now() - t0 < 150000) {
         const d = decks[id];
         if (d.estado === 'erro') return false;
-        // `rapido`: basta o começo decodificado pra tocar (ver Piloto.tocar)
-        if (rapido && d.estado === 'pronto' && d.faixa?.id === faixa.id) return true;
+        // `rapido`: basta o começo decodificado pra tocar (ver Piloto.tocar) —
+        // se a rede dá conta de trazer o resto antes dele acabar
+        if (rapido && d.estado === 'pronto' && d.faixa?.id === faixa.id && d.cabeNoPrefixo !== false) return true;
         // espera a analise cobrir a faixa INTEIRA, nao so o prefixo: e a grade
         // da faixa toda que faz a fase fechar
         if (d.pronta) return true;   // inteira e analisada: ver Deck.pronta
@@ -2143,8 +2146,11 @@ function garantirPiloto() {
     },
   });
   piloto.addEventListener('passo', (e) => {
-    const { passo, faixa, resta, motivo, erro, seg, tipo, deck } = e.detail;
+    const { passo, faixa, resta, motivo, erro, seg, tipo, deck, proxima } = e.detail;
     $('piloto-nota').textContent = erro ? `piloto parou: ${erro}`
+      // servidor lento (Piloto.#carregarComPrazo): diz o que fez, sem "faltam N"
+      : passo === 'adiou' ? t('piloto.adiou', { faixa, proxima })
+      : passo === 'pulou' ? t('piloto.pulou', { faixa })
       : passo === 'esperando'
         ? t(tipo === 'quebra' ? 'piloto.esperaQuebra' : 'piloto.esperaFrase', { s: seg, d: deck })
       : motivo ? `piloto ${passo} — ${motivo}`

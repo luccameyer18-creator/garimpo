@@ -505,6 +505,55 @@ export class Piloto extends EventTarget {
     });
   }
 
+  /**
+   * Carrega a próxima COM PRAZO. Servidor lento numa faixa (acontece: um
+   * espelho do Audius devagar, o hearthis numa hora ruim) não pode deixar a
+   * pista esperando: se a que toca está nos últimos 45 s e esta ainda não
+   * veio, ela fica pra DEPOIS — troca de lugar com a seguinte da fila, que
+   * entra no lugar dela. Quando a vez dela voltar, tenta de novo; adiada uma
+   * vez e lenta de novo, aí sim pula. (Ideia do Lucca.)
+   */
+  /**
+   * A do ar morreu: deu erro, ou está segurando e o resto falhou de vez (ou
+   * não chega há 8 s). 20 s de espera deixavam um buraco de silêncio longo.
+   */
+  #morreu(id) {
+    const x = this.decks[id];
+    return x.estado === 'erro'
+      || (x.segurando && (x.restoFalhou || performance.now() - (x.segurandoDesde || 0) > 8000));
+  }
+
+  async #carregarComPrazo(noAr, entra, fila, i) {
+    const d = this.decks;
+    for (;;) {
+      let pronto = null;
+      this.carregar(entra, fila[i]).then((v) => { pronto = v; }, () => { pronto = false; });
+      let adiou = false;
+      while (pronto === null) {
+        if (!await this.#dorme(500)) return false;
+        // a do ar morreu e a pista está muda: basta o COMEÇO desta pra entrar
+        if (this.#morreu(noAr) && d[entra].estado === 'pronto' && d[entra].faixa?.id === fila[i].id) return true;
+        const resta = (d[noAr].duration || 0) - (d[noAr].displayPosition || 0);
+        if (pronto === null && d[noAr].tocando && !d[noAr].parcial && resta < 45 && i + 1 < fila.length) {
+          const lenta = fila[i];
+          if (lenta.adiada) {
+            // já adiada uma vez e lenta de novo: sai do set, entra a seguinte
+            fila.splice(i, 1);
+            this.#diz('pulou', { faixa: lenta.title, resta: Math.round(resta) });
+          } else {
+            lenta.adiada = true;
+            fila[i] = fila[i + 1];
+            fila[i + 1] = lenta;
+            this.#diz('adiou', { faixa: lenta.title, proxima: fila[i].title, resta: Math.round(resta) });
+          }
+          adiou = true;
+          break;
+        }
+      }
+      if (!adiou) return pronto;
+    }
+  }
+
   /** Toca a fila inteira. Volta quando acaba ou quando você assume. */
   async tocar(fila, { segundos = 8 } = {}) {
     if (this.ativo || !fila?.length) return;
@@ -532,11 +581,33 @@ export class Piloto extends EventTarget {
       for (let i = 1; i < fila.length && !this.parar; i++) {
         this.indice = i - 1;               // a que está no ar (ver substituirProximas)
         const entra = noAr === 'A' ? 'B' : 'A';
-        this.#diz('carregando', { deck: entra, faixa: fila[i].title, resta: fila.length - i });
-        if (!await this.carregar(entra, fila[i])) { this.#diz('pulou', { faixa: fila[i].title }); continue; }
-        // a que está no ar começou pelo prefixo: a saída precisa da grade inteira
-        for (let k = 0; k < 140 && !d[noAr].pronta && d[noAr].estado !== 'erro'; k++) {
+        const morreu = () => this.#morreu(noAr);
+        // a do ar ainda baixando o resto? espera ela (até 60 s) antes de buscar
+        // a próxima: numa rede lenta os dois downloads brigavam, e o resto da
+        // que TOCA chegava depois do começo dela acabar
+        for (let k = 0; k < 120 && d[noAr].parcial && !d[noAr].restoFalhou && !morreu(); k++) {
           if (!await this.#dorme(500)) return;
+        }
+        this.#diz('carregando', { deck: entra, faixa: fila[i].title, resta: fila.length - i });
+        if (!await this.#carregarComPrazo(noAr, entra, fila, i)) { this.#diz('pulou', { faixa: fila[i].title }); continue; }
+        // a que está no ar começou pelo prefixo: a saída precisa da grade inteira
+        for (let k = 0; k < 140 && !d[noAr].pronta && !morreu(); k++) {
+          if (!await this.#dorme(500)) return;
+        }
+        /**
+         * A DO AR MORREU: o resto dela não baixou (segurando há 20 s) ou deu
+         * erro. Esperar a hora certa de sair de uma música que não toca é
+         * silêncio na pista — entra a próxima já, do começo, e o set segue.
+         */
+        if (morreu()) {
+          d[noAr].pause();
+          this.mixer.setCrossfader(entra === 'A' ? 0 : 1);
+          d[entra].seek(0);
+          d[entra].play();
+          this.#diz('no ar', { deck: entra, faixa: fila[i].title });
+          this.dispatchEvent(new CustomEvent('tocou', { detail: { faixa: fila[i] } }));
+          noAr = entra;
+          continue;
         }
 
         // a espera pela hora certa mora dentro da transição (ver o PLANO lá):

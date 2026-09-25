@@ -105,11 +105,27 @@ export class Deck extends EventTarget {
       this.transport.addEventListener(ev, (e) =>
         this.dispatchEvent(new CustomEvent(ev, { detail: e.detail })));
     }
+    /**
+     * SEGURAR, NÃO PARAR. A faixa começa tocando só o COMEÇO (o prefixo, ~1:27)
+     * enquanto o resto baixa. Se o prefixo acabava antes do resto chegar — rede
+     * lenta, Audius devolvendo 429 —, o leitor parava no fim dele, e a troca
+     * pelo arquivo inteiro só voltava a tocar se o deck ESTIVESSE tocando: a
+     * música morria em 1:27 e o DJ ficava esperando (relatado pelo Lucca).
+     * Agora o deck fica "segurando" no ponto, conta como tocando, e volta
+     * sozinho quando o resto chega — como um vídeo carregando.
+     */
+    this.transport.addEventListener('fim', () => {
+      if (!this.parcial) return;
+      this.segurando = true;
+      this.segurandoDesde = performance.now();
+      this.#passo('segurando', 'o começo acabou antes do resto da música chegar');
+      this.dispatchEvent(new CustomEvent('segurando', { detail: { faixa: this.faixa } }));
+    });
     return this;
   }
 
   get temKeylock() { return !!this.transport?.stretch; }
-  get tocando() { return !!this.transport?.playing; }
+  get tocando() { return !!this.transport?.playing || !!this.segurando; }
   get position() { return this.transport?.position ?? 0; }
   get displayPosition() { return this.transport?.displayPosition ?? 0; }
   get duration() { return this.transport?.duration ?? 0; }
@@ -184,22 +200,52 @@ export class Deck extends EventTarget {
       this.#passo('url resolvida', new URL(url).host);
       const PREFIXO = 2 << 20;
 
+      const t0 = performance.now();
       const r = await fetch(url, { headers: { Range: `bytes=0-${PREFIXO - 1}` }, signal: sinal });
       if (!r.ok && r.status !== 206) throw new Error(`stream respondeu ${r.status}`);
       this.#passo('resposta do stream', r.status + (r.redirected ? ' (redirecionou)' : ''));
       const prefixo = await r.arrayBuffer();
-      this.#passo('bytes baixados', (prefixo.byteLength / 1048576).toFixed(2) + ' MB');
+      // a velocidade da rede, medida no próprio começo: diz se o resto chega
+      // antes do começo acabar (ver `cabeNoPrefixo` em #carregar)
+      const velocidade = prefixo.byteLength / Math.max(0.05, (performance.now() - t0) / 1000);
+      this.#passo('bytes baixados', (prefixo.byteLength / 1048576).toFixed(2) + ' MB a ' + Math.round(velocidade / 1024) + ' KB/s');
       const parcial = r.status === 206;
       aoProgredir?.(parcial ? 0.3 : 1);
 
       if (!parcial) return prefixo;          // servidor ignorou Range: já é tudo
 
       // devolve o prefixo pra tocar já, e o resto numa promessa
+      /**
+       * O RESTO, com teimosia. Antes era um fetch só, sem olhar a resposta:
+       * um 429 do Audius ("pedidos demais") virava um "áudio" de erro, a
+       * decodificação falhava em silêncio e a faixa ficava pra sempre com o
+       * pedaço inicial. Agora: resposta conferida, até 4 tentativas, e a cada
+       * falha um endereço novo (o Audius pode mandar pra outro servidor).
+       */
+      // e só O QUE FALTA: pedir o arquivo inteiro de novo baixava o começo
+      // duas vezes — numa rede lenta, era a diferença entre chegar a tempo ou não
       const completo = (async () => {
-        const rr = await fetch(url, { signal: sinal });
-        return rr.arrayBuffer();
+        let u = url;
+        for (let k = 0; k < 4; k++) {
+          try {
+            const rr = await fetch(u, { headers: { Range: `bytes=${prefixo.byteLength}-` }, signal: sinal });
+            if (!rr.ok) throw new Error('HTTP ' + rr.status);
+            const resto = await rr.arrayBuffer();
+            if (rr.status !== 206) return resto;               // ignorou o Range: veio tudo
+            const tudo = new Uint8Array(prefixo.byteLength + resto.byteLength);
+            tudo.set(new Uint8Array(prefixo), 0);
+            tudo.set(new Uint8Array(resto), prefixo.byteLength);
+            return tudo.buffer;
+          } catch (e) {
+            if (sinal.aborted) throw e;
+            this.#passo('resto falhou', `${e.message} — tento de novo (${k + 1}/4)`);
+            await new Promise((ok) => setTimeout(ok, [1500, 4000, 8000, 12000][k]));
+            try { u = await resolveStreamUrl(faixa.id, { signal: sinal }); } catch {}
+          }
+        }
+        throw new Error('o resto da música não baixou');
       })();
-      return { prefixo, completo };
+      return { prefixo, completo, velocidade };
     });
   }
 
@@ -234,6 +280,9 @@ export class Deck extends EventTarget {
 
     this.faixa = faixa;
     this.picos = null;
+    this.segurando = false;
+    this.restoFalhou = false;
+    this.cabeNoPrefixo = undefined;
     /**
      * Zera TUDO que descreve a faixa anterior, na hora — não só os picos.
      *
@@ -273,6 +322,20 @@ export class Deck extends EventTarget {
       this.picos = calcularPicos(buf);
       this.estado = 'pronto';
       this.parcial = !!res.completo;
+      /**
+       * O resto chega antes do começo acabar? Tamanho total estimado pela taxa
+       * do próprio começo (bytes por segundo de música) e a duração da faixa;
+       * o tempo pra baixar o que falta, pela velocidade medida. Quem começa a
+       * tocar sozinho (o DJ) só solta a faixa com o começo se couber, com 8 s
+       * de folga — senão espera ela inteira: silêncio no início é melhor que
+       * a música parar no meio.
+       */
+      this.cabeNoPrefixo = true;
+      if (res.completo && res.velocidade && faixa.duration > buf.duration) {
+        const falta = bytes / buf.duration * (faixa.duration - buf.duration);
+        this.cabeNoPrefixo = falta / res.velocidade < buf.duration - 8;
+        if (!this.cabeNoPrefixo) this.#passo('rede lenta', `o resto leva ~${Math.round(falta / res.velocidade)} s; o começo tem ${Math.round(buf.duration)} s`);
+      }
       this.dispatchEvent(new CustomEvent('loaded', {
         detail: { faixa, duration: buf.duration, parcial: this.parcial, bytes },
       }));
@@ -292,7 +355,8 @@ export class Deck extends EventTarget {
           const cheio = await this.ctx.decodeAudioData(todo);
           if (ac.signal.aborted) return;
           const posAntes = this.transport.position;
-          const tocava = this.transport.playing;
+          const tocava = this.transport.playing || this.segurando;
+          this.segurando = false;
           await this.transport.load(cheio);
           // RESTAURA A POSICAO ANTES de calcular picos, nao depois.
           // calcularPicos varre 200 s de PCM e leva dezenas de ms; com ele no
@@ -325,7 +389,9 @@ export class Deck extends EventTarget {
             if (!ac.signal.aborted) this.analiseCompleta = true;
           });
         }).catch((e) => {
-          if (!ac.signal.aborted) console.warn('[deck] troca pelo completo falhou:', e.message);
+          if (ac.signal.aborted) return;
+          console.warn('[deck] troca pelo completo falhou:', e.message);
+          this.restoFalhou = true;       // o piloto não espera mais por ele
         });
       }
     } catch (e) {
@@ -391,8 +457,8 @@ export class Deck extends EventTarget {
 
   // sem faixa não há o que tocar: PLAY num deck vazio deixava ele "tocando" e a
   // pista, o mascote e o professor achavam que havia música
-  play() { if (this.faixa) this.transport.play(); }
-  pause(opts) { this.transport.pause(opts); }
+  play() { if (this.faixa && !this.segurando) this.transport.play(); }
+  pause(opts) { this.segurando = false; this.transport.pause(opts); }
   alternar() { this.tocando ? this.pause() : this.play(); }
   seek(pos) { this.transport.seek(pos); }
   setPitch(f) { this.transport.setPitch(f); }
