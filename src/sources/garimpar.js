@@ -27,6 +27,7 @@ import * as hearthis from './hearthis.js';
 import { guardar as guardarLocal, contar, artistas, artistasVarridos, marcarVarrido, ausentes,
          frentesEsgotadas, marcarEsgotada } from './crate.js';
 import { compartilhar } from './galera.js';
+import * as jamendo from './jamendo.js';
 
 /** Guarda no crate daqui E manda pra galera: o que um garimpa, todos ouvem. */
 function guardar(lote, pilha) {
@@ -471,6 +472,25 @@ export async function garimparLote({ genero, alvo = 1000, signal, aoAndar = () =
 
   const ids = [];
   let feito = 0;
+  /**
+   * 0. JAMENDO primeiro: é o catálogo que ninguém garimpou ainda, e o Worker
+   * já entrega um pedaço novo a cada pedido. Metade do lote no máximo, pra
+   * vir também o que o Audius e o hearthis têm de novo (esses já chegam com
+   * BPM e entram direto no DJ).
+   */
+  for (let k = 0; k < 3 && ids.length < alvo / 2 && !signal?.aborted; k++) {
+    try {
+      const { faixas, fim } = await jamendo.lote(G.id, { n: 200, signal });
+      const novas = (await ausentes(faixas)).filter((f) => !ids.includes(f.id)).slice(0, Math.ceil(alvo / 2) - ids.length);
+      if (novas.length) { await guardarLocal(novas, pilha); ids.push(...novas.map((f) => f.id)); }
+      aoAndar({ n: ids.length, alvo, frente: 'jamendo', feito: 0, de: series.length });
+      if (fim) break;
+    } catch (e) {
+      if (signal?.aborted) break;
+      break;                                  // sem Jamendo hoje: segue com os outros
+    }
+    await dormir(PAUSA);
+  }
   for (const s of series) {
     if (signal?.aborted || ids.length >= alvo) break;
     feito++;

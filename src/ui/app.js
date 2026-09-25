@@ -14,8 +14,9 @@ import { momentos, proximoMomento, faltaPara } from '../coach/momentos.js';
 import { montarSet, resumoSet } from '../coach/setlist.js';
 import * as crate from '../sources/crate.js';
 import { garimparLote, LOTE_GENEROS } from '../sources/garimpar.js';
+import * as jamendo from '../sources/jamendo.js';
 import { carregarSemente, SEMENTES } from '../sources/semente.js';
-import { puxar as puxarGalera, votarLixo, puxarLixo, puxarBom, enviarFeedback } from '../sources/galera.js';
+import { puxar as puxarGalera, votarLixo, puxarLixo, puxarBom, enviarFeedback, compartilhar } from '../sources/galera.js';
 import { Piloto } from '../coach/piloto.js';
 import { ESTILOS, TECNICAS } from '../coach/tecnicas.js';
 import { decidirSet, aplicarDecisoes, julgarFaixas, julgarPassagens } from '../coach/jev.js';
@@ -38,7 +39,7 @@ import {
 } from '../sources/hearthis.js';
 
 /** Faixa do Audius? As da semente antiga não têm `source` e são todas de lá. */
-const doAudius = (f) => !!f && (!f.source || f.source === 'audius');
+const doAudius = (f) => !!f && !jamendo.ehJamendo(f) && (!f.source || f.source === 'audius');
 
 export const VERSAO = '2026-09-12.18';
 
@@ -1241,6 +1242,22 @@ function desenharPassos(id, passos, falhou = false) {
 }
 
 function mostrarCreditos(faixa) {
+  if (jamendo.ehJamendo(faixa)) {
+    // Creative Commons: artista, a faixa no Jamendo e a licença
+    const el = $('creditos');
+    el.textContent = (faixa.artist || '') + ' · ';
+    const link = document.createElement('a');
+    link.href = jamendo.paginaDe(faixa); link.target = '_blank'; link.rel = 'noopener';
+    link.textContent = 'ouvir no Jamendo';
+    el.appendChild(link);
+    if (faixa.licenca) {
+      el.appendChild(document.createTextNode(' · '));
+      const l = document.createElement('a');
+      l.href = faixa.licenca; l.target = '_blank'; l.rel = 'noopener'; l.textContent = 'licença CC';
+      el.appendChild(l);
+    }
+    return;
+  }
   if (ehHearthis(faixa)) {
     // o crédito que o hearthis pede: o artista e o link pra faixa lá. Montado
     // com textContent porque o nome vem de quem subiu a música
@@ -1365,7 +1382,7 @@ async function carregarLista(fn) {
         <button class="pasta-b" title="">📁</button>
         <div class="carregar"><button class="pa">A</button><button class="pb">B</button></div>`;
       el.querySelector('.t').textContent = faixa.title;
-      el.querySelector('.a').textContent = faixa.artist + (ehHearthis(faixa) ? ' · hearthis' : '');
+      el.querySelector('.a').textContent = faixa.artist + (ehHearthis(faixa) ? ' · hearthis' : jamendo.ehJamendo(faixa) ? ' · jamendo' : '');
       el.__faixa = faixa;
 
       // cada fonte aquece do seu jeito, e arquivo de pasta não aquece. Mandar
@@ -1537,14 +1554,39 @@ function pintarBiblioteca() {
  */
 let primeiraMusica = true;
 async function carregarFaixa(id, faixa) {
-  if (primeiraMusica) { primeiraMusica = false; window.garimpoEvento?.('musica', { fonte: ehHearthis(faixa) ? 'hearthis' : faixa?.source === 'local' ? 'arquivo' : 'audius' }); }
+  if (primeiraMusica) { primeiraMusica = false; window.garimpoEvento?.('musica', { fonte: ehHearthis(faixa) ? 'hearthis' : jamendo.ehJamendo(faixa) ? 'jamendo' : faixa?.source === 'local' ? 'arquivo' : 'audius' }); }
   if (ehHearthis(faixa)) return decks[id].carregarHearthis(faixa);
+  if (jamendo.ehJamendo(faixa)) {
+    const r = decks[id].carregarJamendo({ ...faixa, source: 'jamendo' }, jamendo.audioDe(faixa));
+    aprenderJamendo(id, faixa.id);
+    return r;
+  }
   if (faixa?.source !== 'local') return decks[id].carregarAudius(faixa);
   const file = faixa.file || await pastas.arquivo(faixa.localId);
   if (!file) { qd('dica').textContent = t('pastas.semArquivo'); return; }
   const r = decks[id].carregarArquivo(file, { id: faixa.id, localId: faixa.localId, title: faixa.title, artist: faixa.artist });
   if (faixa.localId) aprenderLocal(id, faixa.localId);
   return r;
+}
+/**
+ * A faixa do Jamendo chega sem BPM e sem tom; tocando, a análise do deck mede
+ * os dois (deck.#analisar preenche a própria faixa). Aí ela ganha os dois no
+ * acervo daqui E vai pro acervo de todo mundo — é assim que o catálogo do
+ * Jamendo entra no DJ: alguém toca primeiro, todos ganham.
+ */
+async function aprenderJamendo(id, faixaId) {
+  const t0 = performance.now();
+  while (performance.now() - t0 < 150000) {
+    const d = decks[id];
+    if (d.faixa?.id !== faixaId) return;
+    if (d.pronta && d.faixa.bpm) {
+      const f = { ...d.faixa, bpm: Math.round(d.faixa.bpm * 100) / 100, duration: Math.round(d.duration), source: 'jamendo' };
+      crate.guardar([f]).catch(() => {});
+      compartilhar([f]);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
 }
 async function aprenderLocal(id, localId) {
   const t0 = performance.now();

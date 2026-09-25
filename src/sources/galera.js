@@ -20,7 +20,7 @@ export const WORKER = 'https://garimpo.garimpo-dj.workers.dev';
  * token de todas as outras.
  */
 /** Id que o Worker aceita em voto: Audius ou hearthis ('ht:artista/faixa'). */
-const ID_VOTO = /^(?:ht:[A-Za-z0-9._-]{1,60}\/[A-Za-z0-9._-]{1,100}|[A-Za-z0-9]{3,16})$/;
+const ID_VOTO = /^(?:ht:[A-Za-z0-9._-]{1,60}\/[A-Za-z0-9._-]{1,100}|jm:\d{1,10}|[A-Za-z0-9]{3,16})$/;
 export async function votarLixo(ids, origem = 'gente') {
   ids = (ids || []).filter((id) => ID_VOTO.test(String(id)));
   if (!ids.length) return;
@@ -95,7 +95,9 @@ export function compartilhar(faixas) {
     if (!f?.id || !f.bpm || !f.duration) continue;
     // o Worker só aceita id do Audius (ver faixaValida lá): mandar as do
     // hearthis gastaria o limite de POSTs por minuto com lote recusado
-    if (f.source && f.source !== 'audius') continue;
+    // Audius e Jamendo (este só depois que a análise mediu o BPM); o hearthis
+    // vem pela semente, não por aqui
+    if (f.source && !['audius', 'jamendo'].includes(f.source)) continue;
     fila.push(Object.fromEntries(CAMPOS.map((k) => [k, f[k] ?? null])));
   }
   clearTimeout(timer);

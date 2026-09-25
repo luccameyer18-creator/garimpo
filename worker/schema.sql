@@ -40,6 +40,13 @@ CREATE TABLE IF NOT EXISTS bom (
   criada INTEGER NOT NULL
 );
 
+-- JAMENDO: onde cada gênero parou no catálogo — cada lote anda, pra cada
+-- pessoa garimpar músicas que ninguém garimpou
+CREATE TABLE IF NOT EXISTS jamendo_cursor (
+  genero TEXT PRIMARY KEY,
+  pos    INTEGER NOT NULL DEFAULT 0
+);
+
 -- sugestões e bugs do 💬 do app; só o dono lê (não há rota de leitura)
 CREATE TABLE IF NOT EXISTS feedback (
   id     INTEGER PRIMARY KEY AUTOINCREMENT,

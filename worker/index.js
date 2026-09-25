@@ -98,7 +98,8 @@ async function jev(req, env, origem) {
 
 /** Valida uma faixa compartilhada: só metadados do Audius, com tamanho preso. */
 function faixaValida(f) {
-  if (!f || typeof f.id !== 'string' || !/^[A-Za-z0-9]{3,16}$/.test(f.id)) return null;
+  // Audius, ou Jamendo depois que alguém tocou e a análise mediu o BPM
+  if (!f || typeof f.id !== 'string' || !/^(?:[A-Za-z0-9]{3,16}|jm:\d{1,10})$/.test(f.id)) return null;
   const txt = (v, max) => (typeof v === 'string' ? v.slice(0, max) : null);
   const num = (v, lo, hi) => (typeof v === 'number' && v >= lo && v <= hi ? v : null);
   const bpm = num(f.bpm, 40, 250), dur = num(f.duration, 30, 900);
@@ -147,7 +148,7 @@ async function acervoGet(url, env, origem) {
  * Id que vale voto: o do Audius ou o do hearthis ('ht:artista/faixa'). Antes
  * só o do Audius — o 👎 numa faixa do hearthis nunca chegava na galera.
  */
-const ID_VOTO = /^(?:ht:[A-Za-z0-9._-]{1,60}\/[A-Za-z0-9._-]{1,100}|[A-Za-z0-9]{3,16})$/;
+const ID_VOTO = /^(?:ht:[A-Za-z0-9._-]{1,60}\/[A-Za-z0-9._-]{1,100}|jm:\d{1,10}|[A-Za-z0-9]{3,16})$/;
 const idsDoCorpo = (corpo) => (Array.isArray(corpo?.ids) ? corpo.ids : [])
   .filter((x) => typeof x === 'string' && ID_VOTO.test(x)).slice(0, 50);
 
@@ -163,6 +164,73 @@ async function lixoPost(req, env, origem) {
   await env.DB.batch(ids.map((id) => stmt.bind(id, agora)));
   return json({ votos: ids.length }, 200, origem);
 }
+/**
+ * JAMENDO — o client_id é pessoal (termos deles) e mora aqui como secret
+ * (JAMENDO_ID); o app nunca vê. Cada pedido de lote anda o cursor do gênero,
+ * então cada pessoa recebe um pedaço diferente do catálogo. Teto diário
+ * global: o plano não comercial dá 35 mil pedidos por MÊS.
+ */
+const JAMENDO_TAGS = {
+  Tudo: null, House: 'house', Techno: 'techno', 'Tech House': 'techhouse', 'Deep House': 'deephouse',
+  // Funk BR: o Jamendo não tem (a tag "funk" volta vazia, e seria funk gringo)
+  Disco: 'disco', 'Afro House': 'afro', 'Funk BR': false, 'Hip-Hop/Rap': 'hiphop',
+  'Drum & Bass': 'drumnbass', Trance: 'trance', Dubstep: 'dubstep', Latin: 'latin',
+  Electronic: 'electronic', Ambient: 'ambient',
+};
+const JAMENDO_POR_DIA = 1000;
+async function jamendoLote(url, env, origem) {
+  if (!env.JAMENDO_ID) return json({ erro: 'jamendo não configurado' }, 503, origem);
+  const genero = url.searchParams.get('genero') || 'Tudo';
+  if (!(genero in JAMENDO_TAGS)) return json({ erro: 'gênero desconhecido' }, 400, origem);
+  if (JAMENDO_TAGS[genero] === false) return json({ faixas: [], fim: true }, 200, origem);
+  const n = Math.min(200, Math.max(10, Number(url.searchParams.get('n')) || 200));
+  const dia = 'jm:' + new Date().toISOString().slice(0, 10);
+  const uso = await env.DB.prepare(
+    'INSERT INTO uso (dia, n) VALUES (?1, 1) ON CONFLICT(dia) DO UPDATE SET n = n + 1 RETURNING n').bind(dia).first();
+  if ((uso?.n || 0) > JAMENDO_POR_DIA) return json({ erro: 'limite do dia do jamendo' }, 429, origem);
+  /**
+   * PÁGINA VAZIA NÃO É FIM: a API do Jamendo tem buracos (medido: House no
+   * offset 30 volta 0, no 40 volta 10). Pula até 4 páginas vazias antes de
+   * concluir que o gênero acabou.
+   */
+  let j = null;
+  for (let pulo = 0; pulo < 4; pulo++) {
+    const cur = await env.DB.prepare(
+      `INSERT INTO jamendo_cursor (genero, pos) VALUES (?1, ?2)
+       ON CONFLICT(genero) DO UPDATE SET pos = pos + ?2 RETURNING pos`).bind(genero, n).first();
+    const offset = Math.max(0, (cur?.pos ?? n) - n);
+    const q = new URLSearchParams({ client_id: env.JAMENDO_ID, format: 'json', limit: String(n), offset: String(offset),
+      audioformat: 'mp32', include: 'musicinfo licenses', order: 'popularity_total' });
+    if (JAMENDO_TAGS[genero]) q.set('tags', JAMENDO_TAGS[genero]);
+    const r = await fetch('https://api.jamendo.com/v3.0/tracks/?' + q);
+    if (!r.ok) return json({ erro: 'jamendo respondeu ' + r.status }, 502, origem);
+    j = await r.json();
+    if (j?.headers?.status !== 'success' || (j.results || []).length) break;
+  }
+  /**
+   * O Jamendo responde FALHA com HTTP 200 (status 'failed' no corpo). Tratar
+   * isso como "acabou o catálogo" voltava o cursor pro começo (visto no 1º
+   * teste): agora falha é falha — o cursor desanda o passo e o app segue sem.
+   */
+  if (j?.headers?.status !== 'success') {
+    await env.DB.prepare('UPDATE jamendo_cursor SET pos = MAX(0, pos - ?2) WHERE genero = ?1').bind(genero, n).run();
+    return json({ erro: 'jamendo falhou', codigo: j?.headers?.code ?? null }, 502, origem);
+  }
+  const res = Array.isArray(j.results) ? j.results : [];
+  // 4 páginas vazias seguidas: acabou o gênero, o cursor volta pro começo
+  if (!res.length) await env.DB.prepare('UPDATE jamendo_cursor SET pos = 0 WHERE genero = ?1').bind(genero).run();
+  const txt = (v, max) => (typeof v === 'string' ? v.slice(0, max) : null);
+  const faixas = res
+    .filter((t) => t && /^\d{1,10}$/.test(String(t.id)) && t.duration >= 60 && t.duration <= 600)
+    .map((t) => ({
+      id: 'jm:' + t.id, title: txt(t.name, 200) || '(sem título)', artist: txt(t.artist_name, 120) || '',
+      handle: 'jm:' + String(t.artist_id || '').slice(0, 12), duration: Math.round(t.duration),
+      genre: JAMENDO_TAGS[genero] ? genero : txt(t.musicinfo?.tags?.genres?.[0], 40),
+      image: txt(t.album_image || t.image, 300), licenca: txt(t.license_ccurl, 200),
+    }));
+  return json({ faixas, fim: !res.length }, 200, origem);
+}
+
 /** ♥ da galera: um voto por id (o app só manda uma vez por pessoa). */
 async function bomPost(req, env, origem) {
   let corpo;
@@ -222,6 +290,10 @@ export default {
       if (req.method === 'POST' && url.pathname === '/feedback') return await feedbackPost(req, env, origem);
       if (req.method === 'GET' && url.pathname === '/lixo') return await lixoGet(env, origem);
       if (req.method === 'POST' && url.pathname === '/bom') return await bomPost(req, env, origem);
+      if (req.method === 'GET' && url.pathname === '/jamendo/lote') {
+        if (passouDoIp(ip)) return json({ erro: 'devagar — muitos pedidos' }, 429, origem);
+        return await jamendoLote(url, env, origem);
+      }
       if (req.method === 'GET' && url.pathname === '/bom') return await bomGet(env, origem);
       if (url.pathname === '/') return json({ garimpo: 'ok' }, 200, origem);
       return json({ erro: 'não achei' }, 404, origem);

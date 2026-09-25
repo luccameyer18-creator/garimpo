@@ -11,7 +11,7 @@
  */
 
 import { Transport } from '../audio/transport.js';
-import { resolveStreamUrl, urlAquecida } from '../sources/audius.js';
+import { resolveStreamUrl, urlAquecida, bpmWindow } from '../sources/audius.js';
 import { urlDoStream, tomarAquecida, comecar as comecarHearthis } from '../sources/hearthis.js';
 import { analisar } from '../analysis/analyze.js';
 
@@ -250,6 +250,32 @@ export class Deck extends EventTarget {
   }
 
   /**
+   * Faixa do Jamendo: o arquivo INTEIRO, de uma vez. O servidor deles só libera
+   * CORS sem Range (medido: com Range o 206 vem sem permissão), então aqui não
+   * há prefixo — são 3 a 7 MB em mp32. Duas tentativas.
+   */
+  async carregarJamendo(faixa, url) {
+    return this.#carregar(faixa, async (sinal, aoProgredir) => {
+      let erro = null;
+      for (let k = 0; k < 2; k++) {
+        try {
+          const r = await fetch(url, { signal: sinal });
+          if (!r.ok) throw new Error('jamendo respondeu ' + r.status);
+          const buf = await r.arrayBuffer();
+          this.#passo('bytes baixados', (buf.byteLength / 1048576).toFixed(2) + ' MB (jamendo, inteira)');
+          aoProgredir?.(1);
+          return buf;
+        } catch (e) {
+          if (sinal.aborted) throw e;
+          erro = e;
+          await new Promise((ok) => setTimeout(ok, 1500));
+        }
+      }
+      throw erro;
+    });
+  }
+
+  /**
    * Faixa do hearthis. Mesmo efeito do caminho do Audius — toca com o começo
    * e troca pelo arquivo inteiro quando ele chega —, mas baixando em pedaços
    * paralelos, porque o servidor deles limita cada conexão (236 KB/s medidos).
@@ -413,8 +439,31 @@ export class Deck extends EventTarget {
    */
   async #analisar(buf, faixa, ac) {
     try {
-      const r = await analisar(buf, { genero: faixa.genre, bpmConhecido: faixa.bpm || null });
+      let r = await analisar(buf, { genero: faixa.genre, bpmConhecido: faixa.bpm || null });
       if (ac.signal.aborted) return;
+      /**
+       * TERCINA, não só oitava. Sem BPM de fábrica (Jamendo, arquivo), o
+       * detector às vezes trava em 4/3 ou 3/4 do andamento — medido: um House
+       * do Jamendo saiu 170,8 (= 128 × 4/3), e a regra de oitava não chega
+       * nele. Com gênero conhecido, se o medido cai fora da janela do gênero e
+       * uma razão de tercina cai dentro, analisa DE NOVO mirando esse valor e
+       * só fica com ele se a segunda análise confirmar dentro da janela.
+       */
+      if (!faixa.bpm && r.bpm && faixa.genre) {
+        const w = bpmWindow(faixa.genre);
+        const dentro = (b) => b >= w.min && b <= w.max;
+        if (w.min > 70 && !dentro(r.bpm) && !dentro(r.bpm / 2) && !dentro(r.bpm * 2)) {
+          const alvo = [3 / 4, 4 / 3, 2 / 3, 3 / 2, 3 / 8, 8 / 3].map((k) => r.bpm * k).find(dentro);
+          if (alvo) {
+            const r2 = await analisar(buf, { genero: faixa.genre, bpmConhecido: alvo }).catch(() => null);
+            if (ac.signal.aborted) return;
+            if (r2?.bpm && dentro(r2.bpm)) {
+              this.#passo('bpm corrigido', `tercina: ${r.bpm} → ${r2.bpm} (${faixa.genre})`);
+              r = r2;
+            }
+          }
+        }
+      }
       this.analise = r;
       // RECONCILIACAO DE OITAVA.
       // O BPM do Audius e detectado por maquina (is_custom_bpm = 0 em 100/100
