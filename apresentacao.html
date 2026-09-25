@@ -343,6 +343,35 @@
   body.video.f-comunidade .cena { padding:22cqw 8cqw 26cqw; }
   body.video.f-comunidade .fim { gap:3cqw; }
   body.video.f-comunidade .sticker { display:none; }
+  .f-comunidade .sub.indep { font-size:4.8cqw; color:#e9e2ff; }
+  .rot-cont { margin:-2cqw 0 0; font:800 4.6cqw ui-sans-serif, system-ui; color:#ffb347; letter-spacing:.02em; }
+  /* a controladora desenhada (cena c-controladora) */
+  .ctl-desenho { position:relative; display:flex; align-items:center; justify-content:space-between; gap:3cqw;
+    width:74cqw; height:30cqw; padding:0 4cqw; border-radius:4cqw; background:linear-gradient(180deg,#2a2146,#171126);
+    border:.5cqw solid #3a2f5c; box-shadow:0 3cqw 8cqw rgba(0,0,0,.5); }
+  .ctl-desenho .jog { width:22cqw; height:22cqw; border-radius:50%; background:radial-gradient(circle, #3b2f5f 0 28%, #120c20 30% 62%, #2a2146 64%);
+    border:.6cqw solid #ff4ecd; box-shadow:0 0 4cqw rgba(255,78,205,.45); }
+  .ctl-desenho .jog + .ctl-meio + .jog { border-color:#4cc9f0; box-shadow:0 0 4cqw rgba(76,201,240,.45); }
+  .ctl-meio { flex:1; height:70%; display:flex; gap:2.4cqw; justify-content:center; position:relative; }
+  .ctl-meio b { width:1.2cqw; height:60%; border-radius:1cqw; background:#0d0918; position:relative; }
+  .ctl-meio b::after { content:''; position:absolute; left:-1.4cqw; right:-1.4cqw; top:40%; height:2.4cqw; border-radius:.6cqw; background:#e8e2ff; }
+  .ctl-meio .xf { position:absolute; bottom:0; left:10%; right:10%; height:1.2cqw; border-radius:1cqw; background:#0d0918; }
+  .ctl-meio .xf::after { content:''; position:absolute; left:42%; top:-1cqw; width:4cqw; height:3.2cqw; border-radius:.6cqw; background:#e8e2ff; }
+  .ctl-desenho .cabo { position:absolute; top:-9cqw; left:50%; width:1cqw; height:9cqw; background:linear-gradient(#4cc9f0,#3a2f5c); }
+  .ctl-achei { font:800 4.6cqw ui-sans-serif, system-ui; padding:2.4cqw 4.4cqw; border-radius:99px; color:#04202b;
+    background:linear-gradient(90deg,#4cc9f0,#7ee3ff); box-shadow:0 0 6cqw rgba(76,201,240,.5); }
+  /* o 💬 do app (cena c-feedback) */
+  .fb { width:78cqw; display:flex; flex-direction:column; gap:2.4cqw; align-items:stretch; }
+  .fb-topo { display:flex; align-items:center; justify-content:space-between; padding:2.4cqw 3.6cqw; border-radius:3cqw;
+    background:#171126; border:.4cqw solid #3a2f5c; font:900 4cqw ui-monospace, monospace; letter-spacing:.14em; color:#f2eefc; }
+  .fb-topo span { color:#4cc9f0; }
+  .fb-bt { font-style:normal; font-size:5.6cqw; padding:1cqw 2cqw; border-radius:2cqw; border:.5cqw solid #ff4ecd;
+    box-shadow:0 0 5cqw rgba(255,78,205,.6); animation:fb-pulsa 1s ease-in-out infinite; }
+  @keyframes fb-pulsa { 50% { transform:scale(1.12); } }
+  .fb-caixa { text-align:left; font:600 4.2cqw/1.35 ui-sans-serif, system-ui; color:#f2eefc; padding:3.4cqw 4cqw;
+    border-radius:3cqw; background:#0d0918; border:.4cqw solid #ff4ecd; }
+  .fb-ok { font:800 4.2cqw ui-sans-serif, system-ui; color:#2ee6a8; }
+  body.video.f-comunidade .creditos { font-size:3.3cqw; color:#b3a8d6; }
   /* a rampa de BPM do set (cena c-dj) */
   .rampa { align-self:center; font:800 5cqw/1 ui-monospace, monospace; letter-spacing:.04em; color:var(--mut);
            padding:2.2cqw 4.4cqw; border-radius:99px; border:.4cqw solid #ff4fd8; background:rgba(255,79,216,.12); }
@@ -585,14 +614,10 @@
   <section class="cena" data-formato="comunidade" data-nome="c-garimpo" data-efeito="garimpo" data-comp="2-4">
     <div class="pepitas" id="pepitas" aria-hidden="true"></div>
     <div class="masc-m entra" data-b="0" id="m-cava" data-masc="cava"></div>
-    <div class="contador entra" data-b="0" id="contador">0</div>
-    <h2 class="entra" data-b="1">músicas pra <span class="ambar">garimpar.</span></h2>
-    <div class="abas">
-      <span class="aba pop" data-b="2">⚡ eletrônico</span><span class="aba pop" data-b="2.4">⚽ brasil</span>
-      <span class="aba pop" data-b="2.8">🥁 funk</span><span class="aba pop" data-b="3.2">🎤 rap</span>
-      <span class="aba quente pop" data-b="3.6">🔥 apostas</span><span class="aba pop" data-b="4">🐢 slowed</span>
-    </div>
-    <p class="sub entra" data-b="5">E cresce todo dia: o que <b>um</b> garimpa, <b class="rosa">todo mundo</b> ouve.</p>
+    <h2 class="entra" data-b="0">Cansou da <span class="ambar">mesma playlist?</span></h2>
+    <div class="contador entra" data-b="0.4" id="contador">0</div>
+    <p class="rot-cont entra" data-b="0.8">músicas novas pra garimpar</p>
+    <p class="sub indep entra" data-b="2">Estilos que você nunca ouviu — só de <b class="rosa">artistas independentes</b>, do <b>Audius</b> e do <b>hearthis.at</b>.</p>
   </section>
 
   <section class="cena" data-formato="comunidade" data-nome="c-b2b" data-efeito="dois-jeitos" data-comp="4-6">
@@ -644,8 +669,8 @@
         <span class="acao coracao pop" data-b="1.5">♥</span></div>
       <div class="linha ruim entra" data-b="1" data-sai="4"><div class="capa c2"></div><div><b>essa não</b><small>2 👎 e sai pra galera toda</small></div>
         <span class="acao pop" data-b="3">👎</span></div>
-      <div class="linha entra" data-b="4.5"><div class="capa arq">💬</div><div><b>sua ideia</b>
-        <small class="mede">chega direto <span class="pop" data-b="6">em quem faz o Garimpo ✓</span></small></div></div>
+      <div class="linha entra" data-b="4.5"><div class="capa arq">🔥</div><div><b>apostas</b>
+        <small class="mede">quem tá <span class="pop" data-b="6">estourando agora ✓</span></small></div></div>
     </div>
     <p class="sub entra" data-b="5.5">Quanto mais gente, <b>melhor o garimpo.</b></p>
   </section>
@@ -671,30 +696,33 @@
     </div>
   </section>
 
-  <section class="cena baixo" data-formato="comunidade" data-nome="c-viagem" data-efeito="viagem" data-comp="20-24">
+  <section class="cena baixo" data-formato="comunidade" data-nome="c-viagem" data-efeito="viagem" data-comp="20-22">
     <div class="faixa-escura">
-      <h2 class="entra" data-b="1">Ou entra na <span class="lilas">viagem.</span></h2>
-      <p class="sub entra" data-b="3">O hiperespaço no ritmo da música — e <b>quem aparece por lá.</b></p>
+      <h2 class="entra" data-b="0.5">Ou entra na <span class="lilas">viagem.</span></h2>
+      <p class="sub entra" data-b="1.5">O hiperespaço no ritmo da música — e <b>quem aparece por lá.</b></p>
     </div>
   </section>
 
-  <section class="cena" data-formato="comunidade" data-nome="c-celular" data-efeito="celular" data-comp="24-26">
-    <h2 class="entra" data-b="0">No celular <span class="neon">também.</span></h2>
-    <div class="fone-palco entra" data-b="0.3">
-      <div class="fone pe" id="fonePe"><div class="aviso"><span class="seta">↻</span>vira o celular</div></div>
-      <div class="fone deitado" id="foneDeitado">
-        <div class="tela-cdj">
-          <div class="barra">GARIM<span>PO</span> <em><b>①</b> Toque em PLAY no deck A.</em></div>
-          <div class="meio">
-            <div class="mini-deck"><div class="onda" id="ondaC"></div><div class="bts"><i></i><i></i></div></div>
-            <div class="mini-mix"></div>
-            <div class="mini-deck b"><div class="onda" id="ondaD"></div><div class="bts"><i></i><i></i></div></div>
-          </div>
-          <div class="pe-de-baixo"><i class="on">🎧 b2b</i><i>🎛 solo</i><i class="bora">▶ BORA DE B2B</i></div>
-        </div>
-      </div>
+  <section class="cena" data-formato="comunidade" data-nome="c-controladora" data-efeito="guarda" data-comp="22-24">
+    <h2 class="entra" data-b="0">Tem controladora? <span class="neon">Pluga.</span></h2>
+    <div class="ctl-desenho entra" data-b="0.4" aria-hidden="true">
+      <i class="jog"></i>
+      <div class="ctl-meio"><b></b><b></b><b></b><span class="xf"></span></div>
+      <i class="jog"></i>
+      <span class="cabo"></span>
     </div>
-    <p class="sub entra" data-b="4">Manda o link pro seu <b>parceiro de b2b.</b></p>
+    <div class="ctl-achei pop" data-b="2">✓ Achei sua <b>DDJ-FLX4</b>!</div>
+    <p class="sub entra" data-b="3">No USB do computador, e ele reconhece <b>mais de 140 modelos.</b></p>
+  </section>
+
+  <section class="cena" data-formato="comunidade" data-nome="c-feedback" data-efeito="guarda" data-comp="24-26">
+    <h2 class="entra" data-b="0">Sua opinião <span class="rosa">faz o Garimpo.</span></h2>
+    <div class="fb entra" data-b="0.5">
+      <div class="fb-topo"><b>GARIM<span>PO</span></b><i class="fb-bt">💬</i></div>
+      <div class="fb-caixa pop" data-b="1.3">quero mais funk de 150 BPM! e um botão de gravar o set 🙏</div>
+      <div class="fb-ok pop" data-b="3">chegou! obrigado — o Garimpo lê tudo 💜</div>
+    </div>
+    <p class="sub entra" data-b="2.5">Bug, ideia, gênero que falta: toca no <b>💬 lá em cima</b> e manda. <b class="rosa">A gente lê tudo.</b></p>
   </section>
 
   <section class="cena fim" data-formato="comunidade" data-nome="c-convite" data-efeito="convite" data-comp="26-30">
@@ -702,8 +730,9 @@
     <h1 class="slam" data-b="0.5">GARIM<span class="neon">PO</span></h1>
     <h2 class="entra" data-b="2">Entra. Garimpa.<br><span class="verde">Chama a galera.</span></h2>
     <div class="entra" data-b="3.5"><a class="cta" href="./">entrar no garimpo</a></div>
-    <p class="sub entra" data-b="5">De graça. Sem conta. Sem baixar nada.</p>
-    <p class="divirta entra" data-b="6.5">Bora fazer a cena junto. 🎧</p>
+    <p class="sub entra" data-b="4.5">No celular ou no PC. De graça, sem conta, sem baixar nada.</p>
+    <p class="divirta entra" data-b="6.5">Manda pro seu parceiro de b2b. 🎧</p>
+    <p class="creditos entra" data-b="5.5">Músicas de artistas independentes, do Audius e do hearthis.at.<br>♫ Hallmarc — Funk Faker (CC BY)</p>
   </section>
 
   <div id="apagao" aria-hidden="true"></div>
