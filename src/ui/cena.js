@@ -106,10 +106,12 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
     bViagem.classList.toggle('lig', !!on);
     bTroca.hidden = !on;
     if (on && modoPista) ligarPista(false);          // uma de cada vez
+    if (on) window.garimpoEvento?.('efeito', { qual: 'viagem' });
     pintarEfeitos();
   };
   bPista.onclick = () => {
     ligarPista(!modoPista);
+    if (modoPista) window.garimpoEvento?.('efeito', { qual: 'pista' });
     if (modoPista && viagem?.ligada) { viagem.alternar(false); bViagem.classList.remove('lig'); bTroca.hidden = true; }
   };
   el.appendChild(bPista);

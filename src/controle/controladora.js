@@ -182,6 +182,7 @@ export function montarControladora(api) {
     desenhar();
     if (!achado) {
       api.avisar({ fala: '🎛 ' + tc('n.desconhecida', { nome: limparNome(ap.nome) }), porque: tc('n.desconhecida.p'), cor: 'depois', ms: 8000 });
+      window.garimpoEvento?.('controladora', { modelo: 'desconhecida' });
       return;
     }
     try {
@@ -198,6 +199,7 @@ export function montarControladora(api) {
       });
       ap.entrada.onmidimessage = (e) => c.motor.receber(e.data);
       c.estado = 'ligada';
+      window.garimpoEvento?.('controladora', { modelo: achado.nome });
       api.mascote()?.comemora?.();
       api.avisar({
         fala: '🎛 ' + tc('n.ligou', { nome: achado.nome }),

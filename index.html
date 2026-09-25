@@ -16,6 +16,12 @@
       var s = document.createElement('script'); s.defer = true; s.src = src; document.head.appendChild(s);
     });
   }
+  // EVENTOS anônimos pro Web Analytics (Pro): o nome e um ou dois rótulos
+  // (modo do DJ, qual efeito, modelo da controladora) — nunca texto, nome,
+  // música de arquivo ou qualquer coisa da pessoa. Fora da Vercel, não faz nada.
+  window.garimpoEvento = function (nome, dados) {
+    try { if (window.va) window.va('event', { name: nome, data: dados || {} }); } catch (e) {}
+  };
 </script>
 <style>
   /*

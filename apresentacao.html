@@ -748,6 +748,17 @@
   </div>
 </main>
 
+<script>
+  // Web Analytics da Vercel também nas stories: quantos abriram vindo do
+  // Instagram, de celular ou computador, e quantos tocaram em "entrar"
+  if (/\.vercel\.app$/.test(location.hostname)) {
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+    var s = document.createElement('script'); s.defer = true; s.src = '/_vercel/insights/script.js'; document.head.appendChild(s);
+  }
+  document.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('.cta, #b-fechar') && window.va) window.va('event', { name: 'stories_entrar', data: {} });
+  }, true);
+</script>
 <script type="module">
   import { montarMascote } from './src/ui/mascote.js';
   import { estadoPista as E } from './src/ui/pista.js';

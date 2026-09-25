@@ -198,7 +198,7 @@ const tentarLigar = () => {
         // nas outras vezes, direto) a gaveta abre, que o primeiro passo é
         // escolher música
         const escolher = () => { if (!decks.A?.faixa) abrirBibPara('A'); };
-        if (!guiaVisto()) setTimeout(() => abrirGuia({ depois: escolher }), 700);
+        if (!guiaVisto()) setTimeout(() => abrirGuia({ depois: (fim) => { window.garimpoEvento?.('guia', { fim: fim ? 'sim' : 'pulou' }); escolher(); } }), 700);
         else escolher();
       }
       $('porta').classList.add('saiu');
@@ -1518,7 +1518,9 @@ function pintarBiblioteca() {
  * seu guardado numa pasta. Música sua tocada pela primeira vez ensina à
  * pasta o BPM, o tom e a duração que a análise do deck achou.
  */
+let primeiraMusica = true;
 async function carregarFaixa(id, faixa) {
+  if (primeiraMusica) { primeiraMusica = false; window.garimpoEvento?.('musica', { fonte: ehHearthis(faixa) ? 'hearthis' : faixa?.source === 'local' ? 'arquivo' : 'audius' }); }
   if (ehHearthis(faixa)) return decks[id].carregarHearthis(faixa);
   if (faixa?.source !== 'local') return decks[id].carregarAudius(faixa);
   const file = faixa.file || await pastas.arquivo(faixa.localId);
@@ -2185,6 +2187,7 @@ $('b-piloto').onclick = async () => {
   // solo: ele só monta o set e sinaliza — não assume nada, então não vira "parar"
   const solo = modoDj === 'solo';
   if (!solo) { b.classList.add('lig'); b.textContent = t('app.piloto.parar'); $('b-pular').hidden = false; document.body.classList.add('dj-tocando'); }
+  window.garimpoEvento?.('dj', { modo: modoDj, estilo: $('pref-estilo').value });
   $('piloto-nota').style.color = 'var(--neon)';
   $('piloto-nota').textContent = 'garimpando faixas…';
   try {
@@ -2501,6 +2504,7 @@ $('b-sug-enviar').onclick = async () => {
     idioma: document.documentElement.lang || null,
   });
   if (chegou) {
+    window.garimpoEvento?.('feedback', {});
     $('sug-nota').textContent = t('sug.chegou');
     $('sug-nota').style.color = 'var(--ok)';
     $('sug-texto').value = '';
