@@ -55,7 +55,7 @@ export function criarLeitura({ aoTerminar }) {
       fraseIni: foraDaFrase(q[sai]),
       somaFase: 0, nFase: 0, gravesJuntos: 0,
       usou: { grave: false, filtro: false, eco: false, loop: false },
-      xfIni: q.crossfader, golpe: null,
+      xfIni: q.crossfader, cruzou: null, trocou: null,
     };
   }
 
@@ -69,14 +69,14 @@ export function criarLeitura({ aoTerminar }) {
     if (Math.abs(q[a.sai].filtro || 0) > 0.15 || Math.abs(q[a.entra].filtro || 0) > 0.15) a.usou.filtro = true;
     if ((q[a.sai].eco || 0) > 0.1) a.usou.eco = true;
     if (q[a.sai].loop) a.usou.loop = true;
-    // o GOLPE: o crossfader passando do meio, ou os graves trocando de dono
-    if (!a.golpe) {
-      const passou = (a.xfIni - 0.5) * (q.crossfader - 0.5) < 0;
-      const trocou = gE > 0.4 && gS < 0.2;
-      if (passou || trocou) {
-        a.golpe = { frase: foraDaFrase(q[a.sai]), drop: dropPerto(q, a.entra) };
-      }
-    }
+    // o GOLPE: quando os graves TROCAM de dono — é o que o ouvido sente como
+    // "entrou". Sem troca de graves, vale o crossfader passando do meio. Medir
+    // pelo crossfader primeiro acusava "2 tempos fora" em transição certa:
+    // o DJ leva o crossfader ao meio ANTES e troca o grave no 1 (medido na
+    // simulação, festival e baile)
+    const marca = () => ({ frase: foraDaFrase(q[a.sai]), drop: dropPerto(q, a.entra) });
+    if (!a.cruzou && (a.xfIni - 0.5) * (q.crossfader - 0.5) < 0) a.cruzou = marca();
+    if (!a.trocou && gE > 0.4 && gS < 0.2) a.trocou = marca();
   }
 
   /** O golpe caiu num DROP da que entra (±2 tempos)? */
@@ -102,7 +102,9 @@ export function criarLeitura({ aoTerminar }) {
     const fase = a.nFase ? a.somaFase / a.nFase : null;
     let nFase;
     if (fase == null || tecnica === 'corte') nFase = 32;
-    else nFase = Math.round(40 * Math.max(0, Math.min(1, 1 - (fase - 0.03) / 0.22)));
+    // cheia até 0,03 tempo (~15 ms), zera em 0,15 (~70 ms): 40 ms já se ouve
+    // como batida "dobrando" — com a régua antiga isso custava só 4 pontos
+    else nFase = Math.round(40 * Math.max(0, Math.min(1, 1 - (fase - 0.03) / 0.12)));
     if (fase != null && tecnica !== 'corte') itens.push(fase <= 0.04 ? { ok: true, k: 'batida.ok' }
       : { ok: false, k: 'batida.mal', v: { ms: Math.round(fase * per * 1000) } });
 
@@ -110,9 +112,11 @@ export function criarLeitura({ aoTerminar }) {
     if (tecnica !== 'corte') itens.push(a.gravesJuntos <= 1.5 ? { ok: true, k: 'graves.ok' }
       : { ok: false, k: 'graves.mal', v: { s: Math.round(a.gravesJuntos) } });
 
-    const fr = a.golpe?.frase ?? a.fraseIni;
-    const nFrase = fr == null ? 12 : fr <= 1 ? 20 : fr % 8 <= 1 || 8 - (fr % 8) <= 1 ? 12 : 4;
-    if (fr != null) itens.push(fr <= 1 ? { ok: true, k: 'frase.ok' }
+    // 2 tempos de folga: a mão humana e o crossfader gradual não caem no 1 exato
+    const golpe = a.trocou || a.cruzou;
+    const fr = golpe?.frase ?? a.fraseIni;
+    const nFrase = fr == null ? 12 : fr <= 2 ? 20 : fr % 8 <= 2 || 8 - (fr % 8) <= 2 ? 12 : 4;
+    if (fr != null) itens.push(fr <= 2 ? { ok: true, k: 'frase.ok' }
       : { ok: false, k: 'frase.mal', v: { t: Math.round(fr) } });
 
     const tom = keyCompatible({ camelot: a.faixaSai?.camelot }, { camelot: a.faixaEntra?.camelot });
@@ -121,12 +125,12 @@ export function criarLeitura({ aoTerminar }) {
     if (a.faixaSai?.camelot && a.faixaEntra?.camelot) itens.push(tom.ok ? { ok: true, k: 'tom.ok' }
       : disfarcou ? { ok: true, k: 'tom.disfarce', v: { tec: tecnica } } : { ok: false, k: 'tom.mal' });
 
-    if (a.golpe?.drop) itens.push({ ok: true, k: 'drop' });
+    if (golpe?.drop) itens.push({ ok: true, k: 'drop' });
 
-    const nota = Math.min(100, nFase + nGraves + nFrase + nTom + (a.golpe?.drop ? 5 : 0));
+    const nota = Math.min(100, nFase + nGraves + nFrase + nTom + (golpe?.drop ? 5 : 0));
     aoTerminar({
       nota, itens, tecnica, tempos, dur,
-      sai: a.faixaSai, entra: a.faixaEntra, fraseOk: fr != null && fr <= 1,
+      sai: a.faixaSai, entra: a.faixaEntra, fraseOk: fr != null && fr <= 2,
     });
   }
 

@@ -2749,11 +2749,14 @@ var leitura = criarLeitura({ aoTerminar: (r) => {
     const p = j?.notas?.[0];
     const selo = r.nota >= 85 ? '🔥' : r.nota >= 70 ? '✓' : '👀';
     avisoControladora({
-      fala: t('leitura.fala', { selo, nota: r.nota, tec: TECNICAS[r.tecnica]?.nome || r.tecnica, tempos: r.tempos }),
-      // o que pede atenção primeiro: a linha é cortada no fim
-      porque: [...r.itens].sort((a, b) => a.ok - b.ok).map((x) => (x.ok ? '✓ ' : '• ') + t('leitura.' + x.k, x.v || {})).join(' · ')
-        + (typeof p === 'number' ? ' · ' + t(p >= 0.5 ? 'leitura.jev.ok' : 'leitura.jev.mal', { p: Math.round(p * 100) }) : '')
-        + ' — ' + t('leitura.sessao', { n: sessao.n, media: Math.round(sessao.soma / sessao.n) }),
+      // em cima o que importa de relance (nota, técnica, média); embaixo os
+      // pontos, o que pede atenção PRIMEIRO — a linha de baixo é cortada no fim
+      fala: t('leitura.fala', { selo, nota: r.nota, tec: TECNICAS[r.tecnica]?.nome || r.tecnica, tempos: r.tempos })
+        + (sessao.n > 1 ? ' · ' + t('leitura.sessao', { n: sessao.n, media: Math.round(sessao.soma / sessao.n) }) : ''),
+      porque: [
+        ...[...r.itens].sort((a, b) => a.ok - b.ok).map((x) => (x.ok ? '✓ ' : '• ') + t('leitura.' + x.k, x.v || {})),
+        ...(typeof p === 'number' ? [t(p >= 0.5 ? 'leitura.jev.ok' : 'leitura.jev.mal', { p: Math.round(p * 100) })] : []),
+      ].join(' · '),
       cor: r.nota >= 70 ? 'depois' : 'agora', ms: 12000,
     });
   });
