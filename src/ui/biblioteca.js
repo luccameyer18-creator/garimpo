@@ -23,6 +23,7 @@ import * as crate from '../sources/crate.js';
 import { sinaisAudius } from '../coach/jev.js';
 import { familia, FAMILIAS_PISTA } from '../coach/setlist.js';
 import * as pastas from '../sources/pastas.js';
+import { votarBom } from '../sources/galera.js';
 
 /** Todas as pilhas, cada uma com chave única e rótulo. */
 /**
@@ -239,8 +240,28 @@ export function alternarFavorita(faixa) {
   else favoritas.unshift(faixa);
   favoritas = favoritas.slice(0, 1000);
   gravar('garimpo.favoritas', favoritas);
+  if (i < 0) votarBom([faixa.id]);          // favoritar é votar: a galera fica sabendo
   return i < 0;
 }
+
+/**
+ * 💎 O QUE A GALERA CURTIU (o ♥ de todo mundo, ver galera.votarBom): um chip na
+ * aba 🔥 com as mais curtidas, e um empurrão pra elas na hora de montar o set
+ * (setlist.qualidade lê `galera`).
+ */
+let bomGalera = new Map();
+export function definirBomGalera(mapa) {
+  bomGalera = mapa || new Map();
+  const g = GRUPOS.find((x) => x.grupo === 'app.grupo.apostas');
+  if (!g) return;
+  g.itens = g.itens.filter((i) => i.chave !== 'galera:curtiu');
+  if (bomGalera.size) {
+    g.itens.unshift({ chave: 'galera:curtiu', nome: '💎 a galera curtiu', n: bomGalera.size,
+      rede: async () => crate.pegarIds([...bomGalera.keys()].slice(0, 300)) });
+  }
+  TODAS = GRUPOS.flatMap((x) => x.itens);
+}
+export const votosDaGalera = (id) => bomGalera.get(id) || 0;
 
 // ─────────────────────────── buscar e ordenar ───────────────────────────
 
@@ -422,6 +443,7 @@ export async function candidatasDoSet({ esperaSinais = 0 } = {}) {
    */
   const grupos = {};
   const marcadas = [...selecionadas];
+  for (const t of lista) t.galera = bomGalera.get(t.id) || 0;   // ♥ da galera → setlist.qualidade
   for (const t of lista) {
     const k = marcadas.length
       ? marcadas.find((s) => s === t.pilha || (s.startsWith('gen:') && t.genre === s.slice(4))) || 'outro'

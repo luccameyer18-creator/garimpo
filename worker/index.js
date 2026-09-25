@@ -143,10 +143,18 @@ async function acervoGet(url, env, origem) {
  * Trash compartilhado. POST soma um voto por faixa; GET devolve as que têm
  * 2+ votos. Só ids no formato do Audius; até 50 por pedido.
  */
+/**
+ * Id que vale voto: o do Audius ou o do hearthis ('ht:artista/faixa'). Antes
+ * só o do Audius — o 👎 numa faixa do hearthis nunca chegava na galera.
+ */
+const ID_VOTO = /^(?:ht:[A-Za-z0-9._-]{1,60}\/[A-Za-z0-9._-]{1,100}|[A-Za-z0-9]{3,16})$/;
+const idsDoCorpo = (corpo) => (Array.isArray(corpo?.ids) ? corpo.ids : [])
+  .filter((x) => typeof x === 'string' && ID_VOTO.test(x)).slice(0, 50);
+
 async function lixoPost(req, env, origem) {
   let corpo;
   try { corpo = JSON.parse(await req.text()); } catch { return json({ erro: 'json inválido' }, 400, origem); }
-  const ids = (Array.isArray(corpo?.ids) ? corpo.ids : []).filter((x) => typeof x === 'string' && /^[A-Za-z0-9]{3,16}$/.test(x)).slice(0, 50);
+  const ids = idsDoCorpo(corpo);
   if (!ids.length) return json({ votos: 0 }, 200, origem);
   const agora = Date.now();
   const stmt = env.DB.prepare(
@@ -155,6 +163,25 @@ async function lixoPost(req, env, origem) {
   await env.DB.batch(ids.map((id) => stmt.bind(id, agora)));
   return json({ votos: ids.length }, 200, origem);
 }
+/** ♥ da galera: um voto por id (o app só manda uma vez por pessoa). */
+async function bomPost(req, env, origem) {
+  let corpo;
+  try { corpo = JSON.parse(await req.text()); } catch { return json({ erro: 'json inválido' }, 400, origem); }
+  const ids = idsDoCorpo(corpo);
+  if (!ids.length) return json({ votos: 0 }, 200, origem);
+  const agora = Date.now();
+  const stmt = env.DB.prepare(
+    `INSERT INTO bom (id, votos, criada) VALUES (?1, 1, ?2)
+     ON CONFLICT(id) DO UPDATE SET votos = votos + 1`);
+  await env.DB.batch(ids.map((id) => stmt.bind(id, agora)));
+  return json({ votos: ids.length }, 200, origem);
+}
+/** As mais curtidas, com a contagem: [[id, votos], ...]. */
+async function bomGet(env, origem) {
+  const { results } = await env.DB.prepare('SELECT id, votos FROM bom ORDER BY votos DESC LIMIT 5000').all();
+  return json({ ids: results.map((r) => [r.id, r.votos]) }, 200, origem);
+}
+
 async function lixoGet(env, origem) {
   const { results } = await env.DB.prepare('SELECT id FROM lixo WHERE votos >= 2 LIMIT 20000').all();
   return json({ ids: results.map((r) => r.id) }, 200, origem);
@@ -194,6 +221,8 @@ export default {
       if (req.method === 'POST' && url.pathname === '/lixo') return await lixoPost(req, env, origem);
       if (req.method === 'POST' && url.pathname === '/feedback') return await feedbackPost(req, env, origem);
       if (req.method === 'GET' && url.pathname === '/lixo') return await lixoGet(env, origem);
+      if (req.method === 'POST' && url.pathname === '/bom') return await bomPost(req, env, origem);
+      if (req.method === 'GET' && url.pathname === '/bom') return await bomGet(env, origem);
       if (url.pathname === '/') return json({ garimpo: 'ok' }, 200, origem);
       return json({ erro: 'não achei' }, 404, origem);
     } catch (e) {

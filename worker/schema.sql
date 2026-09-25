@@ -32,6 +32,14 @@ CREATE TABLE IF NOT EXISTS lixo (
   criada INTEGER NOT NULL
 );
 
+-- o ♥ da galera: cada favorita é um voto (uma vez por pessoa, o app cuida);
+-- as mais curtidas sobem pra todo mundo — o lado bom do julgamento do 👎
+CREATE TABLE IF NOT EXISTS bom (
+  id     TEXT PRIMARY KEY,
+  votos  INTEGER NOT NULL DEFAULT 1,
+  criada INTEGER NOT NULL
+);
+
 -- sugestões e bugs do 💬 do app; só o dono lê (não há rota de leitura)
 CREATE TABLE IF NOT EXISTS feedback (
   id     INTEGER PRIMARY KEY AUTOINCREMENT,

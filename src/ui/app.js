@@ -15,7 +15,7 @@ import { montarSet, resumoSet } from '../coach/setlist.js';
 import * as crate from '../sources/crate.js';
 import { garimparLote, LOTE_GENEROS } from '../sources/garimpar.js';
 import { carregarSemente, SEMENTES } from '../sources/semente.js';
-import { puxar as puxarGalera, votarLixo, puxarLixo, enviarFeedback } from '../sources/galera.js';
+import { puxar as puxarGalera, votarLixo, puxarLixo, puxarBom, enviarFeedback } from '../sources/galera.js';
 import { Piloto } from '../coach/piloto.js';
 import { ESTILOS, TECNICAS } from '../coach/tecnicas.js';
 import { decidirSet, aplicarDecisoes, julgarFaixas, julgarPassagens } from '../coach/jev.js';
@@ -2725,6 +2725,9 @@ botaoLote();
   const g = await puxarGalera();
   const lixoDaGalera = await puxarLixo();
   if (lixoDaGalera) bib.definirLixoGalera(lixoDaGalera);
+  // e o que ela CURTIU: chip 💎 e empurrão no montador do set
+  const bomDaGalera = await puxarBom();
+  if (bomDaGalera) { bib.definirBomGalera(bomDaGalera); desenharChips(); }
   await mostrarAcervo();
   if (novasDaSemente || g.novas) recarregar();
 })();

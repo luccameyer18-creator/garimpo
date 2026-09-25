@@ -19,10 +19,10 @@ export const WORKER = 'https://garimpo.garimpo-dj.workers.dev';
  * a faixa some do garimpo de todo mundo — o Jev de uma pessoa economiza o
  * token de todas as outras.
  */
+/** Id que o Worker aceita em voto: Audius ou hearthis ('ht:artista/faixa'). */
+const ID_VOTO = /^(?:ht:[A-Za-z0-9._-]{1,60}\/[A-Za-z0-9._-]{1,100}|[A-Za-z0-9]{3,16})$/;
 export async function votarLixo(ids, origem = 'gente') {
-  // o Worker só conta voto em id do Audius; o 👎 numa faixa do hearthis
-  // continua valendo aqui (biblioteca.marcarLixo), só não vai pra galera
-  ids = (ids || []).filter((id) => /^[A-Za-z0-9]{3,16}$/.test(String(id)));
+  ids = (ids || []).filter((id) => ID_VOTO.test(String(id)));
   if (!ids.length) return;
   try {
     await fetch(`${WORKER}/lixo`, {
@@ -40,6 +40,32 @@ export async function enviarFeedback({ texto, nome = null, idioma = null }) {
     });
     return r.ok;
   } catch { return false; }
+}
+
+/**
+ * O ♥ DA GALERA — o lado bom do julgamento. Cada favorita é um voto, uma vez
+ * por música por pessoa (lembrado aqui); as mais curtidas sobem pra todos.
+ */
+const CHAVE_BOM = 'garimpo.bomVotados';
+export async function votarBom(ids) {
+  let ja = [];
+  try { ja = JSON.parse(localStorage.getItem(CHAVE_BOM) || '[]'); } catch {}
+  const novos = (ids || []).filter((id) => ID_VOTO.test(String(id)) && !ja.includes(id));
+  if (!novos.length) return;
+  try {
+    const r = await fetch(`${WORKER}/bom`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: novos.slice(0, 50) }),
+    });
+    if (r.ok) localStorage.setItem(CHAVE_BOM, JSON.stringify([...ja, ...novos].slice(-5000)));
+  } catch {}
+}
+/** As mais curtidas: Map id → votos (null se não deu). */
+export async function puxarBom() {
+  try {
+    const r = await fetch(`${WORKER}/bom`);
+    if (!r.ok) return null;
+    return new Map((await r.json()).ids || []);
+  } catch { return null; }
 }
 
 export async function puxarLixo() {

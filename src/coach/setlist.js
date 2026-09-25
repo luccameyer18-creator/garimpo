@@ -63,13 +63,15 @@ function distanciaCamelot(a, b) {
  */
 export function qualidade(t) {
   const corpo = Math.min(1, (t?.duration || 0) / 150);
+  // o ♥ da galera empurra pra cima: até +0,25 (cada voto vale 0,08)
+  const galera = Math.min(0.25, 0.08 * (t?.galera || 0));
   const s = t?.sinais;
-  if (!s) return 0.35 + 0.15 * corpo;
+  if (!s) return Math.min(1, 0.35 + 0.15 * corpo + galera);
   const plays = s.plays ?? 0;
   const amor = (s.curtidas ?? 0) + 2 * (s.reposts ?? 0);
   const alcance = Math.min(1, Math.log10(plays + 1) / 4);
   const carinho = Math.min(1, (amor / Math.max(20, plays)) * 8);
-  return 0.45 * alcance + 0.35 * carinho + 0.2 * corpo;
+  return Math.min(1, 0.45 * alcance + 0.35 * carinho + 0.2 * corpo + galera);
 }
 
 /**
