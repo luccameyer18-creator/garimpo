@@ -866,7 +866,19 @@ function rodarProfessor() {
   rodarAuto(est);
   // a leitura só vale pra quem TOCA: com o DJ mixando, as transições são dele
   if (piloto?.ativo) leitura?.zerar();
-  else { const q = quadroLeitura(est); leitura?.passo(q); est.saiu = leitura?.saiuDe(q); }
+  else {
+    const q = quadroLeitura(est); leitura?.passo(q); est.saiu = leitura?.saiuDe(q);
+    /**
+     * A que ACABOU de sair ainda toca, com o grave cortado, do outro lado do
+     * crossfader. Pras regras ela é um deck LIVRE: senão cada uma achava que
+     * havia transição acontecendo ("encaixe a batida", "traga o crossfader")
+     * sobre uma música que já saiu. O certo agora é escolher a próxima.
+     */
+    if (est.saiu && est[est.saiu]) {
+      est[est.saiu] = { ...est[est.saiu], tocando: false, temFaixa: false };
+      est.ambosAudiveis = false; est.fase = null;
+    }
+  }
 
   let itens = plano(est);
   // com o DJ automático tocando, a barra vira a NARRAÇÃO dele: o que acabou
