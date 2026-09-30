@@ -40,7 +40,7 @@ const CSS = `
 /* a porta (fixa, por cima de tudo) e os diálogos ficam fora desta regra */
 /* as abas das gavetas também: são fixas nas bordas (sem isto viravam
    relativas, caíam pro fim da página e sumiam da vista) */
-body > *:not(#pista):not(#porta):not(#luzes):not(dialog):not(.aba-bib):not(#viagem-fundo):not(#viagem-hiper):not(#viagem-frente):not(#so-viagem):not(#cena-tela):not(#cena-galera):not(.cena-drop):not(#girar) { position:relative; z-index:1; }
+body > *:not(#pista):not(#porta):not(#luzes):not(dialog):not(.aba-bib):not(#viagem-fundo):not(#viagem-hiper):not(#viagem-frente):not(#so-viagem):not(#cena-tela):not(#cena-galera):not(#pista-hd):not(.cena-drop):not(#girar) { position:relative; z-index:1; }
 
 /* o deck no ar ganha um contorno aceso — fixo, sem pulsar (sombra que pulsa
    repinta o deck inteiro a cada quadro) */
@@ -157,6 +157,10 @@ export const estadoPista = {
   dropReal: false,    // o último drop veio de um marcador da faixa?
   dropV: 0,           // 1 no drop, decaindo
   quebra: false,
+  // tempos até o próximo DROP marcado na faixa (Infinity se não há): é o que
+  // deixa a pista HD antecipar como um iluminador — apertar os fachos na
+  // subida e apagar tudo no último tempo antes do drop
+  paraDrop: Infinity,
   reduzido: false,
   // o que está soando, por banda (0..1, suavizado): é o que deixa a pista
   // reagir ao GRAVE, à voz e ao chimbal em vez de só ao relógio
@@ -287,6 +291,14 @@ export function montarPista({ deckNoAr, nivel, momentos = () => [], espectro = (
       }
     }
     posAntes = pos; idAntes = d?.tocando ? d.id : null;
+    // só drop de BLOCO (virada de 32 tempos): um palpite fraco não apaga a pista
+    let pd = Infinity;
+    if (d?.tocando && d.grid?.bpm) {
+      for (const m of momentos(d.id) || []) {
+        if (m.tipo === 'drop' && m.bloco !== false && m.t > pos) pd = Math.min(pd, (m.t - pos) * d.grid.bpm / 60);
+      }
+    }
+    E.paraDrop = pd;
     // sem marcador: energia subindo de repente também é drop
     lento += 0.012 * (energia - lento);
     if (energia - lento > 0.28 && energia > 0.55 && performance.now() - E.drop > 8000) marcarDrop();

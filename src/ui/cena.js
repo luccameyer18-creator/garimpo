@@ -26,8 +26,17 @@
  * LEVE: desenha a metade da resolução da tela (a placa amplia), 30 quadros
  * por segundo, e só redesenha o que muda. O ✨ do painel desliga tudo.
  *
- * ACESSIBILIDADE: o estrobo é só no bombando, só um tempo depois do drop, e
- * nunca com `prefers-reduced-motion` (aí a cena fica parada).
+ * ACESSIBILIDADE: o estrobo é só no bombando, só nos 2 tempos depois do drop,
+ * no máximo uma piscada por tempo (bem abaixo de 3 por segundo), e nunca com
+ * `prefers-reduced-motion` (aí a cena fica parada).
+ *
+ * PISTA HD (pista-hd.js): o club de verdade, em WebGL2 e na resolução da
+ * tela — fachos de cabeça móvel na fumaça, lasers, blinder, galera com
+ * contraluz, dirigidos na grade de batidas como um iluminador faz. Mesmo
+ * esquema da viagem HD: só é montada na 1ª vez que a 🎉 pista liga (quem nunca
+ * liga não baixa nem compila nada), prepara aos poucos enquanto ESTA pista 2D
+ * aparece, entra por cima com uma fusão e, se falhar ou a placa cair, a 2D
+ * volta na hora. Sem WebGL2 (ou só por software), fica a 2D.
  */
 
 import { estadoPista as E } from './pista.js';
@@ -46,6 +55,11 @@ const CONFETE = ['#ff4ecd', '#4cc9f0', '#ffb347', '#2ee6a8', '#c77dff', '#fff2b3
 // resolução da camada: metade da tela, vezes o degrau do medidor (qualidade.js)
 const ESCALA = 0.5;
 const NOME_MODO = { 1: 'leve', 2: 'médio', 3: 'bombando' };
+
+// celular começa a pista HD mais leve (preset 'medio'); quanto dura a fusão
+// da pista 2D pra HD quando ela fica pronta
+const CELULAR = (() => { try { return matchMedia('(pointer: coarse)').matches; } catch { return false; } })();
+const FUSAO_MS = 1200;
 
 const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 const hsl = (h, s, l, a = 1) => `hsla(${((h % 360) + 360) % 360},${s}%,${l}%,${a})`;
@@ -95,6 +109,8 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
     document.body.classList.toggle('pista-cheia', on);
     document.dispatchEvent(new CustomEvent('show'));
     montarGente();
+    // desligou: o HD devolve a memória da placa (volta pronto na próxima vez)
+    if (!on) { mostrarHD(false); try { hd?.dormir(); } catch {} }
   };
   const bTroca = document.createElement('button');
   bTroca.className = 'cena-troca';
@@ -183,9 +199,89 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
     u = Math.max(0.5, Math.min(W, H * 1.6) / 600);
     montarGente();
   }
-  addEventListener('resize', ajustar);
-  aoMudarQualidade(() => { ajustar(); pintarEfeitos(); });
+  addEventListener('resize', () => { ajustar(); medirHD(); });
+  aoMudarQualidade((q) => {
+    ajustar(); pintarEfeitos();
+    if (hdMod) hd?.qualidade(hdMod.presetParaEscala(inicialHD, q.escala));
+  });
   ajustar();
+
+  // ───────── PISTA HD ─────────
+  let hd = null, hdCv = null, hdMod = null, hdDesistiu = false, carregandoHD = false;
+  let hdNoAr = false, hdEntrando = false, fusaoHD = null, avisouHD = false;
+  let inicialHD = CELULAR ? 'medio' : 'alto';
+  const ctxHD = { soShow: false, black: false, visual: VISUAL.pista };
+
+  function montarHD() {
+    carregandoHD = true;
+    import('./pista-hd.js').then((m) => {
+      carregandoHD = false;
+      hdMod = m;
+      const cv = document.createElement('canvas');
+      cv.id = 'pista-hd';
+      cv.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(cv);
+      hdCv = cv;
+      try {
+        hd = m.montarPistaHD(cv, {
+          preset: m.presetParaEscala(inicialHD, Q.escala),
+          // a régua da placa só serve pra SUBIR: com a página ocupada a espera
+          // divide a placa com o resto, então leitura lenta não prova nada.
+          // Descer é com o medidor (qualidade.js)
+          aoMedirPlaca(ms) {
+            if (!CELULAR && m.presetPeloQuadro(ms) === 'ultra') inicialHD = 'ultra';
+            hd?.qualidade(m.presetParaEscala(inicialHD, Q.escala));
+          },
+        });
+      } catch { hd = null; }
+      if (!hd) { desistirHD(); return; }
+      medirHD();
+    }).catch(() => { carregandoHD = false; desistirHD(); });
+  }
+  function desistirHD() {
+    mostrarHD(false);
+    try { hd?.liberar(); } catch {}
+    hdCv?.remove();
+    hd = null; hdCv = null; hdDesistiu = true;
+    if (!avisouHD) { avisouHD = true; window.garimpoEvento?.('pista-hd', { ok: 'nao' }); }
+  }
+  // a tela inteira em pixels do aparelho (dpr até 1,5, como a viagem HD); o
+  // preset decide quanto disso é desenhado
+  function medirHD() {
+    const dpr = Math.min(devicePixelRatio || 1, 1.5);
+    hd?.tamanho(innerWidth * dpr, innerHeight * dpr);
+  }
+  /** Põe o HD no ar (com fusão por cima da 2D, que só some no fim) ou tira. */
+  function mostrarHD(on) {
+    if (on === hdNoAr) return;
+    hdNoAr = on;
+    fusaoHD?.cancel(); fusaoHD = null; hdEntrando = false;
+    document.body.classList.remove('pista-hd-entra');
+    if (!on) { document.body.classList.remove('pista-hd'); return; }
+    if (!avisouHD) { avisouHD = true; window.garimpoEvento?.('pista-hd', { ok: 'sim', preset: hd?.preset }); }
+    const fim = () => {
+      fusaoHD = null; hdEntrando = false;
+      document.body.classList.remove('pista-hd-entra');
+      document.body.classList.add('pista-hd');
+      c.clearRect(0, 0, W, H); g.clearRect(0, 0, W, H);
+    };
+    if (!hdCv?.animate || E.reduzido) { fim(); return; }
+    hdEntrando = true;
+    document.body.classList.add('pista-hd-entra');
+    fusaoHD = hdCv.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FUSAO_MS, easing: 'ease-in-out' });
+    fusaoHD.onfinish = fim;
+  }
+  /** Monta na 1ª vez, prepara aos poucos e entra quando fica pronto. */
+  function cuidarDoHD() {
+    if (hdDesistiu || carregandoHD) return;
+    if (!hd) { montarHD(); return; }
+    if (hd.falhou) { desistirHD(); return; }
+    // a placa caiu: a 2D volta na hora; o HD se refaz sozinho e entra de novo
+    if (hdNoAr && !hd.pronto) { mostrarHD(false); return; }
+    if (!hdNoAr && !hd.perdido) {
+      try { if (hd.preparar(ctxHD)) mostrarHD(true); } catch { desistirHD(); }
+    }
+  }
 
   let ultimoDrop = E.drop, tAntes = 0, textoAntes = '', tRotulo = 0, dropEm = -1e9;
 
@@ -266,12 +362,18 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
     c.fillRect(0, H * 0.45, W, H * 0.55);
   }
 
-  /** ESTROBO no drop (só no bombando, só um tempo, e nunca com menos movimento). */
+  /**
+   * ESTROBO no drop (só no bombando, nunca com menos movimento): uma piscada
+   * por tempo nos 2 primeiros tempos (~2 por segundo; a regra de
+   * acessibilidade é no máximo 3 clarões por segundo). Eram 4 piscadas em
+   * meio segundo.
+   */
   function estrobo() {
     if (Q.nivel < 3 || E.reduzido) return;
-    const desde = (performance.now() - dropEm) / 1000 * ((E.bpm || 124) / 60);   // em tempos
-    if (desde < 0 || desde > 1) return;
-    if ((desde * 4) % 1 < 0.35) { c.globalAlpha = 0.2; c.fillStyle = '#fff'; c.fillRect(0, 0, W, H); }
+    const bpm = E.bpm || 124;
+    const desde = (performance.now() - dropEm) / 1000 * (bpm / 60);   // em tempos
+    if (desde < 0 || desde > (bpm > 170 ? 1 : 2)) return;
+    if (desde % 1 < 0.12) { c.globalAlpha = 0.2; c.fillStyle = '#fff'; c.fillRect(0, 0, W, H); }
   }
 
   /** A galera: corpo, cabeça (boné, cabelo), braços, celular — contra a luz. */
@@ -384,6 +486,18 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
 
     if (E.drop !== ultimoDrop && E.dropReal) dropEm = performance.now();
 
+    // a PISTA HD, quando está no ar, desenha tudo (menos o "DROP!", que é DOM)
+    cuidarDoHD();
+    if (hdNoAr) {
+      ctxHD.soShow = soShow; ctxHD.black = black; ctxHD.visual = v;
+      try { hd.desenhar(E, dt, Q.nivel, ctxHD); } catch (e) { console.warn('pista HD:', e); desistirHD(); }
+      if (E.drop !== ultimoDrop) {
+        ultimoDrop = E.drop;
+        if (!E.reduzido && E.dropReal && selo) { selo.classList.remove('vai'); void selo.offsetWidth; selo.classList.add('vai'); }
+      }
+      if (hdNoAr && !hdEntrando) return;           // na fusão, a 2D ainda desenha por baixo
+    }
+
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.globalCompositeOperation = 'source-over';
     c.clearRect(0, 0, W, H);
@@ -392,7 +506,7 @@ export function montarCena(el, { rotulo = null, viagem = null } = {}) {
     // bombando: 6 canhões, leque de laser sempre e estrobo no drop
     neblina(pal, luz);
     if (!viagem?.ligada) { canhoes(pal, luz); leque(pal, luz); }
-    estrobo();
+    if (!hdNoAr) estrobo();          // com o HD no ar (na fusão), quem pisca é só ele: um governador só
     c.globalAlpha = 1;
     galera(pal, dt, Q.nivel === 1 ? luz * 0.6 : luz, soShow);
 

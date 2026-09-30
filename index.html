@@ -661,6 +661,16 @@
   body.pista-cheia #luzes .facetas { width:128px; height:64px; background-size:9px 9px, 9px 9px, auto; }
   body.pista-cheia #luzes .fio { height:10px; }
   body.pista-cheia #luzes .nevoa i { background:radial-gradient(closest-side, rgba(200,180,255,.32), rgba(200,180,255,.12) 55%, transparent); }
+  /* PISTA HD (pista-hd.js, ligada pelo cena.js): o club em WebGL2. Entra por
+     cima da pista 2D com uma fusão (pista-hd-entra) e depois fica sozinha
+     (pista-hd): a 2D e as luzes em CSS saem; o globo e o "DROP!" ficam.
+     Por cima da CDJ soma luz ("screen"); no 👁 só o show é a cena inteira. */
+  #pista-hd { position:fixed; inset:0; width:100vw; height:100vh; z-index:39; pointer-events:none;
+              mix-blend-mode:screen; display:none; }
+  body.pista-cheia.pista-hd #pista-hd, body.pista-cheia.pista-hd-entra #pista-hd { display:block; }
+  body.so-viagem #pista-hd { mix-blend-mode:normal; }
+  body.pista-hd #cena-tela, body.pista-hd #cena-galera, body.pista-hd #pista,
+  body.pista-hd #luzes .fachos, body.pista-hd #luzes .nevoa, body.pista-hd #luzes .espelho { display:none !important; }
 
   /* ───────── VIAGEM: a página inteira ───────── */
   /* Os efeitos passam POR CIMA da CDJ, na tela toda: o MilkDrop numa camada
