@@ -84,7 +84,10 @@
   .medidor-topo { display:flex; align-items:center; gap:6px; margin-left:auto; }
   .barra-n { width:88px; height:5px; border-radius:3px; background:var(--fundo-tela);
              overflow:hidden; border:1px solid var(--linha); }
-  .barra-n i { display:block; height:100%; width:0; background:linear-gradient(90deg,var(--ok),var(--cue),var(--bad)); }
+  /* os VU andam por transform (scaleX a partir da esquerda), nunca por width:
+     largura mudando a 60 Hz custava layout a cada quadro (ver escreverVu no app.js) */
+  .barra-n i { display:block; height:100%; width:100%; transform:scaleX(0); transform-origin:left center;
+               background:linear-gradient(90deg,var(--ok),var(--cue),var(--bad)); }
   .topo .ic { background:none; border:none; color:var(--fraco); cursor:pointer; padding:5px 7px;
               border-radius:7px; font-size:12px; }
   .topo .ic:hover { color:var(--fg); background:var(--sup2); }
@@ -586,7 +589,8 @@
   .knob .kill { padding:2px 5px; font-size:9px; border-radius:4px; flex:none; }
   .knob .kill.lig { background:var(--bad); border-color:var(--bad); color:#fff; box-shadow:0 0 9px rgba(255,96,96,.4); }
   .vu { height:4px; background:var(--fundo-tela); border-radius:2px; overflow:hidden; border:1px solid var(--linha); }
-  .vu i { display:block; height:100%; width:0; background:linear-gradient(90deg,var(--ok),var(--cue),var(--bad)); }
+  .vu i { display:block; height:100%; width:100%; transform:scaleX(0); transform-origin:left center;
+          background:linear-gradient(90deg,var(--ok),var(--cue),var(--bad)); }   /* scaleX: ver .barra-n i */
   .xf { width:100%; }
 
   /* ───────── janela da pista ───────── */

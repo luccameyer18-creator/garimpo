@@ -784,39 +784,116 @@ function ligarMixer() {
 
 const SEG_VISIVEL = 8;
 
+/**
+ * Tamanho de cada canvas SEM ler o layout a cada quadro.
+ *
+ * Antes, ajustar() chamava getBoundingClientRect() por quadro, depois de o
+ * quadro já ter escrito texto e estilo (posição, restante, VU): o navegador
+ * era obrigado a refazer o layout na hora, várias vezes por quadro. Medido na
+ * Intel UHD, isso e as escritas somavam mais que o desenho inteiro. Agora o
+ * ResizeObserver avisa quando o tamanho muda (janela, gaveta, layout do
+ * celular) e o quadro só lê o número guardado. O border-box é o mesmo que o
+ * getBoundingClientRect media (o #fase tem borda de 1 px).
+ * O devicePixelRatio é lido a cada chamada, e ler ele não custa layout: um
+ * zoom do navegador ou a janela indo pra outro monitor já entram no quadro
+ * seguinte, sem precisar de outro ouvinte.
+ */
+const tamCss = new WeakMap();
+const observaTam = typeof ResizeObserver === 'function'
+  ? new ResizeObserver((entradas) => {
+    for (const e of entradas) {
+      const b = e.borderBoxSize?.[0];
+      tamCss.set(e.target, b ? { w: b.inlineSize, h: b.blockSize } : { w: e.contentRect.width, h: e.contentRect.height });
+    }
+  })
+  : null;
+
 function ajustar(cv) {
-  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
-  const L = Math.round(r.width * dpr), A = Math.round(r.height * dpr);
+  const dpr = devicePixelRatio || 1;
+  let t = tamCss.get(cv);
+  if (!t || !observaTam) {
+    // primeira vez (o observador só responde depois do próximo layout) ou
+    // navegador sem ResizeObserver: aí sim uma leitura de layout
+    const r = cv.getBoundingClientRect();
+    t = { w: r.width, h: r.height };
+    if (observaTam) { tamCss.set(cv, t); observaTam.observe(cv, { box: 'border-box' }); }
+  }
+  const L = Math.round(t.w * dpr), A = Math.round(t.h * dpr);
   // confere a ALTURA tambem: a onda agora e flexivel, entao ela muda de
   // tamanho quando a janela muda e o canvas precisa acompanhar
   if (cv.width !== L || cv.height !== A) { cv.width = L; cv.height = A; }
   return dpr;
 }
 
+/**
+ * Escritas no DOM só quando o valor MUDA. Um textContent ou style igual ao
+ * que já está lá ainda invalida estilo e pintura; a 60 Hz em dez elementos,
+ * era ~12 ms por quadro na Intel UHD. O texto é comparado com o do próprio
+ * elemento (ler textContent não força layout, e outros eventos — rate,
+ * analysis — também escrevem no visor de BPM); o estilo, com o último valor
+ * que ESTE quadro escreveu, porque só ele mexe nesses estilos.
+ */
+function escreverTexto(el, s) {
+  if (el && el.textContent !== s) el.textContent = s;
+}
+const ultimoEstilo = new WeakMap();
+function escreverEstilo(el, prop, s) {
+  if (!el) return;
+  let m = ultimoEstilo.get(el);
+  if (!m) { m = {}; ultimoEstilo.set(el, m); }
+  if (m[prop] === s) return;
+  m[prop] = s;
+  el.style[prop] = s;
+}
+/**
+ * VU por transform: scaleX a partir da esquerda (ver .vu i / .barra-n i no
+ * index.html). Largura mudando a cada quadro custava layout; transform não.
+ * O degradê é o mesmo: a barra inteira encolhida tem as mesmas cores que a
+ * barra estreita com o degradê esticado nela.
+ */
+function escreverVu(el, nivel) {
+  const s = Math.min(1, nivel * 1.9);
+  escreverEstilo(el, 'transform', `scaleX(${s.toFixed(3)})`);
+}
+
+// os tempos na tela (posição e restante) mudam a cada quadro com a música
+// tocando, mas o olho não lê centésimo a 60 Hz: ~20 Hz basta. O canvas da
+// onda, o jog e o VU continuam a 60 Hz.
+let ultimoTexto = 0;
+const vus = {};
+
 function quadro() {
   requestAnimationFrame(quadro);
   if (!pronto) return;
 
+  // 1) TODO o desenho de canvas primeiro; 2) depois as escritas no DOM; e
+  // nenhuma leitura de layout depois de escrever (ajustar lê do cache)
+  for (const id of ['A', 'B']) if (decks[id]) desenharOnda(id);
+  desenharFase();
+
   const n = nivelMaster();
   if (n > picoMaster) picoMaster = n;
-  $('vu-master').style.width = Math.min(100, n * 190) + '%';
+  escreverVu(vus.M ??= $('vu-master'), n);
 
+  const agora = performance.now();
+  const textos = agora - ultimoTexto >= 50;
+  if (textos) ultimoTexto = agora;
   for (const id of ['A', 'B']) {
     const d = decks[id], v = vistas[id];
     if (!d) continue;
-    desenharOnda(id);
     const pos = d.displayPosition;
-    v.pos.textContent = fmt(pos, 2);
     const rest = d.duration - pos;
-    v.rest.textContent = fmt(Math.max(0, rest));
-    v.rest.style.color = rest < 30 && d.tocando ? 'var(--quente)' : '';
-    v.marcaJog.style.transform = `rotate(${(pos * 1.8 * 360) % 360}deg)`;
-    if (v.visorBpm) v.visorBpm.textContent = d.bpmEfetivo ? d.bpmEfetivo.toFixed(1) : '—';
-    const nv = mixer.canal(id).nivel;
-    $('vu-' + id).style.width = Math.min(100, nv * 190) + '%';
+    if (textos) {
+      escreverTexto(v.pos, fmt(pos, 2));
+      escreverTexto(v.rest, fmt(Math.max(0, rest)));
+    }
+    escreverEstilo(v.rest, 'color', rest < 30 && d.tocando ? 'var(--quente)' : '');
+    escreverEstilo(v.marcaJog, 'transform', `rotate(${(pos * 1.8 * 360) % 360}deg)`);
+    if (v.visorBpm) escreverTexto(v.visorBpm, d.bpmEfetivo ? d.bpmEfetivo.toFixed(1) : '—');
+    escreverVu(vus[id] ??= $('vu-' + id), mixer.canal(id).nivel);
   }
-  desenharFase();
-  if (performance.now() - ultimoProf > 220) { ultimoProf = performance.now(); rodarProfessor(); }
+  escreverFase();
+  if (agora - ultimoProf > 220) { ultimoProf = agora; rodarProfessor(); }
 }
 
 let ultimoProf = 0, ultimaLista = '', apontados = [];
@@ -1067,62 +1144,286 @@ function trocarModoOnda() {
   }
 }
 
+/**
+ * A ONDA PRÉ-DESENHADA, em ladrilhos.
+ *
+ * A imagem da onda só depende da faixa (d.picos), do modo, da altura do
+ * canvas e da escala (pixels por segundo de FAIXA — o pitch não muda a
+ * escala, só a velocidade com que ela passa). Desenhar ela de novo a cada
+ * quadro era o maior custo do app inteiro: no modo bandas, ~950 retângulos
+ * por banda x 3 bandas x 2 decks, 55–70 ms por quadro de raster na Intel UHD
+ * (6–14 quadros/s com tudo ligado). Agora cada trecho de 2048 px é pintado
+ * UMA vez, pixel a pixel num ImageData (CPU, ~ms, sem raster de path na
+ * GPU), vira um ImageBitmap, e o quadro só copia a fatia visível.
+ *
+ * A conta de cada coluna é a mesma de antes (mesmo bin, amplitude, cor e
+ * passo), com a cobertura da borda de cima/baixo feita à mão — é o que o
+ * canvas fazia com o antisserrilhado de um retângulo de altura fracionária.
+ * Com a fatia colocada em pixel inteiro, a coluna X da tira é exatamente a
+ * coluna x = X - deslocamento que o desenho antigo calculava.
+ */
+const LARG_LADRILHO = 2048;
+const ondaCache = { A: null, B: null };
+const rgbDe = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const COR_BANDA_RGB = [rgbDe(COR_BANDA.grave), rgbDe(COR_BANDA.medio), rgbDe(COR_BANDA.agudo)];
+// a mesma conversão que o CSS faz de hsl() pra rgb, pro modo energia
+function hslRgb(h, s, l) {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => { const k = (n + h / 30) % 12; return Math.round((l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255); };
+  return [f(0), f(8), f(4)];
+}
+function cacheOnda(id, picos, modo, L, A, dpr) {
+  let k = ondaCache[id];
+  const passo = Math.max(1, Math.round(dpr));
+  if (k && k.picos === picos && k.modo === modo && k.L === L && k.A === A && k.passo === passo) return k;
+  // mudou a faixa (ou trocou o começo pelo arquivo inteiro), o modo ou o
+  // tamanho: joga fora tudo que foi pintado
+  soltarOnda(id);
+  const TW = passo * Math.floor(LARG_LADRILHO / passo);   // coluna nunca cruza ladrilho
+  const pxSeg = L / SEG_VISIVEL;
+  const larg = Math.ceil((picos.min.length / picos.binsPorSegundo) * pxSeg);
+  k = ondaCache[id] = {
+    picos, modo, L, A, passo, pxSeg, TW, n: Math.ceil(larg / TW), ladrilhos: new Map(),
+    // dois trabalhos de pintura: um pro ladrilho que a tela precisa JÁ, outro
+    // pro próximo, que é pintado aos poucos (ver desenharOnda)
+    ja: null, adiante: null, tela: null, telaCtx: null,
+  };
+  return k;
+}
+function soltarOnda(id) {
+  const k = ondaCache[id];
+  if (k) for (const bmp of k.ladrilhos.values()) bmp.close?.();
+  ondaCache[id] = null;
+}
+
+/**
+ * Um ladrilho é pintado em três tempos: preparar (a conta de cada coluna,
+ * igual à do desenho antigo), pintar as linhas (de cima pra baixo, na ordem
+ * da memória do ImageData — por coluna, cada pixel caía 8 KB longe do
+ * anterior e a pintura levava 15–70 ms) e fechar (vira ImageBitmap). Dividir
+ * em linhas deixa o próximo ladrilho ser pintado em fatias de ~2 ms por
+ * quadro, sem soluço quando a música chega nele.
+ */
+function novoTrabalho(k) {
+  const nC = k.TW / k.passo, img = new ImageData(k.TW, k.A);
+  const n = () => new Int32Array(nC);
+  return {
+    i: -1, y: 0, img, u32: new Uint32Array(img.data.buffer),
+    // por coluna: meia altura de grave, médio e agudo (bandas) ou topo e base
+    // (rgb/energia), e a cor da coluna sem o alfa (rgb/energia)
+    h0: new Float32Array(nC), h1: new Float32Array(nC), h2: new Float32Array(nC), cor: new Uint32Array(nC),
+    /**
+     * E as LINHAS de cada coluna, já em inteiros: de onde a onde a coluna
+     * pinta alguma coisa (p0–p1) e de onde a onde cada banda cobre o pixel
+     * inteiro (fg, fm, fa; no rgb/energia, f0–f1). Quase todo pixel cai num
+     * desses intervalos e custa duas comparações; a conta de cobertura
+     * parcial só roda nas linhas de borda. Sem isso, a conta por pixel
+     * levava 20–60 ms por ladrilho na Intel UHD.
+     */
+    p0: n(), p1: n(), fg0: n(), fg1: n(), fm0: n(), fm1: n(), fa0: n(), fa1: n(),
+    pg0: n(), pg1: n(), pm0: n(), pm1: n(), pa0: n(), pa1: n(),
+  };
+}
+const rgba32 = (r, g, b, a) => ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;   // little-endian, como o ImageData
+const COR_BANDA_32 = COR_BANDA_RGB.map(([r, g, b]) => rgba32(r, g, b, 255));
+
+/**
+ * O antisserrilhado do path com vários retângulos (como era o modo bandas)
+ * amostra 4 sub-linhas por pixel, em y + 0,125 + 0,25·k: a cobertura anda de
+ * 1/4 em 1/4. Medido contra o desenho antigo — com a cobertura exata sobravam
+ * bordas mais suaves. Um retângulo [topo, base) cobre ALGUMA sub-linha nas
+ * linhas [ceil(topo − 0,875), ceil(base − 0,125)) e TODAS nas linhas
+ * [ceil(topo − 0,125), ceil(base − 0,875)).
+ */
+const abaixo = (lim, s0) => { const n = Math.ceil((lim - s0) * 4); return n < 0 ? 0 : n > 4 ? 4 : n; };
+function faixasDeBanda(c, h, meio, pa, pb, fa, fb) {
+  if (!h) { pa[c] = pb[c] = fa[c] = fb[c] = 0; return; }
+  const topo = meio - h, base = meio + h;
+  pa[c] = Math.ceil(topo - 0.875); pb[c] = Math.ceil(base - 0.125);
+  fa[c] = Math.ceil(topo - 0.125); fb[c] = Math.ceil(base - 0.875);
+}
+
+function prepararTrabalho(k, t, i) {
+  const { picos, modo, A, passo, pxSeg, TW } = k;
+  const { min, max, rms, binsPorSegundo, grave, medio, agudo, refG, refM, refA } = picos;
+  const meio = A / 2, X0 = i * TW, nC = TW / passo;
+  t.i = i; t.y = 0;
+  t.u32.fill(0);
+  for (let c = 0; c < nC; c++) {
+    const b = Math.floor(((X0 + c * passo) / pxSeg) * binsPorSegundo);
+    // depois do fim da faixa: vazio
+    if (b >= min.length) { t.p0.fill(0, c); t.p1.fill(0, c); break; }
+    if (modo === 'bandas') {
+      // três retângulos centrados, um por cima do outro (grave, médio, agudo)
+      const amp = Math.max(max[b], -min[b]) * meio * 0.95;
+      let h0 = amp * Math.min(1, grave[b] / refG), h1 = amp * 0.78 * Math.min(1, medio[b] / refM), h2 = amp * 0.5 * Math.min(1, agudo[b] / refA);
+      if (!(h0 >= 0.5)) h0 = 0;
+      if (!(h1 >= 0.5)) h1 = 0;
+      if (!(h2 >= 0.5)) h2 = 0;
+      t.h0[c] = h0; t.h1[c] = h1; t.h2[c] = h2;
+      faixasDeBanda(c, h0, meio, t.pg0, t.pg1, t.fg0, t.fg1);
+      faixasDeBanda(c, h1, meio, t.pm0, t.pm1, t.fm0, t.fm1);
+      faixasDeBanda(c, h2, meio, t.pa0, t.pa1, t.fa0, t.fa1);
+      const hM = Math.max(h0, h1, h2);
+      if (hM) { t.p0[c] = Math.ceil(meio - hM - 0.875); t.p1[c] = Math.ceil(meio + hM - 0.125); } else t.p0[c] = t.p1[c] = 0;
+    } else {
+      const hi = max[b] * meio * 0.95, lo = min[b] * meio * 0.95;
+      let r, g, bl;
+      if (modo === 'rgb') {
+        const gg = Math.min(1, grave[b] / refG), m = Math.min(1, medio[b] / refM), a = Math.min(1, agudo[b] / refA);
+        const s = Math.max(gg, m, a, 0.001);
+        r = (gg / s * 255) | 0; g = (m / s * 235) | 0; bl = (a / s * 255) | 0;
+      } else {
+        const e = Math.min(1, rms[b] * 3.2);
+        [r, g, bl] = hslRgb(210 - e * 190, 0.85, (34 + e * 26) / 100);
+      }
+      // um fillRect por coluna, antisserrilhado exato na borda
+      const topo = meio - hi, base = topo + Math.max(1, hi - lo);
+      t.h0[c] = topo; t.h1[c] = base;
+      t.p0[c] = Math.floor(topo); t.p1[c] = Math.ceil(base);
+      t.fa0[c] = Math.ceil(topo); t.fa1[c] = Math.floor(base);
+      t.cor[c] = rgba32(r, g, bl, 0);
+    }
+  }
+}
+
+function pintarLinhas(k, t, yFim) {
+  const { modo, A, passo, TW } = k, meio = A / 2, nC = TW / passo;
+  const { u32, h0, h1, h2, cor, p0, p1, fa0, fa1, fm0, fm1, fg0, fg1, pa0, pa1, pm0, pm1 } = t;
+  const bandas = modo === 'bandas';
+  const [cg, cm, ca] = COR_BANDA_32, [qg, qm, qa] = COR_BANDA_RGB;
+  // coluna por fora, linha por dentro, e só nas linhas que a coluna pinta: o
+  // vazio acima e abaixo da onda (a maior parte do ladrilho numa música
+  // calma) nem é visitado. 16 colunas vizinhas dividem a mesma linha de
+  // cache, então andar na vertical não custa memória
+  const yIni = t.y;
+  for (let c = 0; c < nC; c++) {
+    const ya = Math.max(yIni, p0[c]), yb = Math.min(yFim, p1[c]);
+    for (let y = ya; y < yb; y++) {
+      const s0 = y + 0.125 - meio;
+      let px;
+      if (bandas) {
+        const temA = y >= pa0[c] && y < pa1[c];
+        if (y >= fa0[c] && y < fa1[c]) px = ca;
+        else if (!temA && y >= fm0[c] && y < fm1[c]) px = cm;
+        else if (!temA && !(y >= pm0[c] && y < pm1[c]) && y >= fg0[c] && y < fg1[c]) px = cg;
+        else {
+          // borda: a composição do canvas, source-over em pré-multiplicado,
+          // grave, depois médio, depois agudo
+          const hs0 = h0[c], hs1 = h1[c], hs2 = h2[c];
+          const a0 = hs0 ? (abaixo(hs0, s0) - abaixo(-hs0, s0)) / 4 : 0;
+          const a1 = hs1 ? (abaixo(hs1, s0) - abaixo(-hs1, s0)) / 4 : 0;
+          const a2 = hs2 ? (abaixo(hs2, s0) - abaixo(-hs2, s0)) / 4 : 0;
+          let r = 0, g = 0, bl = 0, al = 0;
+          if (a0) { r = qg[0] * a0; g = qg[1] * a0; bl = qg[2] * a0; al = a0; }
+          if (a1) { const f = 1 - a1; r = qm[0] * a1 + r * f; g = qm[1] * a1 + g * f; bl = qm[2] * a1 + bl * f; al = a1 + al * f; }
+          if (a2) { const f = 1 - a2; r = qa[0] * a2 + r * f; g = qa[1] * a2 + g * f; bl = qa[2] * a2 + bl * f; al = a2 + al * f; }
+          if (!al) continue;
+          px = rgba32((r / al + 0.5) | 0, (g / al + 0.5) | 0, (bl / al + 0.5) | 0, (al * 255 + 0.5) | 0);
+        }
+      } else if (y >= fa0[c] && y < fa1[c]) px = (cor[c] | 0xff000000) >>> 0;
+      else {
+        const al = ((Math.min(h1[c], y + 1) - Math.max(h0[c], y)) * 255 + 0.5) | 0;
+        if (al <= 0) continue;
+        px = (cor[c] | (al << 24)) >>> 0;
+      }
+      // a coluna vale pras `passo` colunas de pixel: numa tela 2x, um passo
+      // por pixel de TELA (desenhar os dois é trabalho que o olho não vê)
+      const o = y * TW + c * passo;
+      u32[o] = px;
+      for (let dx = 1; dx < passo; dx++) u32[o + dx] = px;
+    }
+  }
+  t.y = yFim;
+}
+
+/**
+ * ImageBitmap e não um canvas comum com putImageData: um canvas pintado pela
+ * CPU podia ser reenviado pra GPU a cada drawImage; o bitmap vai uma vez e
+ * fica lá. transferToImageBitmap é síncrono.
+ */
+function fecharTrabalho(k, t) {
+  let bmp;
+  if (typeof OffscreenCanvas === 'function') {
+    if (!k.tela) { k.tela = new OffscreenCanvas(k.TW, k.A); k.telaCtx = k.tela.getContext('2d'); }
+    k.telaCtx.putImageData(t.img, 0, 0);
+    bmp = k.tela.transferToImageBitmap();
+  } else {
+    bmp = document.createElement('canvas');
+    bmp.width = k.TW; bmp.height = k.A;
+    bmp.getContext('2d').putImageData(t.img, 0, 0);
+  }
+  k.ladrilhos.set(t.i, bmp);
+  t.i = -1;
+  return bmp;
+}
+
+// o ladrilho que a tela precisa agora (abrir a faixa, pular com hot cue):
+// pinta inteiro, na hora — ou termina o que já vinha sendo adiantado
+function ladrilhoJa(k, i) {
+  if (k.adiante?.i === i) { pintarLinhas(k, k.adiante, k.A); return fecharTrabalho(k, k.adiante); }
+  const t = k.ja ??= novoTrabalho(k);
+  prepararTrabalho(k, t, i);
+  pintarLinhas(k, t, k.A);
+  return fecharTrabalho(k, t);
+}
+
 function desenharOnda(id) {
   const d = decks[id], v = vistas[id];
   const dpr = ajustar(v.onda);
   const c = v.ctxOnda, L = v.onda.width, A = v.onda.height;
+  const pos = d.displayPosition;
+  const picos = d.picos;
+  const modo = picos ? (picos.grave ? modoOnda : 'energia') : null;
+  const k = picos && L && A ? cacheOnda(id, picos, modo, L, A, dpr) : null;
+  if (!picos && ondaCache[id]) soltarOnda(id);   // deck vazio: nada de ladrilho velho guardado
+
+  /**
+   * Nada visível mudou desde o último quadro (deck parado, mesmo tamanho,
+   * mesma grade, mesmo cue, mesmos momentos): não desenha nada. A grade é
+   * comparada pelos VALORES porque o ÷2/×2 do BPM muda d.grid.bpm no lugar.
+   */
+  const g = d.grid, mom = momentosDe[id];
+  const ch = v.chaveOnda ??= {};
+  if (ch.pos === pos && ch.L === L && ch.A === A && ch.dpr === dpr && ch.picos === picos && ch.modo === modo &&
+      ch.bpm === g?.bpm && ch.ancora === g?.ancora && ch.cue === d.cuePoint && ch.mom === mom && ch.nMom === mom?.length) return;
+  ch.pos = pos; ch.L = L; ch.A = A; ch.dpr = dpr; ch.picos = picos; ch.modo = modo;
+  ch.bpm = g?.bpm; ch.ancora = g?.ancora; ch.cue = d.cuePoint; ch.mom = mom; ch.nMom = mom?.length;
+
   // transparente: o fundo translúcido do CSS deixa a pista aparecer por trás
   c.clearRect(0, 0, L, A);
-  const pos = d.displayPosition;
-  if (!d.picos) {
+  if (!picos) {
     // deck vazio: uma linha parada no meio, em vez de um buraco preto
     c.fillStyle = 'rgba(255,255,255,.07)';
     c.fillRect(0, A / 2, L, dpr);
   }
 
-  if (d.picos) {
-    const { min, max, rms, binsPorSegundo, grave, medio, agudo } = d.picos;
-    const meio = A / 2, pxSeg = L / SEG_VISIVEL, de = pos - SEG_VISIVEL / 2;
-    const binDe = (x) => Math.floor((de + (x / L) * SEG_VISIVEL) * binsPorSegundo);
-    const modo = grave ? modoOnda : 'energia';
-    /**
-     * Um passo por pixel de TELA, não por pixel do canvas: numa tela de alta
-     * densidade são 2 pixels de canvas por pixel visível, e desenhar os dois
-     * é trabalho que o olho não vê. E cada banda vira UM desenho (um path com
-     * todos os retângulos, um fill só) em vez de centenas de fillRect.
-     * É a conta que mais se repete por quadro: 3 bandas x 2 decks x cada coluna.
-     */
-    const passo = Math.max(1, Math.round(dpr));
-    if (modo === 'bandas') {
-      const { refG, refM, refA } = d.picos;
-      const bandas = [[grave, refG, 1, COR_BANDA.grave], [medio, refM, 0.78, COR_BANDA.medio], [agudo, refA, 0.5, COR_BANDA.agudo]];
-      for (const [arr, ref, teto, cor] of bandas) {
-        c.beginPath();
-        for (let x = 0; x < L; x += passo) {
-          const b = binDe(x);
-          if (b < 0 || b >= min.length) continue;
-          const amp = Math.max(max[b], -min[b]) * meio * 0.95;
-          const h = amp * teto * Math.min(1, arr[b] / ref);
-          if (h >= 0.5) c.rect(x, meio - h, passo, h * 2);
-        }
-        c.fillStyle = cor;
-        c.fill();
+  if (picos) {
+    const pxSeg = L / SEG_VISIVEL, de = pos - SEG_VISIVEL / 2;
+    if (k) {
+      // a fatia visível da tira: coluna X da tira = coluna x da tela + desloc.
+      // Antes do começo da faixa (de < 0) e depois do fim fica transparente,
+      // como era: os bins fora da faixa simplesmente não eram desenhados.
+      const desloc = Math.round(de * pxSeg), TW = k.TW;
+      const iIni = Math.max(0, Math.floor(desloc / TW)), iFim = Math.min(k.n - 1, Math.floor((desloc + L - 1) / TW));
+      for (let i = iIni; i <= iFim; i++) {
+        const bmp = k.ladrilhos.get(i) || ladrilhoJa(k, i);
+        c.drawImage(bmp, i * TW - desloc, 0);
       }
-    } else {
-      const { refG, refM, refA } = d.picos;
-      for (let x = 0; x < L; x += passo) {
-        const b = binDe(x);
-        if (b < 0 || b >= min.length) continue;
-        const hi = max[b] * meio * 0.95, lo = min[b] * meio * 0.95;
-        if (modo === 'rgb') {
-          const g = Math.min(1, grave[b] / refG), m = Math.min(1, medio[b] / refM), a = Math.min(1, agudo[b] / refA);
-          const s = Math.max(g, m, a, 0.001);
-          c.fillStyle = `rgb(${(g / s * 255) | 0},${(m / s * 235) | 0},${(a / s * 255) | 0})`;
-        } else {
-          const e = Math.min(1, rms[b] * 3.2);
-          c.fillStyle = `hsl(${210 - e * 190} 85% ${34 + e * 26}%)`;
-        }
-        c.fillRect(x, meio - hi, passo, Math.max(1, hi - lo));
+      // guarda só a vizinhança da fatia (um ladrilho de cada lado): uma faixa
+      // de 5 min numa tela 2x daria dezenas de MB se ficasse tudo
+      for (const [i, bmp] of k.ladrilhos) {
+        if (i < iIni - 1 || i > iFim + 1) { bmp.close?.(); k.ladrilhos.delete(i); }
+      }
+      // e adianta o próximo aos poucos, ~2 ms por quadro: quando a fatia
+      // chegar nele, ele já está pronto e nenhum quadro paga a pintura inteira
+      const prox = iFim + 1;
+      if (prox < k.n && !k.ladrilhos.has(prox)) {
+        const t = k.adiante ??= novoTrabalho(k);
+        if (t.i !== prox) prepararTrabalho(k, t, prox);
+        const ate = performance.now() + 2;
+        while (t.y < A && performance.now() < ate) pintarLinhas(k, t, Math.min(A, t.y + 8));
+        if (t.y >= A) fecharTrabalho(k, t);
       }
     }
     // grid de batidas: é o que deixa ver se os dois decks estão alinhados
@@ -1193,40 +1494,64 @@ function desenharMini(id) {
  * Medidor de fase — o visual que mais ensina, porque beatmatch é invisível
  * sem ele. Duas marcas correndo; quando alinham, trava em verde.
  */
+/**
+ * O canvas, o contexto e o último estado desenhado ficam guardados: pegar o
+ * contexto e medir o canvas a cada quadro custava ~8 ms na Intel UHD. Só
+ * redesenha quando o erro andou de verdade (> 0,002 de tempo, menos de meio
+ * pixel na largura do medidor), quando mudou o estado ou o tamanho. O rótulo
+ * é calculado aqui e escrito depois, junto das outras escritas do quadro.
+ */
+const medFase = { cv: null, c: null, L: 0, A: 0, dpr: 0, erro: NaN, cor: '', txt: '', corTxt: '' };
 function desenharFase() {
-  const cv = $('fase'), c = cv.getContext('2d');
-  ajustar(cv);
+  if (!medFase.cv) { medFase.cv = $('fase'); medFase.c = medFase.cv.getContext('2d'); }
+  const cv = medFase.cv, c = medFase.c;
+  const dpr = ajustar(cv);
   const L = cv.width, A = cv.height;
-  c.fillStyle = '#070909'; c.fillRect(0, 0, L, A);
+  const tam = L !== medFase.L || A !== medFase.A || dpr !== medFase.dpr;
+  medFase.L = L; medFase.A = A; medFase.dpr = dpr;
 
   const e = medirEncaixe();
   if (!e) {
-    $('rot-fase').textContent = decks.A?.grid && decks.B?.grid
+    medFase.txt = decks.A?.grid && decks.B?.grid
       ? 'toque play nos dois' : 'carregue os dois decks';
-    $('rot-fase').style.color = 'var(--mut)';
+    medFase.corTxt = 'var(--mut)';
+    if (tam || medFase.cor !== 'vazio') {
+      c.fillStyle = '#070909'; c.fillRect(0, 0, L, A);
+      medFase.cor = 'vazio'; medFase.erro = NaN;
+    }
     return;
   }
 
+  // erro em frações de tempo, mapeado na largura
+  const perto = Math.abs(e.emTempos) < 0.02;
+  const cor = perto ? '#3ddc84' : Math.abs(e.emTempos) < 0.08 ? '#ffb03d' : '#ff5d5d';
+  const ms = Math.abs(e.emMs).toFixed(0);
+  medFase.txt = perto
+    ? `em fase (${ms} ms)`
+    : `${e.emTempos > 0 ? 'B adiantado' : 'B atrasado'} ${ms} ms`;
+  medFase.corTxt = perto ? 'var(--ok)' : 'var(--mut)';
+  if (!tam && cor === medFase.cor && Math.abs(e.emTempos - medFase.erro) <= 0.002) return;
+  medFase.cor = cor; medFase.erro = e.emTempos;
+
+  c.fillStyle = '#070909'; c.fillRect(0, 0, L, A);
   const meio = L / 2;
   c.strokeStyle = 'rgba(255,255,255,.18)';
   c.beginPath(); c.moveTo(meio, 0); c.lineTo(meio, A); c.stroke();
 
-  // erro em frações de tempo, mapeado na largura
   const x = meio + e.emTempos * L * 0.9;
-  const perto = Math.abs(e.emTempos) < 0.02;
-  c.fillStyle = perto ? '#3ddc84' : Math.abs(e.emTempos) < 0.08 ? '#ffb03d' : '#ff5d5d';
+  c.fillStyle = cor;
   c.fillRect(x - 2, 4, 4, A - 8);
 
   c.fillStyle = 'rgba(255,255,255,.5)';
-  c.font = `${10 * (devicePixelRatio || 1)}px ui-monospace,monospace`;
+  c.font = `${10 * dpr}px ui-monospace,monospace`;
   c.fillText('A', 4, A - 5);
   c.textAlign = 'right'; c.fillText('B', L - 4, A - 5); c.textAlign = 'left';
-
-  const ms = Math.abs(e.emMs).toFixed(0);
-  $('rot-fase').textContent = perto
-    ? `em fase (${ms} ms)`
-    : `${e.emTempos > 0 ? 'B adiantado' : 'B atrasado'} ${ms} ms`;
-  $('rot-fase').style.color = perto ? 'var(--ok)' : 'var(--mut)';
+}
+function escreverFase() {
+  if (!medFase.txt) return;
+  const rot = medFase.rot ??= $('rot-fase');
+  escreverTexto(rot, medFase.txt);
+  escreverEstilo(rot, 'color', medFase.corTxt);
 }
 
 function desenharPassos(id, passos, falhou = false) {

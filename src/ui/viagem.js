@@ -1,10 +1,21 @@
 /**
  * MODO VIAGEM — a página inteira entra na viagem, não só uma janelinha.
  *
- * Abre no HIPERESPAÇO (hiperespaco.js): as imagens que quem fumou DMT
- * descreve — crisântemo, túnel, mandala, joias, fractal — geradas na placa
- * de vídeo e dançando com a música. O ↻ passa pelas cinco cenas e depois
- * pelo MilkDrop (com as formas voando); mais um ↻ volta pro hiperespaço.
+ * Abre no HIPERESPAÇO: as imagens que quem fumou DMT descreve — crisântemo,
+ * túnel, mandala, joias, fractal — geradas na placa de vídeo e dançando com
+ * a música. O ↻ passa pelas cinco cenas e depois pelo MilkDrop (com as
+ * formas voando); mais um ↻ volta pro hiperespaço.
+ *
+ * DOIS HIPERESPAÇOS, o mesmo desenho:
+ *   HD (hiper-hd.js)   na resolução de verdade da tela (dpr até 1,5), com
+ *                      detalhe assado, rastro e bloom. Só é montado na 1ª
+ *                      vez que a viagem liga (quase ninguém abre a viagem):
+ *                      compila e assa aos poucos, sem travar, e entra por
+ *                      cima com uma fusão quando fica pronto.
+ *   antigo (hiperespaco.js)  1 shader em ~1/3 da tela. Aparece enquanto o HD
+ *                      prepara (a tela nunca fica preta) e é a reserva se
+ *                      o HD falhar ou a placa cair.
+ * O medidor (qualidade.js) manda no preset do HD: engasgou, desce; liso, sobe.
  *
  *   POR CIMA o MilkDrop (Butterchurn) cobre a tela inteira, na frente da CDJ,
  *           com mistura "screen": a luz soma, o escuro deixa ver os controles
@@ -13,9 +24,10 @@
  *           passando por cima dos botões (sem pegar clique)
  *
  * LEVE DE PROPÓSITO — a primeira versão travava:
- *   - os dois canvas desenham em resolução BAIXA (o fundo a ~1/3 da tela, a
- *     frente a ~1/2) e a placa de vídeo amplia; num visualizador isso é
- *     bonito, e são 9x menos pixels pra pintar
+ *   - o MilkDrop e as formas desenham em resolução BAIXA (o fundo a ~1/3 da
+ *     tela, a frente a ~1/2) e a placa de vídeo amplia; num visualizador
+ *     isso é bonito, e são 9x menos pixels pra pintar (o HD faz o mesmo por
+ *     dentro: só a conta cara é pequena)
  *   - 30 quadros por segundo, não 60
  *   - um MilkDrop só na página (a janela da cabine não roda o dela junto)
  *   - as luzes normais da pista (#pista, #luzes) desligam enquanto dura
@@ -28,7 +40,15 @@
 import { estadoPista as E } from './pista.js';
 import { qualidade as Q, aoMudarQualidade } from './qualidade.js';
 import { montarHiperespaco } from './hiperespaco.js';
+import { montarHiperespacoHD, presetParaEscala, presetPelaPlaca } from './hiper-hd.js';
 import { desenharAparicao, sortearTipo } from './aparicoes.js';
+
+// celular/tablet começa mais leve no HD: preset menor e texturas assadas de
+// 1024² (8 MB em vez de 32, sem contar os mipmaps) — memória de placa de
+// celular é pouca e dividida com o sistema
+const CELULAR = (() => { try { return matchMedia('(pointer: coarse)').matches; } catch { return false; } })();
+// quanto dura a fusão do hiperespaço antigo pro HD, quando ele fica pronto
+const FUSAO_MS = 1200;
 
 // o MilkDrop desenha 1/3 da tela (menos, se o medidor baixar a resolução);
 // quantas formas voam depende do modo escolhido (leve, médio, bombando)
@@ -56,9 +76,95 @@ export function montarViagem({ audio }) {
   document.body.appendChild(frente);
   const c = frente.getContext('2d');
   // o hiperespaço é o padrão; sem WebGL, a viagem fica no MilkDrop
-  const hiper = montarHiperespaco(hiperCv);
-  let modo = hiper ? 'hiper' : 'milk';
+  let velho = montarHiperespaco(hiperCv);
+  let modo = velho ? 'hiper' : 'milk';
   const pintarModo = () => document.body.classList.toggle('viagem-milk', modo === 'milk');
+
+  // a placa caiu e voltou: o shader antigo não sabe se refazer sozinho,
+  // então monta de novo no mesmo canvas (o contexto é o mesmo, restaurado)
+  hiperCv.addEventListener('webglcontextlost', (e) => e.preventDefault());
+  hiperCv.addEventListener('webglcontextrestored', () => {
+    velho = montarHiperespaco(hiperCv);
+    velho?.tamanho(FW, FH);
+  });
+
+  /**
+   * O HIPERESPAÇO HD (hiper-hd.js). Montado na primeira vez que a viagem
+   * liga; até ficar `pronto`, quem aparece é o antigo. Qualquer erro dele
+   * (shader que não compila, exceção num quadro) = desiste do HD pra sempre
+   * nesta página e fica o antigo: nunca tela preta, nunca erro a cada quadro.
+   */
+  let hd = null, hdCv = null, hdDesistiu = false, usandoHD = false, fundindo = null;
+  let inicialHD = CELULAR ? 'medio' : 'alto';
+  const hiper = () => (usandoHD ? hd : velho);
+
+  function montarHD() {
+    hdCv = document.createElement('canvas');
+    hdCv.setAttribute('aria-hidden', 'true');
+    try {
+      hd = montarHiperespacoHD(hdCv, {
+        preset: presetParaEscala(inicialHD, Q.escala),
+        lado: CELULAR ? 1024 : 2048,
+        cena: velho?.cena,
+        // a régua da placa (medida uma vez, no fim do assado) só serve pra
+        // SUBIR: com a página ocupada a espera divide a placa com o resto
+        // (medido ~190 ms por ladrilho no app contra ~4 ms isolado), então
+        // leitura lenta não prova nada; rápida prova. Descer é com o medidor.
+        aoMedirPlaca(ms) {
+          if (!CELULAR && presetPelaPlaca(ms) === 'ultra') inicialHD = 'ultra';
+          hd?.qualidade(presetParaEscala(inicialHD, Q.escala));
+        },
+      });
+    } catch { hd = null; }
+    if (!hd) { desistirHD(); return; }
+    medirHD();
+  }
+  function desistirHD() {
+    if (usandoHD) mostrar(false, false);
+    try { hd?.liberar(); } catch {}
+    hdCv?.remove();
+    hd = null; hdCv = null; hdDesistiu = true;
+  }
+
+  // o CSS do index.html é pelo id: quem estiver no ar é o #viagem-hiper
+  function esconder(cv) { cv.removeAttribute('id'); cv.style.cssText = 'display:none'; }
+  function acabarFusao() {
+    if (!fundindo) return;
+    const { cv, anim } = fundindo;
+    fundindo = null;
+    if (cv.id !== 'viagem-hiper') esconder(cv);
+    anim?.cancel();
+  }
+  /**
+   * Põe no ar o HD (`hdNoAr` true) ou o antigo. Com `fundir`, o que sai fica
+   * por cima, com o mesmo estilo que tinha, e some em FUSAO_MS — só opacity
+   * num elemento, a placa compõe sozinha.
+   */
+  function mostrar(hdNoAr, fundir) {
+    if (hdNoAr === usandoHD) return;
+    acabarFusao();
+    const entra = hdNoAr ? hdCv : hiperCv, sai = hdNoAr ? hiperCv : hdCv;
+    usandoHD = hdNoAr;
+    if (!entra) return;
+    if (fundir && sai && ligada && modo === 'hiper' && sai.animate) {
+      const cs = getComputedStyle(sai);
+      const op = cs.opacity;
+      sai.style.cssText = `position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;display:block;` +
+        `z-index:${cs.zIndex};mix-blend-mode:${cs.mixBlendMode};opacity:${op}`;
+      sai.removeAttribute('id');
+      entra.style.cssText = '';
+      entra.id = 'viagem-hiper';
+      sai.before(entra);                             // quem sai fica por cima
+      const anim = sai.animate([{ opacity: op }, { opacity: 0 }], { duration: FUSAO_MS, easing: 'ease-in-out', fill: 'forwards' });
+      fundindo = { cv: sai, anim };
+      anim.onfinish = acabarFusao;
+    } else {
+      if (sai) esconder(sai);
+      entra.style.cssText = '';
+      entra.id = 'viagem-hiper';
+      if (!entra.isConnected) document.body.prepend(entra);
+    }
+  }
 
   /**
    * AS APARIÇÕES (aparicoes.js): os seres e as figuras que os relatos de DMT
@@ -111,11 +217,22 @@ export function montarViagem({ audio }) {
     W = Math.max(320, Math.round(innerWidth / 2)); H = Math.max(180, Math.round(innerHeight / 2));
     fundo.width = FW; fundo.height = FH;
     frente.width = W; frente.height = H;
-    hiper?.tamanho(FW, FH);
+    velho?.tamanho(FW, FH);
+    medirHD();
     try { milk?.setRendererSize(FW, FH); } catch {}
   }
+  // o HD recebe a tela INTEIRA em pixels do aparelho (dpr até 1,5: acima
+  // disso o olho não vê diferença e a conta cresce ao quadrado); quanto disso
+  // ele desenha de verdade é o preset que decide
+  function medirHD() {
+    const dpr = Math.min(devicePixelRatio || 1, 1.5);
+    hd?.tamanho(innerWidth * dpr, innerHeight * dpr);
+  }
   addEventListener('resize', () => { if (ligada) medir(); });
-  aoMudarQualidade(() => { if (ligada) medir(); });
+  aoMudarQualidade((q) => {
+    hd?.qualidade(presetParaEscala(inicialHD, q.escala));
+    if (ligada) medir();
+  });
 
   function trocar(fusao = 2.7) {
     if (!milk || !nomes.length) return;
@@ -185,10 +302,31 @@ export function montarViagem({ audio }) {
     }
   }
 
+  // uma cena diferente da atual, sorteada
+  const outraCena = (h) => Math.floor(Math.random() * (h.CENAS - 1) + h.cena + 1) % h.CENAS;
+
+  /** O HD: monta na 1ª vez, prepara aos poucos e entra quando fica pronto. */
+  function cuidarDoHD() {
+    if (hdDesistiu || !velho) return;
+    if (!hd) { montarHD(); return; }
+    if (hd.falhou) { desistirHD(); return; }
+    // a placa caiu: o antigo volta na hora; o HD se refaz sozinho e entra de novo
+    if (usandoHD && !hd.pronto) { mostrar(false, false); return; }
+    if (!usandoHD && !hd.perdido) {
+      try {
+        if (hd.preparar()) { hd.trocar(velho.cena, 0); mostrar(true, true); }
+      } catch { desistirHD(); }
+    }
+  }
+
+  let proximoQuadro = 0, dropCorte = -1;
   function quadro(agora) {
     requestAnimationFrame(quadro);
     if (!ligada || document.hidden) return;
-    if (agora - tAntes < 33) return;                 // 30 quadros por segundo
+    // 30 quadros por segundo num relógio que não escorrega: "agora - antes
+    // < 33" num monitor de 60 Hz com o rAF tremendo pulava pra 20/s
+    if (agora < proximoQuadro - 2) return;
+    proximoQuadro = Math.max(proximoQuadro + 1000 / 30, agora - 1000 / 30);
     const dt = Math.min(0.1, (agora - tAntes) / 1000);
     tAntes = agora;
 
@@ -199,8 +337,22 @@ export function montarViagem({ audio }) {
 
     // ── hiperespaço: o shader, e só ele (é denso o bastante sozinho) ──
     if (modo === 'hiper') {
-      if (virouFrase && frase > 0) hiper.trocar(Math.floor(Math.random() * (hiper.CENAS - 1) + hiper.cena + 1) % hiper.CENAS);
-      hiper.desenhar(E, dt, Q.nivel || 2);
+      cuidarDoHD();
+      const h = hiper();
+      if (!h) { modo = 'milk'; pintarModo(); return; }
+      if (virouFrase && frase > 0) h.trocar(outraCena(h));
+      // CORTE SECO no drop (só no HD, que sabe cortar): o clarão esconde a
+      // emenda e a cena nova chega junto com a pancada. Vale o carimbo do
+      // drop (E.drop), não "dropV > 0.95": a 6-10 quadros/s isso escapa
+      if (E.drop !== dropCorte) {
+        dropCorte = E.drop;
+        if (usandoHD && E.dropV > 0.5 && !E.reduzido) h.trocar(outraCena(h), 0);
+      }
+      if (usandoHD) {
+        try { hd.desenhar(E, dt, Q.nivel || 2); } catch { desistirHD(); }
+      }
+      // o antigo desenha quando está no ar e enquanto some por baixo da fusão
+      if (!usandoHD || fundindo) velho?.desenhar(E, dt, Q.nivel || 2);
       c.setTransform(1, 0, 0, 1, 0, 0);
       c.clearRect(0, 0, W, H);
       aparicoes(dt);
@@ -248,11 +400,18 @@ export function montarViagem({ audio }) {
    * MilkDrop, volta pro hiperespaço.
    */
   function proxima() {
-    if (modo === 'hiper') {
-      if (hiper.cena >= hiper.CENAS - 1) { modo = 'milk'; pintarModo(); if (estado === 'ok') trocar(0.5); }
-      else hiper.trocar();
-    } else if (hiper) { modo = 'hiper'; pintarModo(); hiper.trocar(0); }
-    else trocar(1.2);
+    const h = hiper();
+    if (modo === 'hiper' && h) {
+      if (h.cena >= h.CENAS - 1) {
+        modo = 'milk'; acabarFusao(); pintarModo();
+        hd?.dormir();                                // o MilkDrop não usa o HD: devolve a memória
+        if (estado === 'ok') trocar(0.5);
+      } else h.trocar();
+    } else if (h) {
+      modo = 'hiper'; pintarModo();
+      // vindo do MilkDrop não há o que fundir: o HD corta direto pra 1ª cena
+      if (usandoHD) h.trocar(0, 0); else h.trocar(0);
+    } else trocar(1.2);
   }
 
   return {
@@ -262,7 +421,8 @@ export function montarViagem({ audio }) {
       ligada = on;
       document.body.classList.toggle('viagem', on);
       pintarModo();
-      if (on) { medir(); tAntes = 0; } else { c.clearRect(0, 0, W, H); voadores.length = 0; }
+      if (on) { medir(); tAntes = 0; proximoQuadro = 0; }
+      else { c.clearRect(0, 0, W, H); voadores.length = 0; acabarFusao(); hd?.dormir(); }
       return on;
     },
   };
